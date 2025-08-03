@@ -1,2 +1,7 @@
 @import "tailwindcss";
 
+@tailwind utilities;
+/* global dark background + açık metin rengi  */
+html, body {
+  @apply bg-[#1e1f23] text-gray-100;
+}
