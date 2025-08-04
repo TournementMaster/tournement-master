@@ -1,7 +1,10 @@
 @import "tailwindcss";
 
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
-/* global dark background + açık metin rengi  */
+
+/* global tema */
 html, body {
   @apply bg-[#1e1f23] text-gray-100;
 }
