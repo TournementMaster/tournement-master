@@ -75,12 +75,21 @@ export default function Header({ toggleSidebar }: Props) {
                         )}
                     </>
                 ) : (
-                    <Link
-                        to="/login"
-                        className="bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1 rounded"
-                    >
-                        Login
-                    </Link>
+                    <div className="flex gap-2">
+                        <Link
+                            to="/login"
+                            className="bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1 rounded"
+                        >
+                            Login
+                        </Link>
+
+                        <Link
+                            to="/register"
+                            className="bg-gray-700 hover:bg-gray-600 text-sm px-3 py-1 rounded"
+                        >
+                            Register
+                        </Link>
+                    </div>
                 )}
             </div>
         </header>

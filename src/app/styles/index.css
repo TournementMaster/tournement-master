@@ -1,10 +1,14 @@
 @import "tailwindcss";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* global tema */
-html, body {
-  @apply bg-[#1e1f23] text-gray-100;
+/* Google Fonts importu (yedek) */
+/* @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap'); */
+
+@layer base {
+  html {
+    /* Arka plan + temel yazı tipi */
+    @apply bg-[#1e1f23] text-gray-100 font-sans;
+  }
 }

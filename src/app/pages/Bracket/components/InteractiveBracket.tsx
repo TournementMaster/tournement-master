@@ -88,7 +88,7 @@ export default function InteractiveBracket() {
                                             <line x1={x + H} x2={nx} y1={mid} y2={mid} />
                                         )}
                                         {mt.players.map((p, i) => (
-                                            <text key={i} x={x + 6} y={(i ? y2 : y1) - 6} {...TEXT}>
+                                            <text key={i} x={x + 6} y={(i ? y2 : y1) - 6} {...TEXT} strokeWidth={0.5}>
                                                 {p.seed} {p.name}{p.winner && ' ✅'}
                                             </text>
                                         ))}
