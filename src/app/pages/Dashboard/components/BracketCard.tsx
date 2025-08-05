@@ -11,15 +11,17 @@ function typeLabel(t: BracketSummary['type']) {
 }
 
 export default function BracketCard({ item }: { item: BracketSummary }) {
+    const isMain = item.category === 'main';
     return (
-        <div className="bg-[#2d3038] rounded-lg px-5 py-4 flex items-center justify-between">
+        <div className={`bg-[#2d3038] rounded-lg px-5 py-4 flex items-center justify-between border ${isMain ? 'border-amber-400/40' : 'border-transparent'}`}>
             <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center">
-                    {/* basit logo */}
-                    <div className="w-5 h-5 border-2 border-gray-300 rounded-sm" />
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isMain ? 'bg-amber-500/20' : 'bg-black/40'}`}>
+                    <div className={`w-5 h-5 border-2 rounded-sm ${isMain ? 'border-amber-300' : 'border-gray-300'}`} />
                 </div>
                 <div>
-                    <div className="font-semibold">{item.title}</div>
+                    <div className={`${isMain ? 'text-xl font-bold text-amber-300' : 'font-semibold'}`}>
+                        {item.title} {isMain && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">ANA</span>}
+                    </div>
                     <div className="text-gray-400 text-sm">{typeLabel(item.type)}</div>
                 </div>
             </div>
