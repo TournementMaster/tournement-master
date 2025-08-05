@@ -1,10 +1,11 @@
 /* =========================================================================
    FILE: src/app/pages/Create/TournamentWizard.tsx
-   Amaç:
-   - Ana sayfadan açılırsa ANA turnuva oluştur (sidebar gizlenir – RootLayout).
-   - /bracket/:id içinden açılırsa ALT turnuva (parent otomatik/geçilebilir).
-   - Tüm metinler TÜRKÇE. Premium görünüm.
-   - Güvenli POST /api/brackets/ (diğer alanlar şimdilik UI’da).
+   AMAÇ
+   - Ana sayfadan açılırsa: ANA turnuva oluştur (sidebar RootLayout tarafında gizleniyor).
+   - /bracket/:id içinden açılırsa: ALT turnuva (parent otomatik/geçilebilir).
+   - ALT turnuva için "Kategori Bilgileri" adımı: Tournament (parent), Age/Weight,
+     Gender, Public; görsel olarak premium.
+   - Güvenli POST /api/brackets/ → yalnız minimal payload (title/type/participants/…).
    ========================================================================= */
 
 import { useMemo, useState } from 'react';
@@ -14,7 +15,7 @@ import { isAxiosError } from 'axios';
 import { api } from '../../lib/api.tsx';
 import { useBrackets, type BracketSummary } from '../../hooks/useBracket.tsx';
 
-/* ------ Tipler ------ */
+/* ---- Tipler ---- */
 type SihirbazModu = 'main' | 'sub';
 type Format = 'single' | 'double' | 'group' | 'round_robin';
 
@@ -28,9 +29,9 @@ type CreateBracketDTO = {
     parentId: number | null;
 };
 
+/* Sahip/Düzenleyici için (opsiyonel) */
 type Kullanici = { id: number; username: string };
 
-/* Kullanıcı listesi (Sahip/Düzenleyiciler) – yoksa boş döner */
 function useUsers() {
     return useQuery<Kullanici[], Error>({
         queryKey: ['users'],
@@ -47,7 +48,7 @@ function useUsers() {
     });
 }
 
-/* Düzenleyici seçici (çift liste) */
+/* Düzenleyici seçici – ana turnuva için */
 function EditorSecici({
                           users,
                           secilenler,
@@ -60,12 +61,11 @@ function EditorSecici({
     const [filtreA, setFiltreA] = useState('');
     const [filtreB, setFiltreB] = useState('');
     const musait = users.filter(
-        (u) => !secilenler.includes(u.id) && u.username.toLowerCase().includes(filtreA.toLowerCase())
+        (u) => !secilenler.includes(u.id) && u.username.toLowerCase().includes(filtreA.toLowerCase()),
     );
     const secili = users.filter(
-        (u) => secilenler.includes(u.id) && u.username.toLowerCase().includes(filtreB.toLowerCase())
+        (u) => secilenler.includes(u.id) && u.username.toLowerCase().includes(filtreB.toLowerCase()),
     );
-
     const ekle = (id: number) => setSecilenler([...new Set([...secilenler, id])]);
     const cikar = (id: number) => setSecilenler(secilenler.filter((x) => x !== id));
 
@@ -124,7 +124,7 @@ function EditorSecici({
     );
 }
 
-/* ------ Bileşen ------ */
+/* ---- Bileşen ---- */
 export default function TournamentWizard({
                                              mode,
                                              defaultParentId,
@@ -138,52 +138,55 @@ export default function TournamentWizard({
     const { data: brackets = [] } = useBrackets();
     const anaTurnuvalar = useMemo(
         () => brackets.filter((b) => (b.category ?? (b.parentId == null ? 'main' : 'sub')) === 'main'),
-        [brackets]
+        [brackets],
     );
 
     const { data: users = [] } = useUsers();
 
-    // Form
+    /* Temel form */
     const [baslik, setBaslik] = useState('');
     const [format, setFormat] = useState<Format>('single');
     const [katilimci, setKatilimci] = useState<number>(8);
-    const [parentId, setParentId] = useState<number | ''>(defaultParentId ?? '');
 
-    // Ana turnuva ek alanlar (şimdilik sadece UI)
-    const [sezon, setSezon] = useState<number | ''>('');
-    const [sehir, setSehir] = useState('');
-    const [mekan, setMekan] = useState('');
-    const [baslangic, setBaslangic] = useState('');
-    const [bitis, setBitis] = useState('');
-    const [aciklama, setAciklama] = useState('');
+    /* Ana turnuva bilgileri (opsiyonel) */
     const [sahipId, setSahipId] = useState<number | ''>('');
     const [editorIds, setEditorIds] = useState<number[]>([]);
 
-    const parentAdimiGerekli = mode === 'sub' && !defaultParentId;
+    /* ALT turnuva: Kategori alanları */
+    const [parentId, setParentId] = useState<number | ''>(defaultParentId ?? '');
+    const [yasMin, setYasMin] = useState<number | ''>('');
+    const [yasMax, setYasMax] = useState<number | ''>('');
+    const [kiloMin, setKiloMin] = useState<number | ''>('');
+    const [kiloMax, setKiloMax] = useState<number | ''>('');
+    const [cinsiyet, setCinsiyet] = useState<'male' | 'female' | 'mixed' | ''>('');
+    const [isPublic, setIsPublic] = useState(false);
 
-    const adimlar = useMemo(
-        () =>
-            ([
-                'Genel Bilgiler',
-                'Format',
-                ...(mode === 'main' ? (['Organizasyon'] as const) : []),
-                ...(parentAdimiGerekli ? (['Ana Turnuva'] as const) : []),
-                'Özet',
-            ] as const),
-        [mode, parentAdimiGerekli]
-    );
+    /* Adımlar:
+       - ALT turnuva için 'Kategori Bilgileri' adımı eklendi ve içinde parent seçimi de var. */
+    const adimlar = useMemo(() => {
+        if (mode === 'sub') {
+            return ['Genel Bilgiler', 'Format', 'Kategori Bilgileri', 'Özet'] as const;
+        }
+        return ['Genel Bilgiler', 'Format', 'Organizasyon', 'Özet'] as const;
+    }, [mode]);
+
     const [adim, setAdim] = useState(0);
 
-    const ileriAktifMi = () => {
+    function ileriAktifMi() {
         const a = adimlar[adim];
         if (a === 'Genel Bilgiler') return baslik.trim().length >= 3;
         if (a === 'Format') return katilimci >= 2;
-        if (a === 'Ana Turnuva') return !!parentId;
+        if (a === 'Kategori Bilgileri') {
+            // Parent zorunlu; sayısal doğrulamalar basitçe yapılır (min<=max ise)
+            if (!defaultParentId && !parentId) return false;
+            if (yasMin !== '' && yasMax !== '' && Number(yasMin) > Number(yasMax)) return false;
+            if (kiloMin !== '' && kiloMax !== '' && Number(kiloMin) > Number(kiloMax)) return false;
+            return true;
+        }
         return true;
-        // 'Organizasyon' için zorunluluk yok (isterseniz sahip/düzenleyici zorunlu yapılabilir)
-    };
+    }
 
-    const hataGoster = (err: unknown) => {
+    function hataGoster(err: unknown) {
         if (isAxiosError(err)) {
             const kod = err.response?.status ?? '???';
             const detay =
@@ -196,14 +199,9 @@ export default function TournamentWizard({
             alert('Oluşturma başarısız (bilinmeyen hata).');
             console.error('Create failed (unknown):', err);
         }
-    };
+    }
 
     const kaydet = async () => {
-        if (parentAdimiGerekli && !parentId) {
-            alert('Lütfen ana turnuva seçiniz.');
-            return;
-        }
-
         const payload: CreateBracketDTO = {
             title: baslik,
             type: format,
@@ -213,6 +211,9 @@ export default function TournamentWizard({
             category: mode === 'main' ? 'main' : 'sub',
             parentId: mode === 'sub' ? (defaultParentId ?? Number(parentId)) : null,
         };
+
+        // NOT: Kategori alanları (yas/kilo/cinsiyet/public) şu an backend’e gönderilmiyor.
+        // Schema hazır olduğunda payload’a eklenecek: örn `{ ...payload, category_filters: {...} }`.
 
         // Optimistic
         const tempId = Date.now();
@@ -233,12 +234,10 @@ export default function TournamentWizard({
         try {
             const { data: created } = await api.post<BracketSummary>('brackets/', payload);
             qc.setQueryData<BracketSummary[]>(['brackets'], (old = []) =>
-                old.map((x) => (x.id === tempId ? created : x))
+                old.map((x) => (x.id === tempId ? created : x)),
             );
         } catch (err) {
-            qc.setQueryData<BracketSummary[]>(['brackets'], (old = []) =>
-                old.filter((x) => x.id !== tempId)
-            );
+            qc.setQueryData<BracketSummary[]>(['brackets'], (old = []) => old.filter((x) => x.id !== tempId));
             hataGoster(err);
             return;
         }
@@ -247,7 +246,7 @@ export default function TournamentWizard({
         nav('/');
     };
 
-    /* ---- Arayüz ---- */
+    /* ---- UI ---- */
     return (
         <div className="mx-auto max-w-5xl">
             {/* Başlık şeridi */}
@@ -260,9 +259,12 @@ export default function TournamentWizard({
                                 {mode === 'main' ? 'Ana Turnuva Oluştur' : 'Alt Turnuva Oluştur'}
                             </h1>
                         </div>
-                        <div className="text-sm text-gray-400">{adim + 1}/{adimlar.length}</div>
+                        <div className="text-sm text-gray-400">
+                            {adim + 1}/{adimlar.length}
+                        </div>
                     </div>
 
+                    {/* Adım butonları */}
                     <div className="px-3 pb-3">
                         <div className="flex gap-2 flex-wrap">
                             {adimlar.map((s, i) => (
@@ -282,7 +284,7 @@ export default function TournamentWizard({
 
             {/* İçerik kartı */}
             <div className="mt-6 rounded-xl bg-[#2d3038] p-6 space-y-6 shadow-[0_10px_30px_-15px_rgba(0,0,0,.6)]">
-                {/* Genel Bilgiler */}
+                {/* 1) Genel Bilgiler */}
                 {adimlar[adim] === 'Genel Bilgiler' && (
                     <section className="grid gap-5">
                         <div className="grid gap-4 md:grid-cols-2">
@@ -295,84 +297,12 @@ export default function TournamentWizard({
                                     placeholder="Örn: 2025 İstanbul Şampiyonası"
                                 />
                             </div>
-
-                            {mode === 'main' && (
-                                <div>
-                                    <label className="block text-sm mb-1">Sezon yılı</label>
-                                    <input
-                                        type="number"
-                                        className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
-                                        value={sezon ?? ''}
-                                        onChange={(e) => setSezon(Number(e.target.value) || '')}
-                                        placeholder="2025"
-                                    />
-                                </div>
-                            )}
-
-                            {mode === 'main' && (
-                                <>
-                                    <div>
-                                        <label className="block text-sm mb-1">Şehir</label>
-                                        <input
-                                            className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
-                                            value={sehir}
-                                            onChange={(e) => setSehir(e.target.value)}
-                                            placeholder="İstanbul"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm mb-1">Mekan</label>
-                                        <input
-                                            className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
-                                            value={mekan}
-                                            onChange={(e) => setMekan(e.target.value)}
-                                            placeholder="Sinan Erdem"
-                                        />
-                                    </div>
-                                </>
-                            )}
-
-                            {mode === 'main' && (
-                                <>
-                                    <div>
-                                        <label className="block text-sm mb-1">Başlangıç tarihi</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
-                                            value={baslangic}
-                                            onChange={(e) => setBaslangic(e.target.value)}
-                                        />
-                                        <p className="text-[11px] text-gray-400 mt-1">Not: Sunucu saat dilimi ile fark olabilir.</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm mb-1">Bitiş tarihi</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
-                                            value={bitis}
-                                            onChange={(e) => setBitis(e.target.value)}
-                                        />
-                                        <p className="text-[11px] text-gray-400 mt-1">Not: Sunucu saat dilimi ile fark olabilir.</p>
-                                    </div>
-                                </>
-                            )}
-
-                            {mode === 'main' && (
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm mb-1">Açıklama</label>
-                                    <textarea
-                                        className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2 h-28"
-                                        value={aciklama}
-                                        onChange={(e) => setAciklama(e.target.value)}
-                                        placeholder="Kısa açıklama..."
-                                    />
-                                </div>
-                            )}
+                            <div />
                         </div>
                     </section>
                 )}
 
-                {/* Format */}
+                {/* 2) Format */}
                 {adimlar[adim] === 'Format' && (
                     <section className="grid gap-5 md:grid-cols-2">
                         <div>
@@ -403,7 +333,7 @@ export default function TournamentWizard({
                     </section>
                 )}
 
-                {/* Organizasyon (sadece ANA) */}
+                {/* 3) Organizasyon (ANA) */}
                 {mode === 'main' && adimlar[adim] === 'Organizasyon' && (
                     <section className="grid gap-6">
                         <div className="grid gap-4 md:grid-cols-2">
@@ -416,7 +346,9 @@ export default function TournamentWizard({
                                 >
                                     <option value="">Seçiniz…</option>
                                     {users.map((u) => (
-                                        <option key={u.id} value={u.id}>{u.username}</option>
+                                        <option key={u.id} value={u.id}>
+                                            {u.username}
+                                        </option>
                                     ))}
                                 </select>
                             </div>
@@ -426,33 +358,139 @@ export default function TournamentWizard({
                             <label className="block text-sm mb-2">Düzenleyiciler</label>
                             <EditorSecici users={users} secilenler={editorIds} setSecilenler={setEditorIds} />
                         </div>
+
                         <p className="text-[11px] text-gray-400 -mt-2">
-                            Not: Sahip/Düzenleyici bilgileri şu an backend’e gönderilmiyor; şema hazır olduğunda ekleriz.
+                            Not: Sahip/Düzenleyici bilgileri şu an backend’e gönderilmiyor; şema hazır olduğunda eklenecek.
                         </p>
                     </section>
                 )}
 
-                {/* Ana Turnuva (sadece ALT ve parentId yoksa) */}
-                {parentAdimiGerekli && adimlar[adim] === 'Ana Turnuva' && (
-                    <section>
-                        <label className="block text-sm mb-1">Hangi ana turnuvaya kaydetmek istersiniz?</label>
-                        <select
-                            className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
-                            value={parentId}
-                            onChange={(e) => setParentId(Number(e.target.value))}
-                        >
-                            <option value="">Seçiniz…</option>
-                            {anaTurnuvalar.map((p) => (
-                                <option key={p.id} value={p.id}>{p.title}</option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-gray-400 mt-2">
-                            Listede yalnızca <b>ANA</b> kategorisindekiler görünür.
-                        </p>
+                {/* 3) Kategori Bilgileri (ALT) */}
+                {mode === 'sub' && adimlar[adim] === 'Kategori Bilgileri' && (
+                    <section className="grid gap-6">
+                        {/* Tournament (Parent) */}
+                        <div>
+                            <label className="block text-sm mb-1">Turnuva</label>
+                            {defaultParentId ? (
+                                <input
+                                    disabled
+                                    className="w-full bg-[#1f2229] border border-transparent rounded px-3 py-2 text-gray-300"
+                                    value={
+                                        anaTurnuvalar.find((p) => p.id === defaultParentId)?.title ??
+                                        `ID: ${defaultParentId}`
+                                    }
+                                />
+                            ) : (
+                                <select
+                                    className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
+                                    value={parentId}
+                                    onChange={(e) => setParentId(Number(e.target.value))}
+                                >
+                                    <option value="">Seçiniz…</option>
+                                    {anaTurnuvalar.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.title}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
+                        {/* Age */}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label className="block text-sm mb-1">Age min</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
+                                    value={yasMin ?? ''}
+                                    onChange={(e) => setYasMin(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="örn. 12"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm mb-1">Age max</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
+                                    value={yasMax ?? ''}
+                                    onChange={(e) => setYasMax(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="örn. 16"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Weight */}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label className="block text-sm mb-1">Weight min</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step="0.1"
+                                    className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
+                                    value={kiloMin ?? ''}
+                                    onChange={(e) => setKiloMin(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="örn. 40"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm mb-1">Weight max</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step="0.1"
+                                    className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
+                                    value={kiloMax ?? ''}
+                                    onChange={(e) => setKiloMax(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="örn. 65"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Gender & Public */}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label className="block text-sm mb-1">Gender</label>
+                                <select
+                                    className="w-full bg-[#1f2229] border border-transparent focus:border-sky-500 rounded px-3 py-2"
+                                    value={cinsiyet}
+                                    onChange={(e) => setCinsiyet(e.target.value as typeof cinsiyet)}
+                                >
+                                    <option value="">Seçiniz…</option>
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                    <option value="mixed">Mixed</option>
+                                </select>
+                            </div>
+
+                            <label className="flex items-center gap-2 pt-6">
+                                <input
+                                    type="checkbox"
+                                    checked={isPublic}
+                                    onChange={(e) => setIsPublic(e.target.checked)}
+                                />
+                                Public
+                            </label>
+                        </div>
+
+                        {/* İpucu */}
+                        {(yasMin !== '' && yasMax !== '' && Number(yasMin) > Number(yasMax)) && (
+                            <p className="text-amber-400 text-sm">
+                                Uyarı: <b>Age min</b>, <b>Age max</b>’ten büyük olamaz.
+                            </p>
+                        )}
+                        {(kiloMin !== '' && kiloMax !== '' && Number(kiloMin) > Number(kiloMax)) && (
+                            <p className="text-amber-400 text-sm">
+                                Uyarı: <b>Weight min</b>, <b>Weight max</b>’ten büyük olamaz.
+                            </p>
+                        )}
                     </section>
                 )}
 
-                {/* Özet */}
+                {/* 4) Özet */}
                 {adimlar[adim] === 'Özet' && (
                     <section className="grid gap-4">
                         <div className="bg-[#23252b] rounded p-4 grid gap-2 text-sm">
@@ -461,25 +499,24 @@ export default function TournamentWizard({
                             <div><b>Katılımcı:</b> {katilimci}</div>
                             <div><b>Kategori:</b> {mode === 'main' ? 'Ana' : 'Alt'}</div>
                             {mode === 'sub' && (
-                                <div>
-                                    <b>Ana Turnuva:</b>{' '}
-                                    {defaultParentId
-                                        ? anaTurnuvalar.find((p) => p.id === defaultParentId)?.title ?? `(ID: ${defaultParentId})`
-                                        : anaTurnuvalar.find((p) => p.id === parentId)?.title ?? '-'}
-                                </div>
+                                <>
+                                    <div>
+                                        <b>Turnuva:</b>{' '}
+                                        {defaultParentId
+                                            ? anaTurnuvalar.find((p) => p.id === defaultParentId)?.title ?? `(ID: ${defaultParentId})`
+                                            : anaTurnuvalar.find((p) => p.id === parentId)?.title ?? '-'}
+                                    </div>
+                                    <div><b>Age:</b> {(yasMin || '-')} – {(yasMax || '-')}</div>
+                                    <div><b>Weight:</b> {(kiloMin || '-')} – {(kiloMax || '-')}</div>
+                                    <div><b>Gender:</b> {cinsiyet || '-'}</div>
+                                    <div><b>Public:</b> {isPublic ? 'Yes' : 'No'}</div>
+                                </>
                             )}
                         </div>
 
                         {mode === 'main' && (
                             <div className="bg-[#23252b] rounded p-4 grid gap-2 text-sm">
-                                <div className="font-semibold">Detaylar</div>
-                                <div className="grid md:grid-cols-2 gap-2">
-                                    <div><b>Sezon:</b> {sezon || '-'}</div>
-                                    <div><b>Şehir:</b> {sehir || '-'}</div>
-                                    <div><b>Mekan:</b> {mekan || '-'}</div>
-                                    <div><b>Tarih:</b> {(baslangic || '-') + ' → ' + (bitis || '-')}</div>
-                                </div>
-                                <div><b>Açıklama:</b> {aciklama || '-'}</div>
+                                <div className="font-semibold">Organizasyon</div>
                                 <div><b>Sahip:</b> {users.find((u) => u.id === sahipId)?.username ?? '-'}</div>
                                 <div>
                                     <b>Düzenleyiciler:</b>{' '}
@@ -488,7 +525,7 @@ export default function TournamentWizard({
                                         : '-'}
                                 </div>
                                 <p className="text-[11px] text-gray-400 mt-2">
-                                    Not: Bu alanlar şu an yalnızca arayüzde tutuluyor; backend hazır olduğunda kayda ekleyebiliriz.
+                                    Not: Bu alanlar şu an yalnızca arayüzde tutuluyor; backend hazır olduğunda kayda eklenecek.
                                 </p>
                             </div>
                         )}
