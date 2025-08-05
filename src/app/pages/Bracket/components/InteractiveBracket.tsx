@@ -5,7 +5,12 @@ import {type Match, type Meta, useBracket} from "../../../hooks/useBracket.tsx";
 
 const H = 80, GAP = 30, V = 40, PAD = 8;
 const GLOW = '#38bdf8';
-const TEXT = { fill: '#e5e7eb', fontSize: 9 } as const;
+const TEXT = {
+    fill: '#e5e7eb',
+    fontSize: 13,          // 9 → 13 px (gözle görülür fark)
+    fontWeight: 600,       // daha tok
+    // letterSpacing: 0.2, // gerekirse çok hafif aralık
+} as const;
 
 export default function InteractiveBracket() {
     /* 1) Veri çekme */
@@ -63,7 +68,13 @@ export default function InteractiveBracket() {
 
             <TransformWrapper wheel={{ step: 80 }}>
                 <TransformComponent>
-                    <svg width={720} height={svgH} role="img">
+                    <svg
+                        width={720}
+                        height={svgH}
+                        role="img"
+                        textRendering="optimizeLegibility"              // yazı netliği
+                        style={{ imageRendering: 'crisp-edges' }}       // raster öğeler varsa
+                    >
                         {rounds.map((rd, r) => {
                             const x = 20 + r * (H + GAP);
                             const nx = x + H + GAP;
@@ -81,15 +92,17 @@ export default function InteractiveBracket() {
                                             cursor="pointer"
                                             onClick={() => setSelected({ r, m })}
                                         />
-                                        <line x1={x} x2={x + H} y1={y1} y2={y1} />
-                                        <line x1={x} x2={x + H} y1={y2} y2={y2} />
-                                        <line x1={x + H} x2={x + H} y1={y1} y2={y2} />
+                                        <line x1={x} x2={x + H} y1={y1} y2={y1} vectorEffect="non-scaling-stroke" />
+                                        <line x1={x} x2={x + H} y1={y2} y2={y2} vectorEffect="non-scaling-stroke" />
+                                        <line x1={x + H} x2={x + H} y1={y1} y2={y2} vectorEffect="non-scaling-stroke" />
                                         {r < rounds.length - 1 && (
-                                            <line x1={x + H} x2={nx} y1={mid} y2={mid} />
+                                            <line x1={x + H} x2={nx} y1={mid} y2={mid} vectorEffect="non-scaling-stroke" />
                                         )}
                                         {mt.players.map((p, i) => (
                                             <text key={i} x={x + 6} y={(i ? y2 : y1) - 6} {...TEXT} strokeWidth={0.5}>
                                                 {p.seed} {p.name}{p.winner && ' ✅'}
+                                                <text className="select-none"/>
+
                                             </text>
                                         ))}
                                     </g>

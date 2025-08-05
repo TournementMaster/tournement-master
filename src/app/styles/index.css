@@ -1,14 +1,46 @@
 @import "tailwindcss";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
-/* Google Fonts importu (yedek) */
-/* @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap'); */
+/* -------------------------------
+   TEMA: Yazı tipi ve boyutlar
+-------------------------------- */
+@theme {
+  /* Varsayılan sans serif fontu: */
+  --font-sans: "Source Sans Pro", ui-sans-serif, system-ui, -apple-system,
+  "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji",
+  "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
+  /* Baz metin ölçüsünü hafif büyütelim (17px) */
+  --text-base: 1.0625rem;  /* 17px */
+  /* Satır yüksekliği: rahat okuma */
+  --leading-normal: 1.65;
+}
+
+/* -------------------------------
+   BASE: Tüm sayfaya uygula
+-------------------------------- */
 @layer base {
+  html, body { @apply bg-[#1e1f23] text-gray-100; }
+
   html {
-    /* Arka plan + temel yazı tipi */
-    @apply bg-[#1e1f23] text-gray-100 font-sans;
+    /* Global tipografi */
+    @apply font-sans antialiased text-base leading-normal;
+
+    /* Render kalitesi (ek yardımlar) */
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Başlıklar daha tok ve sıkı aralıklı */
+  h1, h2, h3 {
+    @apply font-semibold tracking-tight;
+  }
+  h1 { @apply text-2xl; }  /* 2 kademeden başlatın; gerekirse büyütürüz */
+  h2 { @apply text-xl; }
+  h3 { @apply text-lg; }
+}
+
+/* İsteğe bağlı: küçük metinleri bir tık büyütmek için yardımcı sınıf */
+@utility text-slightly-bigger {
+  font-size: 0.95rem;  /* ~15px */
 }
