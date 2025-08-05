@@ -54,7 +54,16 @@ export default function Header({ toggleSidebar }: Props) {
                             <div className="absolute right-0 mt-2 w-40 bg-[#2d3038] rounded shadow z-50" onMouseLeave={() => setOpen(false)}>
                                 <Link to="/" className="block px-4 py-2 hover:bg-gray-700" onClick={() => setOpen(false)}>Dashboard</Link>
                                 <Link to="/settings" className="block px-4 py-2 hover:bg-gray-700" onClick={() => setOpen(false)}>Settings</Link>
-                                <button onClick={() => { logout(); setOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-700">Quit</button>
+                                <button
+                                    onClick={() => {
+                                        logout();
+                                        setOpen(false);
+                                        nav('/login', { replace: true });
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-700"
+                                >
+                                    Quit
+                                </button>
                             </div>
                         )}
                     </>
