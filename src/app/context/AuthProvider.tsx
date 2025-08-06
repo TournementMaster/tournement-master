@@ -3,11 +3,18 @@ import {
 } from 'react';
 import { AuthContext, type AuthCtx } from './AuthContext';
 import * as auth from '../services/auth';
+import { setAuth} from "../lib/api.tsx";
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
-    const [isAuth, setIsAuth] = useState(() => !!localStorage.getItem('access'));
 
-    /* --- login / register / logout fonksiyonları --- */
+    /* ───────── 1.  Token’ı SENKRON olarak header’a ekle ───────── */
+    const cached = localStorage.getItem('access');
+    if (cached) setAuth(cached);        // axios header hemen hazır
+
+    /* ───────── 2.  Auth durumunu başlat ───────── */
+    const [isAuth, setIsAuth] = useState(!!cached);
+
+    /* ───────── 3.  Temel oturum eylemleri ───────── */
     const login = async (u: string, p: string) => {
         await auth.login({ username: u, password: p });
         setIsAuth(true);
@@ -23,18 +30,13 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuth(false);
     };
 
-    /* token’ı ilk yüklemede header’a tanıt */
+    /* ───────── 4.  Token refresh (opsiyonel) ───────── */
     useEffect(() => {
-        auth.initSession();
-        setIsAuth(!!localStorage.getItem('access'));
-    }, []);
-
-    /* token refresh (opsiyonel) */
-    useEffect(() => {
-        const id = setInterval(auth.refreshToken, 50 * 60 * 1000);
+        const id = setInterval(auth.refreshToken, 50 * 60 * 1000); // 50 dk
         return () => clearInterval(id);
     }, []);
 
+    /* ───────── 5.  Context’i yayınla ───────── */
     const ctx: AuthCtx = { isAuth, login, register, logout };
 
     return <AuthContext.Provider value={ctx}>{children}</AuthContext.Provider>;

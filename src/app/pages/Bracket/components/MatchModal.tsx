@@ -1,101 +1,115 @@
+/* =========================================================================
+   MATCH MODAL – takım adı + tek set puan + manuel kazanan
+   ========================================================================= */
+
 import ReactDOM from 'react-dom';
 import { useState } from 'react';
 import type { Match, Meta } from '../../../hooks/useBracket';
 
 interface Props {
-    match: Match;
-    onSave: (m: Meta) => void;
+    match:   Match;
+    onSave:  (m: Meta) => void;
     onClose: () => void;
 }
 
 export default function MatchModal({ match, onSave, onClose }: Props) {
-    const [boxCount, setBox] = useState<number>(match.meta?.scores?.length ?? 0);
-    const [scores, setScores] = useState<string[]>(
-        (match.meta?.scores ?? []).map(String)
+    /* ---------------- State ---------------- */
+    const [names, setNames] = useState<[string, string]>([
+        match.players[0].name,
+        match.players[1].name,
+    ]);
+
+    const [scores, setScores] = useState<[string, string]>([
+        match.meta?.scores?.[0]?.[0]?.toString() ?? '',
+        match.meta?.scores?.[0]?.[1]?.toString() ?? '',
+    ]);
+
+    const [manual, setManual] = useState<0 | 1 | undefined>(
+        match.meta?.manual as 0 | 1 | undefined,
     );
 
-    const changeScore = (i: number, val: string) => {
-        const next = [...scores];
-        next[i] = val.replace(/\D/g, '').slice(0, 3);
-        setScores(next);
+    /* ------------- Kaydet ------------- */
+    const handleSave = () => {
+        const s0 = Number(scores[0]) || 0;
+        const s1 = Number(scores[1]) || 0;
+
+        const meta: Meta = {
+            teamNames: names,
+            scores: [[s0, s1]],   // daima dizi (boşsa 0–0)
+            manual,
+        };
+
+        onSave(meta);
     };
 
-    const modal = (
+    /* -------------- Modal ------------- */
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-white text-gray-800 rounded p-6 w-96 space-y-4">
-                <h2 className="text-center text-lg font-semibold">Eşleşme Bilgisi</h2>
+            <div className="bg-[#3c3e46] text-gray-100 rounded w-[500px]">
+                {/* Başlık */}
+                <header className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                    <h2 className="text-lg font-semibold">Match Editor</h2>
+                    <button onClick={onClose} aria-label="Close">✕</button>
+                </header>
 
-                {/* kutu adedi */}
-                <label className="block text-sm font-medium">Puan kutusu (0-6)</label>
-                <input
-                    type="number"
-                    min={0}
-                    max={6}
-                    value={boxCount}
-                    onChange={e => {
-                        const n = Math.max(0, Math.min(6, Number(e.target.value) || 0));
-                        setBox(n);
-                        setScores(s => s.slice(0, n).concat(Array(n).fill('')).slice(0, n));
-                    }}
-                    className="w-24 border px-2 py-1"
-                />
+                {/* İçerik */}
+                <section className="p-6 space-y-6">
+                    {[0, 1].map(idx => (
+                        <div key={idx} className="flex items-center gap-4">
+                            {/* Seed */}
+                            <span className="w-6 text-right text-sm opacity-70">
+                {match.players[idx].seed}
+              </span>
 
-                {/* puanlar */}
-                {boxCount > 0 && (
-                    <div className="grid grid-cols-2 gap-2">
-                        {Array.from({ length: boxCount }).map((_, i) => (
+                            {/* Takım adı */}
                             <input
-                                key={i}
-                                value={scores[i] || ''}
-                                onChange={e => changeScore(i, e.target.value)}
-                                placeholder={`Puan ${i + 1}`}
-                                className="border px-2 py-1"
+                                value={names[idx]}
+                                onChange={e => {
+                                    const v = e.target.value.slice(0, 24);
+                                    setNames(t => (idx ? [t[0], v] : [v, t[1]]));
+                                }}
+                                className="flex-1 bg-[#2e3038] px-3 py-2 rounded focus:outline-none"
                             />
-                        ))}
-                    </div>
-                )}
 
-                {/* kazanan */}
-                <div className="flex gap-4">
-                    {match.players.map((p, i) => (
-                        <label key={i} className="flex items-center gap-1 text-sm">
+                            {/* Kazanan */}
                             <input
                                 type="radio"
-                                name="w"
-                                value={i}
-                                defaultChecked={match.meta?.winner === i}
-                            />{' '}
-                            {p.name}
-                        </label>
+                                name="winner"
+                                checked={manual === idx}
+                                onChange={() => setManual(idx as 0 | 1)}
+                            />
+
+                            {/* Skor */}
+                            <input
+                                value={scores[idx]}
+                                onChange={e => {
+                                    const v = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                    setScores(s => (idx ? [s[0], v] : [v, s[1]]));
+                                }}
+                                placeholder="0"
+                                className="w-14 text-center bg-[#2e3038] px-2 py-2 rounded"
+                            />
+                        </div>
                     ))}
-                </div>
 
-                {/* kaydet */}
-                <button
-                    className="bg-blue-600 w-full text-white py-1 rounded"
-                    onClick={() => {
-                        const meta: Meta = {
-                            scores: scores.slice(0, boxCount).map(s => Number(s) || 0),
-                            winner: Number(
-                                (
-                                    document.querySelector(
-                                        'input[name=w]:checked'
-                                    ) as HTMLInputElement
-                                )?.value
-                            ),
-                        };
-                        onSave(meta);
-                    }}
-                >
-                    Kaydet
-                </button>
-
-                <button onClick={onClose} className="w-full py-1 text-sm text-gray-600">
-                    İptal
-                </button>
+                    {/* Butonlar */}
+                    <div className="flex justify-end gap-3 pt-4">
+                        <button
+                            onClick={handleSave}
+                            className="bg-sky-600 hover:bg-sky-700 px-4 py-2 rounded font-semibold"
+                        >
+                            Save
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </section>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
-
-    return ReactDOM.createPortal(modal, document.body);
 }

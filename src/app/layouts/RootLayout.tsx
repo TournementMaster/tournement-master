@@ -9,7 +9,9 @@ export default function RootLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const { pathname } = useLocation();
 
-    /* “Bracket oluştur” sayfasında kenar boşluğu daralt */
+    /* Ana sayfa ("/") → sidebar’ı tamamen gizle */
+    const showSidebar = pathname !== '/';
+
     const innerClass = pathname.startsWith('/create')
         ? 'flex-1 overflow-auto pl-3 pr-6 py-6'
         : 'flex-1 overflow-auto p-6';
@@ -17,7 +19,9 @@ export default function RootLayout() {
     return (
         <BracketThemeProvider>
             <div className="flex min-h-screen bg-[#1e1f23] text-gray-100">
-                <Sidebar open={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} />
+                {showSidebar && (
+                    <Sidebar open={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} />
+                )}
 
                 {/* içerik */}
                 <div className="flex-1 flex flex-col overflow-hidden">

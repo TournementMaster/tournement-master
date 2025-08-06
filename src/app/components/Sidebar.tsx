@@ -1,69 +1,109 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useSetTheme } from '../context/BracketThemeContext';
 import type { ThemeKey } from '../context/BracketThemeContext';
 
-interface Props { open: boolean; toggle: () => void; }
-
-/* Tema seçenekleri listesi (Türkçe) */
-const TEMALAR: { key: ThemeKey; label: string }[] = [
-    { key: 'blue-green',  label: 'Mavi / Yeşil' },
-    { key: 'light-green', label: 'Açık Yeşil'   },
-    { key: 'classic',     label: 'Siyah / Beyaz'},
-    { key: 'orange',      label: 'Turuncu / Kahve'},
+const THEMES: { key: ThemeKey; label: string }[] = [
+    { key: 'orange',  label: 'Turuncu' },
+    { key: 'purple',  label: 'Mor'     },
 ];
 
-export default function Sidebar({ open, toggle }: Props) {
+export default function Sidebar() {
     const { pathname } = useLocation();
     const setTheme     = useSetTheme();
 
-    /* Sadece /create yolunda tema paneli göster */
-    const showTheme = pathname.startsWith('/create');
+    /* Bracket oluştur sayfalarında sticky */
+    const sticky = pathname.startsWith('/create') || pathname.startsWith('/bracket');
+
+    /* Sekme durumu (state tutmak yerine :target anchor) */
+    const tab =
+        pathname.includes('/participants') ? 'team' :
+            pathname.includes('/theme')        ? 'theme' :
+                pathname.includes('/settings')     ? 'gear'  : 'info';
 
     return (
         <aside
-            className={`${
-                open ? 'w-56' : 'w-0 md:w-16'
-            } transition-all duration-200 bg-[#2d3038] overflow-hidden shadow-lg`}
+            className={`w-56 bg-[#2d3038] shadow-lg flex flex-col
+                  ${sticky ? 'md:sticky top-24' : ''}`}
         >
-            {/* Başlık/kapama */}
-            <div className="flex items-center justify-between h-12 px-4 md:justify-center">
-                <span className={`${open ? 'block' : 'hidden md:block'} font-semibold`}>Menü</span>
-                <button
-                    onClick={toggle}
-                    className={`${open ? 'block' : 'hidden md:block'} text-gray-400`}
-                >
-                    ⨯
-                </button>
-            </div>
-
-            {/* Ana bağlantılar */}
-            <nav className="flex flex-col gap-1 mt-4">
-                <Link
-                    to="/"
-                    className="mx-3 px-3 py-2 rounded hover:bg-gray-700 text-sm"
-                >
-                    Turnuvalarım
-                </Link>
+            {/* -------- Sekme butonları -------- */}
+            <nav className="flex">
+                <SidebarTab icon="𐄷" href="#info"     active={tab==='info'} />
+                <SidebarTab icon="👥" href="#team"     active={tab==='team'} />
+                <SidebarTab icon="🎨" href="#theme"    active={tab==='theme'} />
+                <SidebarTab icon="⚙️" href="#settings" active={tab==='gear'} />
             </nav>
 
-            {/* Tema paneli */}
-            {showTheme && (
-                <div className="mt-6 border-t border-white/10 pt-4 px-3 pb-6">
-                    <h3 className="text-sm font-semibold mb-2 text-gray-200">Tema Seç</h3>
-                    <ul className="space-y-1">
-                        {TEMALAR.map(t => (
-                            <li key={t.key}>
-                                <button
-                                    onClick={() => setTheme(t.key)}
-                                    className="w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 text-sm"
-                                >
-                                    {t.label}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
+            {/* -------- Paneller -------- */}
+            <div className="flex-1 overflow-auto">
+                {/* Bracket Info */}
+                {tab==='info' && (
+                    <Panel title="BRACKET INFORMATION">
+                        {/* … kendi form alanlarınız … */}
+                        <p className="text-sm text-gray-400">Bilgileri buraya ekleyin.</p>
+                    </Panel>
+                )}
+
+                {/* Katılımcılar */}
+                {tab==='team' && (
+                    <Panel title="PARTICIPANTS">
+                        {/* Katılımcı listesi vs. */}
+                        <p className="text-sm text-gray-400">Katılımcı ekranı burada.</p>
+                    </Panel>
+                )}
+
+                {/* Tema seçimi */}
+                {tab==='theme' && (
+                    <Panel title="THEME">
+                        <ul className="mt-4 space-y-1">
+                            {THEMES.map(t=>(
+                                <li key={t.key}>
+                                    <button
+                                        onClick={()=>setTheme(t.key)}
+                                        className="w-full px-3 py-2 rounded hover:bg-gray-700 flex items-center gap-3"
+                                    >
+                    <span className="w-6 h-6 rounded-full"
+                          style={{background:t.key==='orange'?'#ff7b00':'#7c3aed'}}/>
+                                        {t.label}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </Panel>
+                )}
+
+                {/* Ayarlar */}
+                {tab==='gear' && (
+                    <Panel title="DISPLAY SETTINGS">
+                        {/* örnek toggle */}
+                        <label className="flex items-center justify-between px-3 py-2">
+                            Show Seeds
+                            <input type="checkbox" defaultChecked className="toggle" />
+                        </label>
+                    </Panel>
+                )}
+            </div>
         </aside>
+    );
+}
+
+/* --- Küçük yardımcı bileşenler --- */
+function SidebarTab({ icon, href, active }:{icon:string;href:string;active:boolean}) {
+    return (
+        <a
+            href={href}
+            className={`flex-1 text-center py-3 text-2xl
+                  ${active?'bg-[#3a3d46]':'hover:bg-[#34363e]'}`}
+        >
+            {icon}
+        </a>
+    );
+}
+
+function Panel({ title, children }:{title:string;children:React.ReactNode}) {
+    return (
+        <div className="px-4 py-5">
+            <h3 className="text-xs text-gray-400 font-semibold mb-3">{title}</h3>
+            {children}
+        </div>
     );
 }
