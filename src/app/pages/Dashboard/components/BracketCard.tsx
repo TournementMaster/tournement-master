@@ -38,7 +38,7 @@ export default function BracketCard({ item }: { item: BracketSummary }) {
                     <span className="text-sm text-gray-200 w-12 text-right">{item.progress}%</span>
                 </div>
                 <Link
-                    to={`/`} // detay sayfan hazırsa burayı değiştir
+                    to={`/tournements/${(sessionStorage.getItem('tournament_id_to_slug') ? JSON.parse(sessionStorage.getItem('tournament_id_to_slug')!)?.[item.id] : '') || ''}`}
                     className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-sm"
                 >
                     →

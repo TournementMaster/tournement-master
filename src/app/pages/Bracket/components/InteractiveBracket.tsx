@@ -33,9 +33,9 @@ function recompute(src:Matrix):Matrix{
     return rounds;
 }
 
-export default memo(function InteractiveBracket({bracketId}:{bracketId?:number}){
+export default memo(function InteractiveBracket({bracketId, bracketSlug, }: { bracketId?: number; bracketSlug?: string }) {
     const palette=useBracketTheme();
-    const {data,isLoading,isError,refetch}=useBracket(bracketId);
+    const {data,isLoading,isError,refetch}=useBracket(bracketId, bracketSlug);
     const [rounds,setRounds]=useState<Matrix>([]);
     const [sel,setSel]      =useState<{r:number;m:number}|null>(null);
 

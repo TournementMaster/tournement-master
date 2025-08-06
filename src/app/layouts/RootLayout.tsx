@@ -10,7 +10,9 @@ export default function RootLayout() {
     const { pathname } = useLocation();
 
     /* Ana sayfa ("/") → sidebar’ı tamamen gizle */
-    const showSidebar = pathname !== '/';
+    const showSidebar = pathname !== '/' && !pathname.startsWith('/tournements/')
+        && !pathname.startsWith('/create') && !pathname.startsWith('/login')
+        && !pathname.startsWith('/register');
 
     const innerClass = pathname.startsWith('/create')
         ? 'flex-1 overflow-auto pl-3 pr-6 py-6'

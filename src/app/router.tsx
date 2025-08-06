@@ -9,6 +9,7 @@ import RegisterPage   from './pages/RegisterPage.tsx';
 import Dashboard      from './pages/Dashboard/Dashboard.tsx';
 import CreatePage     from './pages/Create/CreatePage.tsx';
 import ProtectedRoute from './context/ProtectedRoute.tsx';
+import TournamentSubListPage from "./pages/Tournements/TournamentSubListPage.tsx";
 
 export const router = createBrowserRouter([
     {
@@ -18,6 +19,8 @@ export const router = createBrowserRouter([
         /* ---------- herkese açık alan ---------- */
         children: [
             { index: true, element: <Dashboard /> },          // Ana turnuvalar
+            { path: 'tournements/:public_slug', element: <TournamentSubListPage /> }, // <-- YENİ
+            { path: 'bracket/:public_slug', element: <BracketPage /> },
             { path: 'bracket/:id', element: <BracketPage /> },// Sadece görüntüleme
             { path: 'login',     element: <LoginPage /> },
             { path: 'register',  element: <RegisterPage /> },

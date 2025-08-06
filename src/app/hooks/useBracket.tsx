@@ -66,26 +66,21 @@ const isMatrix = (x: unknown): x is Match[][] =>
 /* =======================================================================
    useBracket – Tek turnuvanın (matris) verisini getir
    ======================================================================= */
-export function useBracket(id?: number) {
+export function useBracket(id?: number, slug?: string) {
     return useQuery<Match[][], Error>({
-        queryKey: ['bracket', id ?? 'active'],
+        queryKey: ['bracket', slug ?? (id ?? 'active')],
         queryFn: async () => {
             let data: unknown;
-
             try {
-                const url = id ? `bracket/${id}` : 'bracket/';
+                // const url = slug ? `bracket/${slug}` : (id ? `bracket/${id}` : 'bracket/');
+                const url = `bracket/`;
                 data = (await api.get<Match[][]>(url)).data;
             } catch {
                 data = null;
             }
-
-            /* --- geliştirme mock’u (yalnız dev sunucusunda) --- */
-            if (!data && import.meta.env.DEV && id === MOCK_SUB_ID)
-                return mockBracketMatrix;
-
-            if (!isMatrix(data))
-                throw new Error('Beklenmeyen JSON (Match[][] değil)');
-
+            // DEV mockları vb.
+            if (!data && import.meta.env.DEV && id === MOCK_SUB_ID) return mockBracketMatrix;
+            if (!isMatrix(data)) throw new Error('Beklenmeyen JSON (Match[][] değil)');
             return data;
         },
         staleTime: 30_000,
