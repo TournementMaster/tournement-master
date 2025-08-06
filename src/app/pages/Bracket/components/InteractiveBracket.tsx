@@ -1,195 +1,188 @@
-import { useEffect, useMemo, useState } from 'react';
+/* =========================================================================
+   FILE: src/app/pages/Bracket/components/InteractiveBracket.tsx
+   Tema destekli, kupasız & başlıksız tek-eleme bracket — TÜM DOSYA
+   ========================================================================= */
+import { memo, useEffect, useMemo, useState } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import MatchModal from './MatchModal';
-import { type Match, type Meta, useBracket } from '../../../hooks/useBracket.tsx';
+import { useBracket, type Match, type Meta } from '../../../hooks/useBracket';
+import { useBracketTheme } from '../../../context/BracketThemeContext';
 
-/* --- Görsel sabitler --- */
-const COL_W   = 110;   // her kolondaki blok genişliği
-const GAP_W   = 40;    // kolonlar arası yatay boşluk
-const PAD     = 8;     // tıklama alanı için tampon
-const V       = 40;    // ilk yarı yüksekliği
-const STROKE  = '#e5e7eb';
-const GLOW    = '#38bdf8';
+/* Sabitler --------------------------------------------------------------- */
+const W = 330;           // kutu genişliği
+const GAP = 124;         // round sütun aralığı
+const H = 64;            // kutu yüksekliği
+const BASE = H;          // round katsayısı (2ⁿ × BASE)
+const SCORE = 20;        // skor kutucuğu eni
 
-type LayoutCell = { mid: number; y1: number; y2: number };
+type Pos = { mid: number; y1: number; y2: number };
 
-export default function InteractiveBracket() {
-    /* 1) API: tek turnuva matrisi */
-    const { data: bracket, isLoading, isError, refetch } = useBracket();
+function InteractiveBracket({ id }: { id?: number }) {
+    /* --- Tema paleti --- */
+    const palette = useBracketTheme();   // { bg, bar, win, txt, glow1, glow2 }
 
-    /* 2) Lokal kopya + seçim */
+    /* --- Veri & state --- */
+    const { data, isLoading, isError, refetch } = useBracket(id);
     const [rounds, setRounds] = useState<Match[][]>([]);
-    const [selected, setSelected] = useState<{ r: number; m: number } | null>(null);
+    const [sel, setSel]       = useState<{ r: number; m: number } | null>(null);
+    useEffect(() => { if (Array.isArray(data)) setRounds(data); }, [data]);
 
-    /* 3) Veri eşitle */
-    useEffect(() => {
-        if (Array.isArray(bracket)) setRounds(bracket);
-    }, [bracket]);
-
-    /* 4) Yerleşim hesapla */
-    const layout: LayoutCell[][] = useMemo(() => {
-        if (!rounds.length) return [];
-        return rounds.map((rd, r) => {
-            const span = V * 2 ** r;                 // bu round’daki aralık
-            return rd.map((_, m) => {
-                const mid = V + span + m * span * 2;   // orta nokta
-                return { mid, y1: mid - span / 2, y2: mid + span / 2 };
-            });
+    /* --- Yerleşim matrisi --- */
+    const layout: Pos[][] = useMemo(() => rounds.map((rd, r) => {
+        const span = BASE << r;
+        return rd.map((_, m) => {
+            const mid = BASE + span + m * span * 2;
+            return { mid, y1: mid - span / 2, y2: mid + span / 2 };
         });
-    }, [rounds]);
+    }), [rounds]);
 
-    /* 5) SVG boyutu */
-    const svgHeight = layout.length ? layout[0][layout[0].length - 1].mid + V : 240;
-    const svgWidth  = rounds.length ? 20 + rounds.length * (COL_W + GAP_W) : 720;
+    const svgH =
+        layout.length ? layout[0][layout[0].length - 1].mid + BASE : 600;
+    const svgW = 20 + rounds.length * (W + GAP) + 400;   // kupa kaldırıldı
 
-    /* 6) Modal kaydet → lokal state */
-    const persist = (meta: Meta) => {
-        if (!selected) return;
+    /* --- Modal kaydet --- */
+    const saveMeta = (meta: Meta) => {
+        if (!sel) return;
         setRounds(prev =>
-            prev.map((rd, r) =>
-                rd.map((mt, m) =>
-                    r === selected.r && m === selected.m ? { ...mt, meta } : mt
-                )
+            prev.map((rd, i) =>
+                rd.map((m, j) => (i === sel.r && j === sel.m ? { ...m, meta } : m))
             )
         );
-        setSelected(null);
+        setSel(null);
     };
 
-    /* 7) Durum ekranları */
-    if (isLoading) {
-        return (
-            <div className="flex h-full min-h-[60vh] items-center justify-center text-gray-400">
-                Yükleniyor…
-            </div>
-        );
-    }
+    /* --- Durum ekranları --- */
+    if (isLoading) return <Status text="Yükleniyor…" />;
+    if (isError)   return <Status text="Veri alınamadı." retry={refetch} />;
+    if (!rounds.length) return <Status text="Gösterilecek eşleşme yok." />;
 
-    if (isError) {
-        return (
-            <div className="flex h-full min-h-[60vh] items-center justify-center gap-4">
-                <span className="text-red-400">Bracket verisi alınamadı.</span>
-                <button
-                    onClick={() => refetch()}
-                    className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-sm"
-                >
-                    Tekrar Dene
-                </button>
-            </div>
-        );
-    }
-
-    if (!rounds.length) {
-        return (
-            <div className="flex h-full min-h-[60vh] items-center justify-center text-gray-400">
-                Gösterilecek eşleşme bulunamadı.
-            </div>
-        );
-    }
-
-    /* 8) Çizim */
+    /* ------------------------- SVG ------------------------- */
     return (
-        <div className="w-full h-full">
-            <style>{`
-        .click-area{stroke:transparent;stroke-width:2;transition:stroke .12s,filter .12s;}
-        .click-area:hover{stroke:${GLOW};filter:drop-shadow(0 0 6px ${GLOW});}
-        text{ fill:#e5e7eb; font-size:13px; font-weight:600; }
-      `}</style>
+        <div className="relative">
+            <div style={{ pointerEvents: 'auto' }}>
+                <TransformWrapper wheel={{ step: 120 }} minScale={0.4} maxScale={3.5}>
+                    <TransformComponent wrapperClass="min-w-fit">
+                        <svg width={svgW} height={svgH}>
+                            {/* ---- Dinamik CSS ---- */}
+                            <defs>
+                                <style>{`
+                  .rect{fill:#f2f2f2;pointer-events:none}
+                  .bar {pointer-events:none;fill:#111}
+                  .txt {font:600 22px/1 Inter,sans-serif;fill:${palette.txt};
+                        dominant-baseline:middle;pointer-events:none}
+                  .ln  {stroke:#111;stroke-width:4;
+                         vector-effect:non-scaling-stroke;pointer-events:none}
+                  .win {fill:${palette.win};pointer-events:none}
+                  .hit {fill:transparent;cursor:pointer;pointer-events:all}
+                  .hit:hover~.outline{
+                    stroke-width:4;stroke:url(#glow);
+                    filter:drop-shadow(0 0 6px ${palette.glow2})
+                  }
+                `}</style>
 
-            <TransformWrapper
-                wheel={{ step: 80 }}
-                doubleClick={{ mode: 'zoomOut' }}
-                minScale={0.4}
-                maxScale={4}
-                limitToBounds={false}
-            >
-                <TransformComponent>
-                    <svg
-                        width={svgWidth}
-                        height={svgHeight}
-                        role="img"
-                        textRendering="optimizeLegibility"
-                        style={{ imageRendering: 'crisp-edges' }}
-                    >
-                        {rounds.map((rd, r) => {
-                            const x  = 20 + r * (COL_W + GAP_W);
-                            const nx = x + COL_W + GAP_W;
+                                <linearGradient id="glow" x1="0" x2="1">
+                                    <stop offset="0%"   stopColor={palette.glow1}/>
+                                    <stop offset="100%" stopColor={palette.glow2}/>
+                                </linearGradient>
+                            </defs>
 
-                            return rd.map((mt, m) => {
-                                const { mid, y1, y2 } = layout[r][m];
+                            {rounds.map((rd, r) => {
+                                const x  = 20 + r * (W + GAP);
+                                const nx = x + W + GAP;
 
-                                return (
-                                    <g key={`${r}-${m}`} stroke={STROKE} strokeWidth={2} fill="none">
-                                        {/* Tıklanabilir alan */}
-                                        <rect
-                                            className="click-area"
-                                            x={x - PAD / 2}
-                                            y={y1 - PAD / 2}
-                                            width={COL_W + PAD}
-                                            height={y2 - y1 + PAD}
-                                            fill="transparent"
-                                            cursor="pointer"
-                                            onClick={() => setSelected({ r, m })}
-                                        />
+                                return rd.map((mt, m) => {
+                                    const { mid, y1, y2 } = layout[r][m];
+                                    const win = mt.players.find(p => p.winner);
+                                    const scores: number[] = mt.meta?.scores ?? [];
+                                    const scoreWidth = scores.length * SCORE;
 
-                                        {/* Maç dikdörtgeni */}
-                                        <line x1={x} x2={x + COL_W} y1={y1} y2={y1} vectorEffect="non-scaling-stroke" />
-                                        <line x1={x} x2={x + COL_W} y1={y2} y2={y2} vectorEffect="non-scaling-stroke" />
-                                        <line x1={x + COL_W} x2={x + COL_W} y1={y1} y2={y2} vectorEffect="non-scaling-stroke" />
+                                    return (
+                                        <g key={`${r}-${m}`}>
+                                            {/* Tıklanabilir alan */}
+                                            <rect className="hit"
+                                                  x={x} y={mid - H / 2} width={W} height={H}
+                                                  onClick={() => setSel({ r, m })} />
 
-                                        {/* Sonraki round hattı */}
-                                        {r < rounds.length - 1 && (
-                                            <line x1={x + COL_W} x2={nx} y1={mid} y2={mid} vectorEffect="non-scaling-stroke" />
-                                        )}
+                                            {/* Ana kutu & barlar */}
+                                            <rect className="rect"
+                                                  x={x} y={mid - H / 2} width={W} height={H} rx={4}/>
+                                            <rect className="bar"
+                                                  x={x - 8} y={mid - H / 2} width={8} height={H}/>
+                                            {win && (
+                                                <rect className="win"
+                                                      x={x + W} y={mid - H / 2} width={8} height={H}/>
+                                            )}
 
-                                        {/* Oyuncular */}
-                                        {mt.players.map((p, i) => (
-                                            <text
-                                                key={i}
-                                                x={x + 6}
-                                                y={(i === 0 ? y1 : y2) - 6}
-                                                pointerEvents="none"
-                                            >
-                                                {p.seed} {p.name}{p.winner ? ' ✅' : ''}
-                                            </text>
-                                        ))}
+                                            {/* Skor kutucukları */}
+                                            {scores.map((sc, i) => (
+                                                <g key={i} pointerEvents="none">
+                                                    <rect x={x + W - scoreWidth + i * SCORE}
+                                                          y={mid - H / 2}
+                                                          width={SCORE - 2} height={H}
+                                                          fill="#2a2a2a" rx={2}/>
+                                                    <text className="txt"
+                                                          x={x + W - scoreWidth + i * SCORE + SCORE/2}
+                                                          y={mid + 2} fontSize={16}
+                                                          textAnchor="middle" fill="#fff">
+                                                        {sc}
+                                                    </text>
+                                                </g>
+                                            ))}
 
-                                        {/* Meta (skor/tarih/saat) */}
-                                        {!!mt.meta?.score && (
-                                            <text
-                                                x={x + 6}
-                                                y={mid}
-                                                style={{ fill: '#cbd5e1', fontSize: 11, fontWeight: 500 }}
-                                                pointerEvents="none"
-                                            >
-                                                {mt.meta.score}
-                                            </text>
-                                        )}
-                                        {!!mt.meta?.date && (
-                                            <text
-                                                x={x + 6}
-                                                y={mid + 14}
-                                                style={{ fill: '#94a3b8', fontSize: 10, fontWeight: 500 }}
-                                                pointerEvents="none"
-                                            >
-                                                {mt.meta.date}{mt.meta.time ? ` • ${mt.meta.time}` : ''}
-                                            </text>
-                                        )}
-                                    </g>
-                                );
-                            });
-                        })}
-                    </svg>
-                </TransformComponent>
-            </TransformWrapper>
+                                            {/* Hover outline */}
+                                            <rect className="outline"
+                                                  x={x - 8} y={mid - H / 2}
+                                                  width={W + 16} height={H} rx={6}
+                                                  stroke="transparent" fill="none" />
+
+                                            {/* Oyuncu adları */}
+                                            {mt.players.map((p, i) => (
+                                                <text key={i} className="txt"
+                                                      x={x + 22} y={mid + (i ? 18 : -18)}>
+                                                    {p.name}
+                                                </text>
+                                            ))}
+
+                                            {/* Bağlantı çizgileri */}
+                                            <line className="ln" x1={x - 8} y1={y1} x2={x - 8} y2={y2}/>
+                                            <line className="ln" x1={x - 8} y1={mid} x2={x}   y2={mid}/>
+                                            {r < rounds.length - 1 && (
+                                                <line className="ln"
+                                                      x1={x + W + 8} y1={mid}
+                                                      x2={nx - 8}  y2={mid}/>
+                                            )}
+                                        </g>
+                                    );
+                                });
+                            })}
+                        </svg>
+                    </TransformComponent>
+                </TransformWrapper>
+            </div>
 
             {/* Modal */}
-            {selected && (
+            {sel && (
                 <MatchModal
-                    match={rounds[selected.r][selected.m]}
-                    onSave={persist}
-                    onClose={() => setSelected(null)}
+                    match={rounds[sel.r][sel.m]}
+                    onSave={saveMeta}
+                    onClose={() => setSel(null)}
                 />
             )}
         </div>
     );
 }
+
+/* -------------------- Durum bileşeni -------------------- */
+const Status = ({ text, retry }: { text: string; retry?: () => void }) => (
+    <div className="flex h-[60vh] items-center justify-center gap-6">
+        <span className="text-gray-400 text-2xl">{text}</span>
+        {retry && (
+            <button onClick={retry}
+                    className="px-6 py-2 bg-blue-600 text-xl rounded">
+                ↻
+            </button>
+        )}
+    </div>
+);
+
+export default memo(InteractiveBracket);
