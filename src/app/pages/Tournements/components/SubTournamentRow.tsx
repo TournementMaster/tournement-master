@@ -49,7 +49,8 @@ export default function SubTournamentRow({ item }: { item: SubTournament }) {
 
                 {/* İleri: isterseniz burada /bracket/:id gösterimine geçebilirsiniz */}
                 <Link
-                    to={`/bracket/${item.public_slug}`}
+                    to={`/bracket/${item.public_slug}?title=${encodeURIComponent(item.title)}`}
+                    state={item}  // ← EKLENDİ
                     className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-sm"
                     title="Alt turnuvayı görüntüle"
                 >

@@ -42,31 +42,58 @@ const blank = (): Match => ({
 })
 
 function buildMatrix(names: string[], full16: boolean): Matrix {
-    let size: 4|8|16|32 = 4
-    const need = full16
-        ? 16
-        : Math.max(4, 2 ** Math.ceil(Math.log2(Math.max(1, names.length))))
-    if      (need <= 4)  size = 4
-    else if (need <= 8)  size = 8
-    else if (need <= 16) size = 16
-    else                 size = 32
-
-    const seeds = SEEDS[size]
-    const r0: Match[] = Array(size/2).fill(0).map((_, i) => ({
-        players: [
-            { seed: seeds[i*2],   name: names[i*2]   ?? `Takım ${seeds[i*2]}` },
-            { seed: seeds[i*2+1], name: names[i*2+1] ?? `Takım ${seeds[i*2+1]}` },
-        ],
-    }))
-
-    const rounds: Matrix = [r0]
-    let games = size / 4
-    while (games >= 1) {
-        rounds.push(Array(games).fill(0).map(blank))
-        games /= 2
+    // 1) Hedef bracket boyutu (P): 4 / 8 / 16 / 32
+    const n = Math.max(0, names.length);
+    let size: 4 | 8 | 16 | 32;
+    if (full16) {
+        size = 16;
+    } else if (n <= 4) {
+        size = 4;
+    } else if (n <= 8) {
+        size = 8;
+    } else if (n <= 16) {
+        size = 16;
+    } else {
+        size = 32;
     }
-    return rounds
+
+    // 2) İlk tur yerleşimi: SEEDS[size] dizisindeki seed sırasına göre
+    // names[seed-1] varsa oyuncu, yoksa BYE kabul edilir.
+    const order = SEEDS[size];
+    const r0: Match[] = [];
+
+    for (let i = 0; i < size / 2; i++) {
+        const sA = order[i * 2];
+        const sB = order[i * 2 + 1];
+
+        const nameA = sA <= n ? names[sA - 1] : undefined; // seed 1..n → names[seed-1]
+        const nameB = sB <= n ? names[sB - 1] : undefined;
+
+        const players: Player[] = [
+            { seed: sA, name: nameA ?? '—' },
+            { seed: sB, name: nameB ?? '—' },
+        ];
+
+        // 3) Bye mantığı: tek taraf gerçek oyuncuysa ilk turu otomatik kazansın.
+        // İki taraf da gerçekse normal maç; ikisi de yoksa (teorik) boş geçilir.
+        let meta: Meta | undefined;
+        const a = !!nameA, b = !!nameB;
+        if (a && !b) meta = { manual: 0 };
+        else if (!a && b) meta = { manual: 1 };
+
+        r0.push(meta ? { players, meta } : { players });
+    }
+
+    // 4) Sonraki turları (boş) oluştur
+    const rounds: Matrix = [r0];
+    let games = size / 4;
+    while (games >= 1) {
+        rounds.push(Array(games).fill(0).map(blank));
+        games /= 2;
+    }
+    return rounds;
 }
+
 
 function propagate(mat: Matrix): Matrix {
     const m = mat.map(rd => rd.map(x => ({

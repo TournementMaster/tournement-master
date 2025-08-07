@@ -6,34 +6,46 @@ interface Props {
     showSave: boolean
     showCreate: boolean
     bracketTitle?: string
-    toggleSidebar: () => void
-    sidebarOpen: boolean
 }
 
-export default function Header({
-                                   showSave,
-                                   showCreate,
-                                   bracketTitle,
-                                   toggleSidebar,
-                                   sidebarOpen,
-                               }: Props): ReactNode {
+export default function Header({ showSave, showCreate, bracketTitle }: Props): ReactNode {
     const { isAuth, logout } = useAuth()
-    const nav      = useNavigate()
+    const nav = useNavigate()
     const location = useLocation()
     const [menu, setMenu] = useState(false)
 
     const isDashboard = location.pathname === '/'
-    const subMatch    = location.pathname.match(/^\/bracket\/(.+)/)
-    const isBracket   = !!subMatch
-    const createLabel = isBracket ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur'
+    const isSubList   = location.pathname.startsWith('/tournements/')
+    const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur'
 
     const onCreate = () => {
         if (!isAuth) return alert('Lütfen giriş yapın')
-        if (isDashboard) nav('/create?mode=main')
-        else if (isBracket) {
-            const slug = subMatch![1]
-            nav(`/create?mode=sub&ctx=${encodeURIComponent(slug)}`)
+
+        if (isDashboard) {
+            nav('/create?mode=main')
+            return
         }
+
+        if (isSubList) {
+            const slug = location.pathname.split('/')[2] || ''
+            const sp   = new URLSearchParams(location.search)
+            const p    = sp.get('parent')
+            let parentId = p && !isNaN(Number(p)) ? Number(p) : undefined
+
+            if (!parentId) {
+                try {
+                    const map = JSON.parse(sessionStorage.getItem('tournament_slug_to_id') || '{}')
+                    parentId = map?.[slug]
+                } catch { /* empty */ }
+            }
+
+            if (parentId) nav(`/create?mode=sub&parent=${parentId}`)
+            else          nav(`/create?mode=sub&ctx=${encodeURIComponent(slug)}`) // fallback
+            return
+        }
+
+        // diğer sayfalarda ana turnuva
+        nav('/create?mode=main')
     }
 
     return (
@@ -43,6 +55,7 @@ export default function Header({
                 <Link to="/" className="text-xl font-extrabold text-white whitespace-nowrap">
                     Easy Tournament
                 </Link>
+
                 {showCreate && (
                     <button
                         disabled={!isAuth}
@@ -56,24 +69,15 @@ export default function Header({
                 )}
             </div>
 
-            {/* Orta: Bracket Başlığı */}
+            {/* Orta: Bracket Başlığı (varsa) */}
             {bracketTitle && (
                 <div className="absolute left-1/2 -translate-x-1/2 text-2xl font-bold text-amber-300 whitespace-nowrap">
-                    {decodeURIComponent(bracketTitle)}
+                    {bracketTitle}
                 </div>
             )}
 
-            {/* Sağ: Toggle + Save + Profile */}
+            {/* Sağ: Save + Profile (sidebar toggle kaldırıldı) */}
             <div className="flex items-center gap-4">
-                {/* Arrow toggle */}
-                <button
-                    onClick={toggleSidebar}
-                    aria-label={sidebarOpen ? 'Kapat' : 'Aç'}
-                    className="text-2xl rounded-full bg-gradient-to-r from-teal-400 to-green-300 p-1 hover:opacity-80 transition"
-                >
-                    {sidebarOpen ? '←' : '→'}
-                </button>
-
                 {showSave && (
                     <button
                         onClick={() => alert('(Mock) Kaydedildi')}
@@ -117,10 +121,7 @@ export default function Header({
                         )}
                     </div>
                 ) : (
-                    <Link
-                        to="/login"
-                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm text-white"
-                    >
+                    <Link to="/login" className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm text-white">
                         Giriş
                     </Link>
                 )}

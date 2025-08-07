@@ -138,7 +138,7 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-12 py-6">
                 {filtered.map((t) => (
-                    <Link key={t.id} to={`/tournements/${t.public_slug}`} aria-label={`${t.title} detayına git`}>
+                    <Link key={t.id} to={`/tournements/${t.public_slug}?parent=${t.id}`} aria-label={`${t.title} detayına git`}>
                         <Card tournament={t} />
                     </Link>
                 ))}
