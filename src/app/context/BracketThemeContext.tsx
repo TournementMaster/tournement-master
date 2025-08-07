@@ -1,49 +1,75 @@
-/* =========================================================================
-   BRACKET THEME CONTEXT – Mor ve Turuncu paletler
-   ========================================================================= */
+// src/app/context/BracketThemeContext.tsx
+/* eslint-disable react-refresh/only-export-components */
+/* Fast Refresh kuralı: bu dosyada sadece component export olmayacağı için
+   kuralı dosya bazında kapatıyoruz. */
+
 import {
-    createContext, useContext, useState, type ReactNode,
-    type Dispatch, type SetStateAction,
+    createContext,
+    useContext,
+    useState,
+    type ReactNode,
+    type Dispatch,
+    type SetStateAction,
 } from 'react';
 
-/* ------ Tema tipi & palet ------ */
-export type ThemeKey = 'orange' | 'purple';
+/** Tema seçenekleri */
+export type BracketThemeKey =
+    | 'classic-dark'
+    | 'classic-light'
+    | 'modern-dark'
+    | 'modern-light'
+    | 'purple-orange'
+    | 'black-white';
 
-export interface Palette {
-    bg:    string;
-    bar:   string;
-    win:   string;
-    txt:   string;
-    glow1: string;
-    glow2: string;
+/** Context’in tuttuğu değer ve setter tipi */
+interface BracketThemeContextType {
+    theme:    BracketThemeKey;
+    setTheme: Dispatch<SetStateAction<BracketThemeKey>>;
 }
 
-const THEMES: Record<ThemeKey, Palette> = {
-    orange: {
-        bg:'#ffe9d8', bar:'#8c3d00', win:'#ff7b00', txt:'#351a00',
-        glow1:'#ffc29c', glow2:'#ff7b00',
-    },
-    purple: {
-        bg:'#ede9fe', bar:'#4c1d95', win:'#7c3aed', txt:'#2e1065',
-        glow1:'#c4b5fd', glow2:'#7c3aed',
-    },
-};
+/** Context’in kendisi */
+const BracketThemeContext =
+    createContext<BracketThemeContextType | undefined>(undefined);
 
-/* ------ Context'ler ------ */
-const BracketThemeCtx = createContext<Palette>(THEMES.orange);
-const ThemeSetterCtx  = createContext<Dispatch<SetStateAction<ThemeKey>>>(()=>{});
-
-export const useBracketTheme = () => useContext(BracketThemeCtx);
-export const useSetTheme     = () => useContext(ThemeSetterCtx);
-
-/* ------ Provider ------ */
+/**
+ * Sağladığı `theme` ve `setTheme` ile tüm uygulamada
+ * tema değiştirmeyi mümkün kılar.
+ */
 export function BracketThemeProvider({ children }: { children: ReactNode }) {
-    const [theme, setTheme] = useState<ThemeKey>('orange');
+       // Başlangıç temasını açık renkli şablon yapıyoruz:
+           const [theme, setTheme] = useState<BracketThemeKey>('classic-light');
+
     return (
-        <BracketThemeCtx.Provider value={THEMES[theme]}>
-            <ThemeSetterCtx.Provider value={setTheme}>
-                {children}
-            </ThemeSetterCtx.Provider>
-        </BracketThemeCtx.Provider>
+        <BracketThemeContext.Provider value={{ theme, setTheme }}>
+            {children}
+        </BracketThemeContext.Provider>
     );
+}
+
+/**
+ * Şu anki temayı döner.
+ * Mutlaka <BracketThemeProvider> içinde çağrılmalıdır.
+ */
+export function useBracketTheme(): BracketThemeKey {
+    const ctx = useContext(BracketThemeContext);
+    if (!ctx) {
+        throw new Error(
+            'useBracketTheme must be used within a BracketThemeProvider'
+        );
+    }
+    return ctx.theme;
+}
+
+/**
+ * Temayı değiştirmek için setter fonksiyonunu döner.
+ * Mutlaka <BracketThemeProvider> içinde çağrılmalıdır.
+ */
+export function useSetTheme(): Dispatch<SetStateAction<BracketThemeKey>> {
+    const ctx = useContext(BracketThemeContext);
+    if (!ctx) {
+        throw new Error(
+            'useSetTheme must be used within a BracketThemeProvider'
+        );
+    }
+    return ctx.setTheme;
 }

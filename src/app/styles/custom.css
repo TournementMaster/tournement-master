@@ -1,0 +1,13 @@
+/* ------------------------------------------------------------------
+   ÖZEL ÇERÇEVE – mavi-yeşil “parıltılı” sınır
+   ------------------------------------------------------------------ */
+.wizard-frame {
+    position: relative;
+    border-radius: 0.75rem;
+    padding: 1px;                 /* dış çerçeve kalınlığı */
+    background: linear-gradient(135deg,#22d3ee 0%,#14b8a6 100%);
+}
+.wizard-frame > .inner {
+    border-radius: 0.75rem;
+    background:#2d3038;           /* kart zemin */
+}

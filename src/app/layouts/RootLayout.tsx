@@ -1,39 +1,36 @@
-import { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
-
-import Sidebar from '../components/Sidebar';
-import Header  from '../components/Header';
-import { BracketThemeProvider } from '../context/BracketThemeContext';
+import { Outlet, useLocation } from 'react-router-dom'
+import { useState } from 'react'
+import Header from './components/Header'
+import Sidebar from './components/Sidebar'
 
 export default function RootLayout() {
-    const [sidebarOpen, setSidebarOpen] = useState(true);
-    const { pathname } = useLocation();
+    const location = useLocation()
+    const [sidebarOpen, setSidebarOpen] = useState(false)
 
-    /* Ana sayfa ("/") → sidebar’ı tamamen gizle */
-    const showSidebar = pathname !== '/' && !pathname.startsWith('/tournements/')
-        && !pathname.startsWith('/create') && !pathname.startsWith('/login')
-        && !pathname.startsWith('/register');
-
-    const innerClass = pathname.startsWith('/create')
-        ? 'flex-1 overflow-auto pl-3 pr-6 py-6'
-        : 'flex-1 overflow-auto p-6';
+    // showSave only on /bracket/*
+    const showSave   = location.pathname.startsWith('/bracket')
+    // showCreate on all but /create
+    const showCreate = !location.pathname.startsWith('/create')
+    // bracketTitle from URL or empty
+    const subMatch   = location.pathname.match(/^\/bracket\/(.+)/)
+    const bracketTitle = subMatch ? decodeURIComponent(subMatch[1]) : ''
 
     return (
-        <BracketThemeProvider>
-            <div className="flex min-h-screen bg-[#1e1f23] text-gray-100">
-                {showSidebar && (
-                    <Sidebar open={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} />
-                )}
+        <div className="flex flex-col h-screen">
+            <Header
+                showSave={showSave}
+                showCreate={showCreate}
+                bracketTitle={bracketTitle}
+                toggleSidebar={() => setSidebarOpen(o => !o)}
+                sidebarOpen={sidebarOpen}
+            />
 
-                {/* içerik */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <Header toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-
-                    <main className={innerClass}>
-                        <Outlet />
-                    </main>
-                </div>
+            <div className="flex flex-1 overflow-hidden">
+                <Sidebar isOpen={sidebarOpen}/>
+                <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
+                    <Outlet/>
+                </main>
             </div>
-        </BracketThemeProvider>
-    );
+        </div>
+    )
 }
