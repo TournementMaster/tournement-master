@@ -11,33 +11,43 @@ export default function Sidebar({ isOpen }: Props) {
     const [active, setActive] = useState<'participants'|'settings'|'theme'>('participants')
 
     return (
-        <aside
-            className={`
-        flex-shrink-0 w-64 bg-[#2b2e36] text-white
-        transform transition-transform duration-200
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}
-        >
-            <nav className="flex flex-col border-b border-[#444956]">
+        <aside className="flex h-full">
+            {/* ikon kolon */}
+            <nav className="flex flex-col items-center bg-[#2b2e36] text-white py-4 w-12">
                 <button
-                    className={`p-4 text-left hover:bg-[#3a3f49] ${active==='participants'?'bg-[#3a3f49]':''}`}
+                    className={`mb-4 p-2 rounded hover:bg-gray-700 ${
+                        active==='participants' ? 'bg-gray-700' : ''
+                    }`}
                     onClick={()=>setActive('participants')}
-                >👥 Katılımcılar</button>
+                >
+                    👥
+                </button>
                 <button
-                    className={`p-4 text-left hover:bg-[#3a3f49] ${active==='settings'?'bg-[#3a3f49]':''}`}
+                    className={`mb-4 p-2 rounded hover:bg-gray-700 ${
+                        active==='settings' ? 'bg-gray-700' : ''
+                    }`}
                     onClick={()=>setActive('settings')}
-                >⚙️ Ayarlar</button>
+                >
+                    ⚙️
+                </button>
                 <button
-                    className={`p-4 text-left hover:bg-[#3a3f49] ${active==='theme'?'bg-[#3a3f49]':''}`}
+                    className={`p-2 rounded hover:bg-gray-700 ${
+                        active==='theme' ? 'bg-gray-700' : ''
+                    }`}
                     onClick={()=>setActive('theme')}
-                >🎨 Şablon & Renk</button>
+                >
+                    🎨
+                </button>
             </nav>
 
-            <div className="p-4 overflow-auto">
-                {active === 'participants' && <ParticipantsPanel />}
-                {active === 'settings'     && <SettingsPanel />}
-                {active === 'theme'        && <ThemePanel />}
-            </div>
+            {/* içerik paneli sadece açıkken */}
+            {isOpen && (
+                <div className="w-64 bg-[#2b2e36] text-white p-4 overflow-auto">
+                    {active==='participants' && <ParticipantsPanel />}
+                    {active==='settings'     && <SettingsPanel />}
+                    {active==='theme'        && <ThemePanel />}
+                </div>
+            )}
         </aside>
     )
 }

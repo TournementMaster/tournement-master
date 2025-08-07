@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 
 interface Props {
-    showSave:      boolean
-    showCreate:    boolean
+    showSave: boolean
+    showCreate: boolean
     bracketTitle?: string
     toggleSidebar: () => void
-    sidebarOpen:   boolean
+    sidebarOpen: boolean
 }
 
 export default function Header({
@@ -16,7 +16,7 @@ export default function Header({
                                    bracketTitle,
                                    toggleSidebar,
                                    sidebarOpen,
-                               }: Props) {
+                               }: Props): ReactNode {
     const { isAuth, logout } = useAuth()
     const nav      = useNavigate()
     const location = useLocation()
@@ -25,91 +25,59 @@ export default function Header({
     const isDashboard = location.pathname === '/'
     const subMatch    = location.pathname.match(/^\/bracket\/(.+)/)
     const isBracket   = !!subMatch
-
     const createLabel = isBracket ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur'
+
     const onCreate = () => {
-        if (!isAuth) {
-            alert('Lütfen turnuva oluşturmak için giriş yapın')
-            return
-        }
-        if (isDashboard) {
-            nav('/create?mode=main')
-        } else if (isBracket) {
+        if (!isAuth) return alert('Lütfen giriş yapın')
+        if (isDashboard) nav('/create?mode=main')
+        else if (isBracket) {
             const slug = subMatch![1]
-            let parentId: number | undefined
-            try {
-                const map = JSON.parse(
-                    sessionStorage.getItem('tournament_slug_to_id') || '{}'
-                )
-                const id = map[slug]
-                if (typeof id === 'number') parentId = id
-            } catch {}
-            const qs = new URLSearchParams({
-                mode: 'sub',
-                ...(parentId ? { parent: String(parentId) } : {}),
-                ctx: slug,
-            })
-            nav(`/create?${qs.toString()}`)
+            nav(`/create?mode=sub&ctx=${encodeURIComponent(slug)}`)
         }
     }
 
     return (
         <header className="flex items-center justify-between bg-[#373a42] h-16 px-6 shadow-lg relative">
-            {/* Sidebar Toggle */}
-            <button
-                onClick={toggleSidebar}
-                aria-label={sidebarOpen ? 'Kapat' : 'Aç'}
-                className="
-          text-2xl
-          bg-gradient-to-r from-teal-400 to-green-300
-          bg-clip-text text-transparent
-          hover:opacity-80 transition mr-4
-        "
-            >
-                {sidebarOpen ? '←' : '→'}
-            </button>
-
-            {/* Left: Logo + Create */}
+            {/* Sol: Logo + Create */}
             <div className="flex items-center gap-6">
-                <Link to="/" className="text-xl font-extrabold tracking-tight text-white">
+                <Link to="/" className="text-xl font-extrabold text-white whitespace-nowrap">
                     Easy Tournament
                 </Link>
                 {showCreate && (
                     <button
                         disabled={!isAuth}
                         onClick={onCreate}
-                        className={`
-              px-4 py-2 rounded text-sm
-              ${isAuth
-                            ? 'bg-blue-600 hover:bg-blue-500'
-                            : 'bg-blue-600/40 cursor-not-allowed'}
-            `}
+                        className={`px-4 py-2 rounded text-sm ${
+                            isAuth ? 'bg-blue-600 hover:bg-blue-500' : 'bg-blue-600/40 cursor-not-allowed'
+                        }`}
                     >
                         {createLabel}
                     </button>
                 )}
             </div>
 
-            {/* Center: Bracket Title */}
+            {/* Orta: Bracket Başlığı */}
             {bracketTitle && (
-                <div className="
-          absolute left-1/2 -translate-x-1/2
-          text-2xl font-bold text-amber-300 whitespace-nowrap
-        ">
-                    {bracketTitle}
+                <div className="absolute left-1/2 -translate-x-1/2 text-2xl font-bold text-amber-300 whitespace-nowrap">
+                    {decodeURIComponent(bracketTitle)}
                 </div>
             )}
 
-            {/* Right: Save + Profile */}
+            {/* Sağ: Toggle + Save + Profile */}
             <div className="flex items-center gap-4">
+                {/* Arrow toggle */}
+                <button
+                    onClick={toggleSidebar}
+                    aria-label={sidebarOpen ? 'Kapat' : 'Aç'}
+                    className="text-2xl rounded-full bg-gradient-to-r from-teal-400 to-green-300 p-1 hover:opacity-80 transition"
+                >
+                    {sidebarOpen ? '←' : '→'}
+                </button>
+
                 {showSave && (
                     <button
                         onClick={() => alert('(Mock) Kaydedildi')}
-                        className="
-              flex items-center gap-2
-              bg-emerald-600 hover:bg-emerald-700
-              px-4 py-2 rounded text-sm text-white
-            "
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded text-sm text-white"
                     >
                         💾 Kaydet
                     </button>
