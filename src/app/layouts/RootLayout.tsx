@@ -1,54 +1,66 @@
 // src/app/layouts/RootLayout.tsx
+import  { useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
-
 import Header from '../components/Header'
 import Sidebar from '../components/Sidebar'
-
 import { BracketPlayersProvider } from '../context/BracketPlayersCtx'
 import { BracketSettingsProvider } from '../context/BracketSettingsCtx'
 import { BracketThemeProvider } from '../context/BracketThemeContext'
 
-export default function RootLayout(): ReactNode {
-    const location = useLocation()
-    const [sidebarOpen, setSidebarOpen] = useState(false)
+export default function RootLayout() {
+    const { pathname } = useLocation()
+    const isBracket   = pathname.startsWith('/bracket')
+    const isCreate    = pathname.startsWith('/create')
 
-    const isBracketPage = location.pathname.startsWith('/bracket')
+    const [sidebarOpen, setSidebarOpen] = useState<boolean>(isBracket)
+    useEffect(() => setSidebarOpen(isBracket), [isBracket])
 
-    // ↓ Güncellendi: bracket sayfasında da oluştur butonu gizlensin
-    const showCreate =
-        !location.pathname.startsWith('/create') &&
-        !location.pathname.startsWith('/bracket')
-
-    const sp = new URLSearchParams(location.search)
-    const bracketTitle = isBracketPage ? (sp.get('title') ?? '') : ''
+    const titlePart = isBracket ? decodeURIComponent(pathname.split('/')[2] || '') : ''
 
     return (
         <div className="flex flex-col h-screen">
+            {/* 1) Header — ok-tuș artık burada hiç yok */}
             <Header
-                showSave={isBracketPage}
-                showCreate={showCreate}
-                bracketTitle={bracketTitle}
+                showToggle={false}
+                toggleSidebar={() => setSidebarOpen(o => !o)}
+                sidebarOpen={sidebarOpen}
+                showCreate={!isCreate}
+                showSave={isBracket}
+                bracketTitle={titlePart}
             />
 
-            {isBracketPage ? (
-                <BracketPlayersProvider>
-                    <BracketSettingsProvider>
-                        <BracketThemeProvider>
-                            <div className="flex flex-1 overflow-hidden">
-                                <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} />
-                                <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
-                                    <Outlet />
-                                </main>
-                            </div>
-                        </BracketThemeProvider>
-                    </BracketSettingsProvider>
-                </BracketPlayersProvider>
-            ) : (
-                <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
-                    <Outlet />
-                </main>
+            {/* 2) Bracket sayfasındaysak, header’ın hemen altında ok-tuș */}
+            {isBracket && (
+                <div className="px-8 py-2 bg-[#373a42]">
+                    <button
+                        onClick={() => setSidebarOpen(o => !o)}
+                        aria-label={sidebarOpen ? 'Kapat' : 'Aç'}
+                        className="rounded-full p-2 bg-teal-400 hover:bg-teal-300 text-white text-2xl shadow-lg transition"
+                    >
+                        {sidebarOpen ? '❮' : '❯'}
+                    </button>
+                </div>
             )}
+
+            {/* 3) İçerik */}
+            <div className="flex flex-1 overflow-hidden">
+                {isBracket ? (
+                    <BracketPlayersProvider>
+                        <BracketSettingsProvider>
+                            <BracketThemeProvider>
+                                <Sidebar isOpen={sidebarOpen} />
+                                <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
+                                    <Outlet/>
+                                </main>
+                            </BracketThemeProvider>
+                        </BracketSettingsProvider>
+                    </BracketPlayersProvider>
+                ) : (
+                    <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
+                        <Outlet/>
+                    </main>
+                )}
+            </div>
         </div>
     )
 }

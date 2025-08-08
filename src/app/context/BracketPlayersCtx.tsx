@@ -1,22 +1,17 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+/* src/app/context/BracketPlayersCtx.tsx */
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useState, type ReactNode } from 'react'
+import type { PlayersCtx } from '../hooks/usePlayers'
 
-export type PlayersCtx = {
-    players: string[];
-    setPlayers: (x: string[]) => void;
-};
+// Context objemiz, başlangıçta null
+export const PlayersContext = createContext<PlayersCtx | null>(null)
 
-const Ctx = createContext<PlayersCtx | null>(null);
-
+// Sadece bir React bileşeni export ediyoruz: Provider
 export function BracketPlayersProvider({ children }: { children: ReactNode }) {
-    const [players, setPlayers] = useState<string[]>([]);   // max 16
-
+    const [players, setPlayers] = useState<string[]>([])
     return (
-        <Ctx.Provider value={{ players, setPlayers }}>{children}</Ctx.Provider>
-    );
+        <PlayersContext.Provider value={{ players, setPlayers }}>
+            {children}
+        </PlayersContext.Provider>
+    )
 }
-
-export const usePlayers = () => {
-    const ctx = useContext(Ctx);
-    if (!ctx) throw new Error('usePlayers dışarıda');
-    return ctx;
-};

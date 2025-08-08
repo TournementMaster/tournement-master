@@ -1,20 +1,30 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { RouterProvider } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import './app/styles/index.css';
-import {router} from "./app/router.tsx";
-import AuthProvider from "./app/context/AuthProvider.tsx";
-import './app/styles/index.css';
+// src/main.tsx
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { RouterProvider } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-const client = new QueryClient();
+import AuthProvider from './app/context/AuthProvider'
+import { BracketPlayersProvider } from './app/context/BracketPlayersCtx'
+import { BracketSettingsProvider } from './app/context/BracketSettingsCtx'
+import { BracketThemeProvider } from './app/context/BracketThemeContext'
+
+import { router } from './app/router'
+
+const queryClient = new QueryClient()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-        <QueryClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
             <AuthProvider>
-                <RouterProvider router={router} />
+                <BracketPlayersProvider>
+                    <BracketSettingsProvider>
+                        <BracketThemeProvider>
+                            <RouterProvider router={router} />
+                        </BracketThemeProvider>
+                    </BracketSettingsProvider>
+                </BracketPlayersProvider>
             </AuthProvider>
         </QueryClientProvider>
     </React.StrictMode>
-);
+)
