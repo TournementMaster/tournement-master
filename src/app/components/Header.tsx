@@ -24,74 +24,55 @@ export default function Header({
     const location          = useLocation()
     const [menu, setMenu]   = useState(false)
 
-    // Dashboard mı / bracket mi?
     const isDashboard = location.pathname === '/'
 
-    // Oluştur düğmesi için label seçimi
-    const createLabel = location.pathname.startsWith('/bracket')
-        ? 'Alt Turnuva Oluştur'
-        : 'Turnuva Oluştur'
-
     const onCreate = () => {
-        if (!isAuth) {
-            alert('Lütfen giriş yapın.')
-            return
-        }
-        if (isDashboard) {
-            navigate('/create?mode=main')
-        } else if (location.pathname.startsWith('/bracket')) {
-            // alt turnuva
-            const slug = location.pathname.split('/')[2]
-            const params = new URLSearchParams({ mode: 'sub', ctx: slug })
-            navigate(`/create?${params.toString()}`)
-        }
+        if (!isAuth) { alert('Lütfen giriş yapın.'); return }
+        if (isDashboard) navigate('/create?mode=main')
     }
 
     return (
-        <header className="flex items-center bg-gradient-to-r from-indigo-600 to-purple-600 h-20 px-8">
-            {/* Toggle ok butonu (sadece bracket sayfasında) */}
+        <header className="flex items-center h-20 px-8 bg-gradient-to-r from-amber-900 via-orange-900 to-amber-950">
             {showToggle && (
                 <button
                     onClick={toggleSidebar}
                     aria-label={sidebarOpen ? 'Kapat' : 'Aç'}
-                    className="mr-6 p-3 rounded-full bg-teal-400 hover:bg-teal-300 text-white text-2xl shadow-lg transition-transform hover:scale-110"
+                    className="mr-6 p-3 rounded-full bg-orange-700/70 hover:bg-orange-600 text-white text-2xl shadow-lg transition-transform hover:scale-110"
                 >
                     {sidebarOpen ? '❮' : '❯'}
                 </button>
             )}
 
-            {/* Logo + Oluştur */}
             <div className="flex items-center space-x-6">
                 <Link to="/" className="text-3xl font-extrabold text-white">
                     Easy Tournament
                 </Link>
 
+                {/* Bracket sayfasında oluştur butonu görünmez; RootLayout'tan showCreate kontrolü geliyor */}
                 {showCreate && (
                     <button
                         onClick={onCreate}
                         disabled={!isAuth}
                         className={`px-5 py-2 rounded-lg text-lg font-semibold text-white ${
-                            isAuth ? 'bg-blue-500 hover:bg-blue-400' : 'bg-blue-500/50 cursor-not-allowed'
+                            isAuth ? 'bg-blue-600 hover:bg-blue-500' : 'bg-blue-600/50 cursor-not-allowed'
                         }`}
                     >
-                        {createLabel}
+                        Turnuva Oluştur
                     </button>
                 )}
             </div>
 
-            {/* Ortadaki bracket başlığı */}
             {bracketTitle && (
-                <div className="absolute left-1/2 -translate-x-1/2 text-2xl font-bold text-white">
+                <div className="absolute left-1/2 -translate-x-1/2 text-2xl font-bold text-amber-100 drop-shadow">
                     {bracketTitle}
                 </div>
             )}
 
-            {/* Sağ uç profil + kaydet */}
             <div className="ml-auto flex items-center space-x-6">
                 {showSave && (
                     <button
                         onClick={() => alert('Kaydedildi!')}
-                        className="px-4 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg shadow"
+                        className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg shadow"
                     >
                         💾 Kaydet
                     </button>
@@ -133,7 +114,7 @@ export default function Header({
                 ) : (
                     <Link
                         to="/login"
-                        className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg"
                     >
                         Giriş
                     </Link>

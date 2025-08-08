@@ -38,8 +38,6 @@ export default function SubTournamentSettingsPanel() {
             ;(async () => {
             try {
                 setErr(null)
-                // Not: Backend’in tekil endpoint’i ihtiyaca göre uyarlanabilir.
-                // Aşağıda yaygın bir desen olan /subtournaments/{public_slug}/ kullanıldı.
                 const { data } = await api.get<SubTournament>(`subtournaments/${slug}/`)
                 setDetail(data)
             } catch {
@@ -80,11 +78,9 @@ export default function SubTournamentSettingsPanel() {
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
             await qc.invalidateQueries({ queryKey: ['subtournament', slug] })
 
-            // Header’daki başlık URL’den geliyor → ?title=... güncelle
             const sp = new URLSearchParams(location.search)
             sp.set('title', title || '')
             nav({ pathname: location.pathname, search: sp.toString() }, { replace: true })
-
             alert('Ayarlar güncellendi.')
         } catch {
             setErr('Güncelleme başarısız. Lütfen tekrar deneyin.')
@@ -94,7 +90,7 @@ export default function SubTournamentSettingsPanel() {
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 text-sm">
             <h3 className="font-semibold mb-1">Alt Turnuva Ayarları</h3>
             {err && <div className="text-sm text-red-300">{err}</div>}
             {!slug && <div className="text-sm text-amber-300">Slug okunamadı.</div>}
@@ -103,7 +99,7 @@ export default function SubTournamentSettingsPanel() {
                 <input
                     value={title}
                     onChange={e => setTitle(e.target.value)}
-                    className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                    className="w-full px-3 py-2 rounded bg-[#111318]"
                 />
             </Labeled>
 
@@ -111,7 +107,7 @@ export default function SubTournamentSettingsPanel() {
         <textarea
             value={desc}
             onChange={e => setDesc(e.target.value)}
-            className="w-full h-24 px-3 py-2 rounded bg-[#1f2229]"
+            className="w-full h-24 px-3 py-2 rounded bg-[#111318]"
         />
             </Labeled>
 
@@ -121,7 +117,7 @@ export default function SubTournamentSettingsPanel() {
                         value={ageMin}
                         onChange={e => setAgeMin(e.target.value.replace(/\D/g, '').slice(0, 2))}
                         inputMode="numeric"
-                        className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full px-3 py-2 rounded bg-[#111318]"
                     />
                 </Labeled>
                 <Labeled label="Yaş Max">
@@ -129,7 +125,7 @@ export default function SubTournamentSettingsPanel() {
                         value={ageMax}
                         onChange={e => setAgeMax(e.target.value.replace(/\D/g, '').slice(0, 2))}
                         inputMode="numeric"
-                        className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full px-3 py-2 rounded bg-[#111318]"
                     />
                 </Labeled>
             </div>
@@ -140,7 +136,7 @@ export default function SubTournamentSettingsPanel() {
                         value={wMin}
                         onChange={e => setWMin(e.target.value.replace(/[^\d.,-]/g, '').slice(0, 6))}
                         inputMode="decimal"
-                        className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full px-3 py-2 rounded bg-[#111318]"
                     />
                 </Labeled>
                 <Labeled label="Kilo Max (kg)">
@@ -148,7 +144,7 @@ export default function SubTournamentSettingsPanel() {
                         value={wMax}
                         onChange={e => setWMax(e.target.value.replace(/[^\d.,-]/g, '').slice(0, 6))}
                         inputMode="decimal"
-                        className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full px-3 py-2 rounded bg-[#111318]"
                     />
                 </Labeled>
             </div>
@@ -157,7 +153,7 @@ export default function SubTournamentSettingsPanel() {
                 <select
                     value={gender}
                     onChange={e => setGender(e.target.value as 'M' | 'F' | 'O')}
-                    className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                    className="w-full px-3 py-2 rounded bg-[#111318]"
                 >
                     <option value="M">Erkek</option>
                     <option value="F">Kadın</option>
@@ -170,20 +166,20 @@ export default function SubTournamentSettingsPanel() {
                     type="checkbox"
                     checked={isPublic}
                     onChange={e => setIsPublic(e.target.checked)}
-                    className="accent-teal-400"
+                    className="accent-emerald-400"
                 />
                 <span>Görünür (Public)</span>
             </label>
 
-            {/*<div className="pt-2">*/}
-            {/*    <button*/}
-            {/*        onClick={save}*/}
-            {/*        disabled={busy || !title.trim()}*/}
-            {/*        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 rounded"*/}
-            {/*    >*/}
-            {/*        {busy ? 'Kaydediliyor…' : 'Kaydet'}*/}
-            {/*    </button>*/}
-            {/*</div>*/}
+            <div className="pt-2">
+                <button
+                    onClick={save}
+                    disabled={busy || !title.trim()}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 rounded"
+                >
+                    {busy ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+            </div>
         </div>
     )
 }
