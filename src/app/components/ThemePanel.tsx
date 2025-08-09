@@ -1,43 +1,58 @@
-import { useBracketTheme, useSetTheme } from '../context/BracketThemeContext'
-import { PALETTES, type ThemeKey, type Palette } from '../context/themePalettes'
+import { useBracketTheme, useSetTheme, type BracketThemeKey } from '../context/BracketThemeContext'
+import { PALETTES } from '../context/themePalettes'
 
-type Item = { key: 'classic-dark'|'modern-light'|'purple-orange'|'black-white'; label: string; map: ThemeKey }
+type Item = { key: BracketThemeKey; label: string; map?: string }
 
 const ITEMS: Item[] = [
-    { key: 'classic-dark',  label: 'Klasik',       map: 'classic' },
-    { key: 'modern-light',  label: 'Mor',          map: 'purple'  },
-    { key: 'purple-orange', label: 'Turuncu',      map: 'orange'  },
-    { key: 'black-white',   label: 'Siyah–Beyaz',  map: 'invert'  },
+    { key:'classic-dark',  label:'Klasik' },
+    { key:'modern-light',  label:'Mor'    },
+    { key:'purple-orange', label:'Turuncu'},
+    { key:'black-white',   label:'Siyah–Beyaz' },
+    // yeniler
+    { key:'ocean',   label:'Ocean'   },
+    { key:'forest',  label:'Forest'  },
+    { key:'rose',    label:'Rose'    },
+    { key:'gold',    label:'Gold'    },
+    { key:'crimson', label:'Crimson' },
+    { key:'teal',    label:'Teal'    },
+    { key:'slate',   label:'Slate'   },
 ]
 
 export default function ThemePanel() {
     const theme = useBracketTheme()
     const setTheme = useSetTheme()
 
-    const preview = (p: Palette) => (
-        <span
-            className="inline-block w-6 h-6 rounded border border-white/20 mr-2 align-middle"
-            style={{
-                background: `linear-gradient(135deg, ${p.bg} 60%, ${p.win} 100%)`
-            }}
-        />
-    )
+    const preview = (k: keyof typeof PALETTES) => {
+        const p = PALETTES[k]
+        return (
+            <span
+                className="inline-block w-6 h-6 rounded border border-white/20 mr-2 align-middle"
+                style={{ background: `linear-gradient(135deg, ${p.bg} 60%, ${p.win} 100%)` }}
+            />
+        )
+    }
 
     return (
         <aside className="space-y-2">
             <h3 className="font-semibold mb-2">Şablon & Renk</h3>
             {ITEMS.map(it => {
-                const pal = PALETTES[it.map]
+                // PALETTES anahtarı çöz
+                const key =
+                    it.key==='classic-dark'||it.key==='classic-light' ? 'classic' :
+                        it.key==='modern-light'||it.key==='modern-dark'  ? 'purple'  :
+                            it.key==='purple-orange' ? 'orange' :
+                                it.key==='black-white'   ? 'invert' :
+                                    (it.key as keyof typeof PALETTES)
+
                 const active = theme === it.key
                 return (
                     <button
                         key={it.key}
-                        onClick={() => setTheme(it.key as any)}
-                        className={`block w-full text-left px-3 py-2 rounded transition ${
-                            active ? 'bg-teal-400 text-black' : 'hover:bg-gray-700'
-                        }`}
+                        onClick={() => setTheme(it.key)}
+                        className={`block w-full text-left px-3 py-2 rounded transition
+              ${active ? 'bg-teal-400 text-black' : 'hover:bg-gray-700'}`}
                     >
-                        {preview(pal)} {it.label}
+                        {preview(key)} {it.label}
                     </button>
                 )
             })}

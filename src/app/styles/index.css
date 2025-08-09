@@ -5,14 +5,11 @@
    TEMA: Yazı tipi ve boyutlar
 -------------------------------- */
 @theme {
-  /* Varsayılan sans serif fontu: */
   --font-sans: "Source Sans Pro", ui-sans-serif, system-ui, -apple-system,
   "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji",
   "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
-  /* Baz metin ölçüsünü hafif büyütelim (17px) */
   --text-base: 1.0625rem;  /* 17px */
-  /* Satır yüksekliği: rahat okuma */
   --leading-normal: 1.65;
 }
 
@@ -23,30 +20,44 @@
   html, body { @apply bg-[#1e1f23] text-gray-100; }
 
   html {
-    /* Global tipografi */
     @apply font-sans antialiased text-base leading-normal;
-
-    /* Render kalitesi (ek yardımlar) */
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Başlıklar daha tok ve sıkı aralıklı */
-  h1, h2, h3 {
-    @apply font-semibold tracking-tight;
-  }
-  h1 { @apply text-2xl; }  /* 2 kademeden başlatın; gerekirse büyütürüz */
+  h1, h2, h3 { @apply font-semibold tracking-tight; }
+  h1 { @apply text-2xl; }
   h2 { @apply text-xl; }
   h3 { @apply text-lg; }
 }
 
-/* İsteğe bağlı: küçük metinleri bir tık büyütmek için yardımcı sınıf */
-@utility text-slightly-bigger {
-  font-size: 0.95rem;  /* ~15px */
-}
+/* İsteğe bağlı: küçük metinler */
+@utility text-slightly-bigger { font-size: 0.95rem; }
+
+/* Takım adı tipografisi */
 .team-text {
   font-family: "Source Sans Pro", ui-sans-serif, system-ui, -apple-system,
   "Segoe UI", Roboto, "Helvetica Neue", Arial;
   font-weight: 600;
+}
+
+/* -------------------------------
+   HEADER DOKUSU (data-uri yok)
+   – gradient üstüne hafif bir dokulu overlay
+-------------------------------- */
+.header-surface {
+  position: relative;
+}
+.header-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* İki katmanlı yumuşak doku */
+  background-image:
+          radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+          radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 26px 26px, 18px 18px;
+  background-position: 0 0, 8px 10px;
 }

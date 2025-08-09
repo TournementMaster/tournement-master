@@ -1,33 +1,19 @@
+// src/app/context/BracketThemeContext.tsx
 /* eslint-disable react-refresh/only-export-components */
 import {
-    createContext,
-    useContext,
-    useState,
-    type ReactNode,
-    type Dispatch,
-    type SetStateAction,
+    createContext, useContext, useState,
+    type ReactNode, type Dispatch, type SetStateAction,
 } from 'react';
 
-/** Tema seçenekleri */
 export type BracketThemeKey =
-    | 'classic-dark'
-    | 'classic-light'
-    | 'modern-dark'
-    | 'modern-light'
-    | 'purple-orange'
-    | 'black-white'
-    // yeni renk setleri
-    | 'ocean'
-    | 'forest'
-    | 'rose'
-    | 'gold'
-    | 'steel'
-    | 'sky'
-    | 'mint';
+    | 'classic-dark' | 'classic-light'
+    | 'modern-dark'  | 'modern-light'
+    | 'purple-orange'| 'black-white'
+    // yeni alternatifler
+    | 'ocean' | 'forest' | 'rose' | 'gold' | 'crimson' | 'teal' | 'slate';
 
-/** Context tipi */
 interface BracketThemeContextType {
-    theme:    BracketThemeKey;
+    theme: BracketThemeKey;
     setTheme: Dispatch<SetStateAction<BracketThemeKey>>;
 }
 
@@ -48,7 +34,6 @@ export function useBracketTheme(): BracketThemeKey {
     if (!ctx) throw new Error('useBracketTheme must be used within a BracketThemeProvider');
     return ctx.theme;
 }
-
 export function useSetTheme(): Dispatch<SetStateAction<BracketThemeKey>> {
     const ctx = useContext(BracketThemeContext);
     if (!ctx) throw new Error('useSetTheme must be used within a BracketThemeProvider');

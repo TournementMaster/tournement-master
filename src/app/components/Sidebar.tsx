@@ -1,114 +1,136 @@
+// src/app/components/Sidebar.tsx
 import { useState } from 'react'
 import ParticipantsPanel from './ParticipantsPanel'
-import SettingsPanel     from './SettingsPanel'
-import ThemePanel        from './ThemePanel'
+import SettingsPanel from './SettingsPanel'
+import ThemePanel from './ThemePanel'
 import SubTournamentSettingsPanel from './SubTournamentSettingsPanel'
 
 interface Props {
+    /** Sağdaki içerik paneli açık mı? (ikon rayı her zaman görünür) */
     isOpen: boolean
-    /** Bir ikon tıklanınca sidebar’ı sadece AÇ (kapatma ok ile) */
-    onAnyIconClick?: () => void
+    onToggle?: () => void
+    /** Tam ekrana geçildiğinde sidebar tamamen gizlenmesi için üst bileşene haber verilir */
+    onEnterFullscreen?: () => void
 }
 
-type Tab = 'participants' | 'sub' | 'settings' | 'theme'
+type Tab = 'participants' | 'info' | 'settings' | 'theme'
 
-/* Elit/Premium inline SVG ikonları (stroke currentColor) */
-function IconUsers({ className = '' }: { className?: string }) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-            <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-            <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.7"/>
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+/* Premium çizgisiz ikonlar */
+const Icon = {
+    Users: (p: React.SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
+            <path strokeWidth="1.8" d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4" strokeWidth="1.8"/>
+            <path strokeWidth="1.8" d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 18 7"/>
         </svg>
-    )
-}
-function IconClipboardInfo({ className = '' }: { className?: string }) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-            <rect x="5" y="4" width="14" height="16" rx="2.2" stroke="currentColor" strokeWidth="1.7"/>
-            <path d="M9 4.5h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-            <circle cx="12" cy="11" r="1.3" fill="currentColor"/>
-            <path d="M12 14v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+    ),
+    Info: (p: React.SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
+            <circle cx="12" cy="12" r="9" strokeWidth="1.8"/>
+            <path d="M12 8h.01M11 12h2v5h-2z" strokeWidth="1.8"/>
         </svg>
-    )
-}
-function IconCog({ className = '' }: { className?: string }) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" strokeWidth="1.7"/>
-            <path d="M19.4 15a7.9 7.9 0 0 0 .1-6l2-1.2-2-3.5-2.3 1A8.1 8.1 0 0 0 12 3c-1.2 0-2.4.2-3.4.6l-2.3-1-2 3.5 2 1.2a8 8 0 0 0 .1 6l-2 1.1 2 3.5 2.3-1A8.1 8.1 0 0 0 12 21c1.2 0 2.4-.2 3.4-.6l2.3 1 2-3.5-2-1.1Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
+    ),
+    Cog: (p: React.SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
+            <path strokeWidth="1.8" d="M10.325 4.317a1 1 0 0 1 1.35-.936l1.66.6a1 1 0 0 0 .95-.17l1.2-.9a1 1 0 0 1 1.45.28l1 1.73a1 1 0 0 0 .8.5l1.78.2a1 1 0 0 1 .88 1.13l-.2 1.77a1 1 0 0 0 .5.81l1.55.9a1 1 0 0 1 .39 1.36l-.9 1.56a1 1 0 0 0 0 .98l.9 1.56a1 1 0 0 1-.39 1.36l-1.55.9a1 1 0 0 0-.5.81l.2 1.77a1 1 0 0 1-.88 1.13l-1.78.2a1 1 0 0 0-.8.5l-1 1.73a1 1 0 0 1-1.45.28l-1.2-.9a1 1 0 0 0-.95-.17l-1.66.6a1 1 0 0 1-1.35-.94l-.16-1.8a1 1 0 0 0-.55-.8l-1.67-.85a1 1 0 0 1-.5-1.32l.76-1.62a1 1 0 0 0 0-.88l-.76-1.62a1 1 0 0 1 .5-1.32l1.67-.85a1 1 0  0 .55-.8l.16-1.8z"/>
+            <circle cx="12" cy="12" r="3" strokeWidth="1.8"/>
         </svg>
-    )
-}
-function IconPalette({ className = '' }: { className?: string }) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
-            <path d="M13.5 21a8.5 8.5 0 1 0-8.2-6.5 2.5 2.5 0 0 0 2.4 2h2.1a2.2 2.2 0 0 1 0 4.5H9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-            <circle cx="14.5" cy="8.5" r="1.2" fill="currentColor"/>
-            <circle cx="10" cy="7" r="1.2" fill="currentColor"/>
-            <circle cx="8" cy="11" r="1.2" fill="currentColor"/>
-            <circle cx="16" cy="12" r="1.2" fill="currentColor"/>
+    ),
+    Palette: (p: React.SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
+            <path strokeWidth="1.8" d="M12 3a9 9 0 0 0-9 9 7 7 0 0 0 7 7h2a2 2 0 0 0 2-2 1.5 1.5 0 0 1 1.5-1.5h1A4.5 4.5 0 0 0 21 11 8 8 0 0 0 12 3z"/>
+            <circle cx="7.5" cy="10.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/>
+            <circle cx="14.5" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/>
         </svg>
-    )
+    ),
+    Full: (p: React.SVGProps<SVGSVGElement>) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
+            <path strokeWidth="1.8" d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/>
+        </svg>
+    ),
 }
 
-export default function Sidebar({ isOpen, onAnyIconClick }: Props) {
+export default function Sidebar({ isOpen, onToggle, onEnterFullscreen }: Props) {
     const [active, setActive] = useState<Tab>('participants')
 
-    const click = (tab: Tab) => {
-        setActive(tab)
-        onAnyIconClick?.() // ikon tıklanınca AÇ
+    // Her ikon tıklanınca panel otomatik açılsın
+    const focusTab = (t: Tab) => {
+        setActive(t)
+        if (!isOpen) onToggle?.()
     }
 
-    const iconBase =
-        'w-[34px] h-[34px] md:w-[38px] md:h-[38px] transition-colors'
+    const goFullscreen = async () => {
+        try {
+            if (!document.fullscreenElement) {
+                await document.documentElement.requestFullscreen()
+            }
+        } finally {
+            onEnterFullscreen?.()
+        }
+    }
 
-    // İkon kolonu HER ZAMAN görünür; içerik paneli sadece açıksa görünür
+    const TabBtn = ({
+                        tab, title, children,
+                    }: { tab: Tab; title: string; children: React.ReactNode }) => (
+        <button
+            onClick={() => focusTab(tab)}
+            className={`p-2 text-gray-200 hover:text-white transition ${
+                active === tab ? 'text-emerald-300' : ''
+            }`}
+            title={title}
+            aria-label={title}
+        >
+            {children}
+        </button>
+    )
+
     return (
         <div className="flex">
-            {/* Sol ikon kolonu (siyah, premium) */}
-            <nav className="flex flex-col items-center bg-black px-3 py-5 space-y-6">
-                <button
-                    onClick={() => click('participants')}
-                    className={`text-slate-200 hover:text-teal-300 ${active==='participants'?'text-teal-300':''}`}
-                    title="Katılımcılar"
-                >
-                    <IconUsers className={iconBase}/>
-                </button>
+            {/* İkon rayı – her zaman görünür, siyah arka plan */}
+            <nav className="flex flex-col justify-between bg-black w-16 p-3">
+                <div className="flex flex-col items-center gap-5">
+                    {/* Üstte AÇ/KAPA OKU (ray ile aynı hizada) */}
+                    <button
+                        onClick={onToggle}
+                        title={isOpen ? 'Kapat' : 'Aç'}
+                        aria-label={isOpen ? 'Kapat' : 'Aç'}
+                        className="mb-2 p-2 text-gray-200 hover:text-white"
+                    >
+                        {isOpen ? '❮' : '❯'}
+                    </button>
 
-                <button
-                    onClick={() => click('sub')}
-                    className={`text-slate-200 hover:text-teal-300 ${active==='sub'?'text-teal-300':''}`}
-                    title="Alt Turnuva Bilgileri"
-                >
-                    <IconClipboardInfo className={iconBase}/>
-                </button>
+                    <TabBtn tab="participants" title="Katılımcılar">
+                        <Icon.Users className="w-7 h-7" />
+                    </TabBtn>
+                    <TabBtn tab="info" title="Alt Turnuva Bilgileri">
+                        <Icon.Info className="w-6 h-6" />
+                    </TabBtn>
+                    <TabBtn tab="settings" title="Ayarlar">
+                        <Icon.Cog className="w-6 h-6" />
+                    </TabBtn>
+                    <TabBtn tab="theme" title="Şablon & Renk">
+                        <Icon.Palette className="w-7 h-7" />
+                    </TabBtn>
+                </div>
 
+                {/* YouTube tarzı tam ekran */}
                 <button
-                    onClick={() => click('settings')}
-                    className={`text-slate-200 hover:text-teal-300 ${active==='settings'?'text-teal-300':''}`}
-                    title="Ayarlar"
+                    onClick={goFullscreen}
+                    className="p-2 text-gray-300 hover:text-white transition self-center"
+                    title="Tam Ekran"
+                    aria-label="Tam Ekran"
                 >
-                    <IconCog className={iconBase}/>
-                </button>
-
-                <button
-                    onClick={() => click('theme')}
-                    className={`text-slate-200 hover:text-teal-300 ${active==='theme'?'text-teal-300':''}`}
-                    title="Şablon & Renk"
-                >
-                    <IconPalette className={iconBase}/>
+                    <Icon.Full className="w-7 h-7" />
                 </button>
             </nav>
 
-            {/* İçerik paneli */}
+            {/* İçerik paneli – sadece isOpen true iken */}
             {isOpen && (
-                <div className="bg-[#2d3038] w-80 p-4 overflow-auto">
+                <div className="bg-[#2d3038] p-4 w-72">
                     {active === 'participants' && <ParticipantsPanel />}
-                    {active === 'sub'           && <SubTournamentSettingsPanel />}
-                    {active === 'settings'      && <SettingsPanel />}
-                    {active === 'theme'         && <ThemePanel />}
+                    {active === 'info'         && <SubTournamentSettingsPanel />}
+                    {active === 'settings'     && <SettingsPanel />}
+                    {active === 'theme'        && <ThemePanel />}
                 </div>
             )}
         </div>
