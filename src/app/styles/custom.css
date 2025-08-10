@@ -13,32 +13,29 @@
 }
 
 /* -------------------------------------------------------------
-   HEADER DOKUSU (SVG/data-uri YOK)
-   - Çok hafif, gözü yormayan “grain” efekti
-   - Hem .header-bg hem .header-surface sınıfı desteklenir
+   HEADER DOKUSU – SVG/data-uri YOK (derleme hatasız)
+   Not: z-index:0 → içerik her zaman bunun üstünde kalır.
 ------------------------------------------------------------- */
-.header-bg,
-.header-surface {
+.header-bg {
     position: relative;
     overflow: hidden;
 }
-.header-bg::before,
-.header-surface::after {
+.header-bg::before {
     content: "";
     position: absolute;
     inset: 0;
+    z-index: 0;              /* <<< önemli: doku en altta */
     pointer-events: none;
-    opacity: 0.12; /* dokuyu çok soluk tut */
-    /* İki katmanlı yumuşak desen */
+    opacity: 0.12;           /* çok soluk doku */
     background-image:
-            radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-            radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+            radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+            radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
     background-size: 28px 28px, 18px 18px;
     background-position: 0 0, 9px 10px;
 }
 
 /* -------------------------------------------------------------
-   İsteğe bağlı: Sidebar oklu küçük yuvarlak butonlar için
+   Yuvarlak küçük buton (opsiyonel)
 ------------------------------------------------------------- */
 .btn-circle {
     display: inline-flex;

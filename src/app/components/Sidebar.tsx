@@ -1,138 +1,205 @@
 // src/app/components/Sidebar.tsx
-import { useState } from 'react'
-import ParticipantsPanel from './ParticipantsPanel'
-import SettingsPanel from './SettingsPanel'
-import ThemePanel from './ThemePanel'
-import SubTournamentSettingsPanel from './SubTournamentSettingsPanel'
+import { useState } from 'react';
+import ParticipantsPanel from './ParticipantsPanel';
+import SettingsPanel from './SettingsPanel';
+import ThemePanel from './ThemePanel';
+import SubTournamentSettingsPanel from './SubTournamentSettingsPanel';
 
 interface Props {
-    /** Sağdaki içerik paneli açık mı? (ikon rayı her zaman görünür) */
-    isOpen: boolean
-    onToggle?: () => void
-    /** Tam ekrana geçildiğinde sidebar tamamen gizlenmesi için üst bileşene haber verilir */
-    onEnterFullscreen?: () => void
+    isOpen: boolean;
+    onToggle: () => void; // Sidebar sadece ok butonuyla kapanıp/açılsın
 }
 
-type Tab = 'participants' | 'info' | 'settings' | 'theme'
-
-/* Premium çizgisiz ikonlar */
-const Icon = {
-    Users: (p: React.SVGProps<SVGSVGElement>) => (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
-            <path strokeWidth="1.8" d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4" strokeWidth="1.8"/>
-            <path strokeWidth="1.8" d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 18 7"/>
+/** Tek tip ikon çizici */
+function Icon({
+                  d,
+                  className = 'w-8 h-8',
+              }: {
+    d: string;
+    className?: string;
+}) {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+            aria-hidden
+        >
+            <path d={d} />
         </svg>
-    ),
-    Info: (p: React.SVGProps<SVGSVGElement>) => (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
-            <circle cx="12" cy="12" r="9" strokeWidth="1.8"/>
-            <path d="M12 8h.01M11 12h2v5h-2z" strokeWidth="1.8"/>
-        </svg>
-    ),
-    Cog: (p: React.SVGProps<SVGSVGElement>) => (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
-            <path strokeWidth="1.8" d="M10.325 4.317a1 1 0 0 1 1.35-.936l1.66.6a1 1 0 0 0 .95-.17l1.2-.9a1 1 0 0 1 1.45.28l1 1.73a1 1 0 0 0 .8.5l1.78.2a1 1 0 0 1 .88 1.13l-.2 1.77a1 1 0 0 0 .5.81l1.55.9a1 1 0 0 1 .39 1.36l-.9 1.56a1 1 0 0 0 0 .98l.9 1.56a1 1 0 0 1-.39 1.36l-1.55.9a1 1 0 0 0-.5.81l.2 1.77a1 1 0 0 1-.88 1.13l-1.78.2a1 1 0 0 0-.8.5l-1 1.73a1 1 0 0 1-1.45.28l-1.2-.9a1 1 0 0 0-.95-.17l-1.66.6a1 1 0 0 1-1.35-.94l-.16-1.8a1 1 0 0 0-.55-.8l-1.67-.85a1 1 0 0 1-.5-1.32l.76-1.62a1 1 0 0 0 0-.88l-.76-1.62a1 1 0 0 1 .5-1.32l1.67-.85a1 1 0  0 .55-.8l.16-1.8z"/>
-            <circle cx="12" cy="12" r="3" strokeWidth="1.8"/>
-        </svg>
-    ),
-    Palette: (p: React.SVGProps<SVGSVGElement>) => (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
-            <path strokeWidth="1.8" d="M12 3a9 9 0 0 0-9 9 7 7 0 0 0 7 7h2a2 2 0 0 0 2-2 1.5 1.5 0 0 1 1.5-1.5h1A4.5 4.5 0 0 0 21 11 8 8 0 0 0 12 3z"/>
-            <circle cx="7.5" cy="10.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/>
-            <circle cx="14.5" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/>
-        </svg>
-    ),
-    Full: (p: React.SVGProps<SVGSVGElement>) => (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...p}>
-            <path strokeWidth="1.8" d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/>
-        </svg>
-    ),
+    );
 }
 
-export default function Sidebar({ isOpen, onToggle, onEnterFullscreen }: Props) {
-    const [active, setActive] = useState<Tab>('participants')
+/** İkon path’leri */
+const PATH = {
+    chevronL: 'M15 18L9 12l6-6',
 
-    // Her ikon tıklanınca panel otomatik açılsın
-    const focusTab = (t: Tab) => {
-        setActive(t)
-        if (!isOpen) onToggle?.()
-    }
+    // 🔄 YENİ Katılımcı ikonu (daha elit ve dengeli çift-figür)
+    // Ana figür (sol) + ikincil figür (sağ), tek path içinde.
+    users:
+    // sol/ana figür omuz-gövde
+        'M14 21v-1.8a4.2 4.2 0 0 0-4.2-4.2H8.2A4.2 4.2 0 0 0 4 19.2V21' +
+        // sol/ana figür baş
+        ' M10 12.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7' +
+        // sağ/ikincil figür omuz-gövde
+        ' M20 21v-1.4a3.4 3.4 0 0 0-3.4-3.4h-1.2' +
+        // sağ/ikincil figür baş
+        ' M19 9.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0',
 
-    const goFullscreen = async () => {
-        try {
-            if (!document.fullscreenElement) {
-                await document.documentElement.requestFullscreen()
-            }
-        } finally {
-            onEnterFullscreen?.()
-        }
-    }
+    info:
+        'M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10z M12 16v-4 M12 8h.01',
 
-    const TabBtn = ({
-                        tab, title, children,
-                    }: { tab: Tab; title: string; children: React.ReactNode }) => (
+    cog:
+        'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.64.3 1.09.94 1.09 1.69S20.04 14.7 19.4 15z',
+
+    palette:
+        'M12 22a10 10 0 1 1 10-10c0 3-2.5 3-4 3h-1a3 3 0 0 0-3 3v1 M7 10h.01 M12 7h.01 M17 10h.01',
+
+    fullscreen: 'M4 4h6v2H6v4H4z M20 20h-6v-2h4v-4h2z',
+};
+
+/** Tek tip buton */
+function IconButton({
+                        title,
+                        active,
+                        onClick,
+                        children,
+                    }: {
+    title: string;
+    active?: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
         <button
-            onClick={() => focusTab(tab)}
-            className={`p-2 text-gray-200 hover:text-white transition ${
-                active === tab ? 'text-emerald-300' : ''
-            }`}
+            type="button"
+            onClick={onClick}
             title={title}
             aria-label={title}
+            className={[
+                'w-12 h-12 flex items-center justify-center rounded-full transition',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
+                active
+                    ? 'text-teal-300 bg-white/5 shadow-[0_0_0_1px_rgba(255,255,255,.12)]'
+                    : 'text-gray-300 hover:text-white hover:bg-white/5',
+            ].join(' ')}
         >
             {children}
         </button>
-    )
+    );
+}
+
+export default function Sidebar({ isOpen, onToggle }: Props) {
+    const [active, setActive] = useState<
+        'participants' | 'sub' | 'settings' | 'theme'
+    >('participants');
+    const [full, setFull] = useState(false);
+
+    const ensureOpen = () => {
+        if (!isOpen) onToggle();
+    };
+
+    if (full) {
+        return (
+            <>
+                <button
+                    onClick={() => setFull(false)}
+                    className="fixed bottom-3 left-3 z-[60] w-12 h-12 rounded-full border border-white/25 text-white bg-[#0f1217]/95 hover:bg-[#0f1217] focus:outline-none"
+                    title="Tam ekrandan çık"
+                >
+                    <Icon d={PATH.chevronL} />
+                </button>
+            </>
+        );
+    }
 
     return (
         <div className="flex">
-            {/* İkon rayı – her zaman görünür, siyah arka plan */}
-            <nav className="flex flex-col justify-between bg-black w-16 p-3">
-                <div className="flex flex-col items-center gap-5">
-                    {/* Üstte AÇ/KAPA OKU (ray ile aynı hizada) */}
-                    <button
-                        onClick={onToggle}
-                        title={isOpen ? 'Kapat' : 'Aç'}
-                        aria-label={isOpen ? 'Kapat' : 'Aç'}
-                        className="mb-2 p-2 text-gray-200 hover:text-white"
-                    >
-                        {isOpen ? '❮' : '❯'}
-                    </button>
+            <nav
+                className="
+          relative z-40 flex flex-col items-center
+          w-16 py-3
+          bg-[#222831]
+          text-white
+          shadow-[inset_-1px_0_0_0_rgba(255,255,255,.06)]
+        "
+            >
+                <button
+                    onClick={onToggle}
+                    title={isOpen ? 'Sidebari kapat' : 'Sidebari aç'}
+                    className="mb-4 w-12 h-12 flex items-center justify-center rounded-full border border-white/25 hover:bg-white/10 focus:outline-none transition"
+                >
+                    <Icon
+                        d={PATH.chevronL}
+                        className={`w-7 h-7 transition ${isOpen ? '' : 'rotate-180'}`}
+                    />
+                </button>
 
-                    <TabBtn tab="participants" title="Katılımcılar">
-                        <Icon.Users className="w-7 h-7" />
-                    </TabBtn>
-                    <TabBtn tab="info" title="Alt Turnuva Bilgileri">
-                        <Icon.Info className="w-6 h-6" />
-                    </TabBtn>
-                    <TabBtn tab="settings" title="Ayarlar">
-                        <Icon.Cog className="w-6 h-6" />
-                    </TabBtn>
-                    <TabBtn tab="theme" title="Şablon & Renk">
-                        <Icon.Palette className="w-7 h-7" />
-                    </TabBtn>
+                <div className="flex flex-col items-center gap-4">
+                    <IconButton
+                        title="Katılımcılar"
+                        active={active === 'participants'}
+                        onClick={() => {
+                            ensureOpen();
+                            setActive('participants');
+                        }}
+                    >
+                        <Icon d={PATH.users} />
+                    </IconButton>
+
+                    <IconButton
+                        title="Alt Turnuva Bilgileri"
+                        active={active === 'sub'}
+                        onClick={() => {
+                            ensureOpen();
+                            setActive('sub');
+                        }}
+                    >
+                        <Icon d={PATH.info} />
+                    </IconButton>
+
+                    <IconButton
+                        title="Ayarlar"
+                        active={active === 'settings'}
+                        onClick={() => {
+                            ensureOpen();
+                            setActive('settings');
+                        }}
+                    >
+                        <Icon d={PATH.cog} />
+                    </IconButton>
+
+                    <IconButton
+                        title="Şablon & Renk"
+                        active={active === 'theme'}
+                        onClick={() => {
+                            ensureOpen();
+                            setActive('theme');
+                        }}
+                    >
+                        <Icon d={PATH.palette} />
+                    </IconButton>
                 </div>
 
-                {/* YouTube tarzı tam ekran */}
-                <button
-                    onClick={goFullscreen}
-                    className="p-2 text-gray-300 hover:text-white transition self-center"
-                    title="Tam Ekran"
-                    aria-label="Tam Ekran"
-                >
-                    <Icon.Full className="w-7 h-7" />
-                </button>
+                <div className="mt-auto">
+                    <IconButton title="Tam ekran" onClick={() => setFull(true)}>
+                        <Icon d={PATH.fullscreen} />
+                    </IconButton>
+                </div>
             </nav>
 
-            {/* İçerik paneli – sadece isOpen true iken */}
             {isOpen && (
-                <div className="bg-[#2d3038] p-4 w-72">
+                <div className="bg-[#2a303a] text-slate-100 p-4 w-72 z-30">
                     {active === 'participants' && <ParticipantsPanel />}
-                    {active === 'info'         && <SubTournamentSettingsPanel />}
-                    {active === 'settings'     && <SettingsPanel />}
-                    {active === 'theme'        && <ThemePanel />}
+                    {active === 'sub' && <SubTournamentSettingsPanel />}
+                    {active === 'settings' && <SettingsPanel />}
+                    {active === 'theme' && <ThemePanel />}
                 </div>
             )}
         </div>
-    )
+    );
 }

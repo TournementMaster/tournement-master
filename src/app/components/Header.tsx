@@ -1,140 +1,145 @@
-import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/useAuth'
+import { useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
 
-interface Props {
-    showCreate:    boolean
-    showSave:      boolean
-    bracketTitle?: string
-}
+/**
+ * Header artık kendi içinde:
+ * - "Turnuva Oluştur" / "Alt Turnuva Oluştur" butonunun gösterilmesi ve navigasyonu
+ * - Bracket sayfasında ortada alt turnuva başlığını gösterme (query ?title=…)
+ * - Sağda login/avatar menüsü
+ * - Arka plan (mor→yeşil, soluk) ve ikonlar
+ *
+ * Not: Dışarıdan yalnızca showSave (bracket’ta) gelmesi yeterli.
+ */
+export default function Header({ showSave = false }: { showSave?: boolean }) {
+    const { isAuth, logout } = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const [menu, setMenu] = useState(false);
+    const [sp] = useSearchParams();
 
-export default function Header({ showCreate, showSave, bracketTitle }: Props) {
-    const { isAuth, logout } = useAuth()
-    const navigate = useNavigate()
-    const location = useLocation()
-    const [menu, setMenu] = useState(false)
+    const pathname = location.pathname;
+    const isDashboard = pathname === '/';
+    const isBracket = pathname.startsWith('/bracket');
+    const isSubList = pathname.startsWith('/tournements/');
 
-    const onBracket = location.pathname.startsWith('/bracket')
-    const onSubList = location.pathname.startsWith('/tournements')
+    // Bracket sayfası için ortadaki başlık (query ?title=…)
+    const centerTitle = isBracket ? (sp.get('title') ?? '') : '';
 
-    // “Turnuva Oluştur” düğmesi için metin
-    const createLabel = (onBracket || onSubList) ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur'
+    // Oluştur butonu sadece dashboard ve alt turnuva listesinde görünür
+    const showCreateBtn = isDashboard || isSubList;
+    const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur';
 
     const onCreate = () => {
         if (!isAuth) {
-            alert('Lütfen giriş yapın.')
-            return
+            navigate('/login');
+            return;
         }
-
-        if (location.pathname === '/') {
-            // Ana dashboard → ana turnuva oluştur
-            navigate('/create?mode=main')
-            return
+        if (isSubList) {
+            // Ana turnuva ID query’de parent olarak geliyor
+            const parentId = Number(new URLSearchParams(location.search).get('parent') || '0') || undefined;
+            if (!parentId) {
+                alert('Ana turnuva ID bulunamadı.');
+                return;
+            }
+            navigate(`/create?mode=sub&parent=${parentId}`);
+        } else {
+            navigate('/create?mode=main');
         }
-
-        if (onSubList) {
-            // /tournements/:public_slug?parent=<id>
-            const sp = new URLSearchParams(location.search)
-            const parent = sp.get('parent')
-            navigate(`/create?mode=sub${parent ? `&parent=${parent}` : ''}`)
-            return
-        }
-
-        if (onBracket) {
-            // Bracket içinden alt turnuva
-            navigate('/create?mode=sub')
-            return
-        }
-
-        navigate('/create?mode=main')
-    }
+    };
 
     return (
         <header
-            className={[
-                'relative flex items-center h-16 sm:h-20 px-4 sm:px-8',
-                // Solda hafif yeşil → sağda mor, göz yormayan
-                'bg-gradient-to-r from-emerald-300/18 via-emerald-300/10 to-violet-400/22',
-                'backdrop-blur-[1px]',
-            ].join(' ')}
+            className="relative z-50 h-16 px-6 flex items-center"
+            style={{
+                background:
+                    'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
+                backdropFilter: 'blur(2px)',
+            }}
         >
-            {/* Sol: logo + oluştur */}
-            <div className="flex items-center gap-4 sm:gap-6">
-                <Link to="/" className="text-2xl sm:text-3xl font-extrabold text-white">
+            {/* Sol taraf – Logo */}
+            <div className="flex items-center gap-3">
+                <Link to="/" className="text-2xl font-extrabold text-white">
                     Easy Tournament
                 </Link>
 
-                {showCreate && (
+                {/* Oluştur butonu (sadece dashboard veya /tournements/… de) */}
+                {showCreateBtn && (
                     <button
                         onClick={onCreate}
-                        disabled={!isAuth}
-                        className={`inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-white text-sm font-semibold
-              ${isAuth ? 'bg-blue-600 hover:bg-blue-500' : 'bg-blue-600/50 cursor-not-allowed'}
-            `}
-                        title={createLabel}
+                        className="ml-2 inline-flex items-center gap-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-2 text-sm font-semibold shadow"
                     >
-                        <span aria-hidden>＋</span>
+                        <span className="text-lg leading-none">＋</span>
                         {createLabel}
                     </button>
                 )}
             </div>
 
-            {/* Ortada: alt turnuva başlığı (varsa) */}
-            {bracketTitle && (
-                <div className="absolute left-1/2 -translate-x-1/2 text-base sm:text-xl font-semibold text-white/90 tracking-wide">
-                    {bracketTitle}
+            {/* Ortadaki başlık – bracket sayfasında alt turnuva başlığı */}
+            {isBracket && !!centerTitle && (
+                <div className="absolute inset-x-0 flex justify-center pointer-events-none">
+                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none">
+                        {centerTitle}
+                    </div>
                 </div>
             )}
 
-            {/* Sağ: Kaydet + profil */}
-            <div className="ml-auto flex items-center gap-3 sm:gap-6">
+            {/* Sağ taraf – Kaydet & Login/Avatar */}
+            <div className="ml-auto flex items-center gap-3">
                 {showSave && (
                     <button
                         onClick={() => alert('Kaydedildi!')}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow"
-                        title="Kaydet"
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 font-semibold shadow"
                     >
-                        {/* Disket simgesi */}
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M3 7v14h18V7l-4-4H7L3 7z"/><path d="M7 7h10v7H7z"/><path d="M7 21V14h10v7"/>
-                        </svg>
+                        <span className="text-lg leading-none">💾</span>
                         Kaydet
                     </button>
                 )}
 
-                <div className="relative">
-                    <img
-                        src="https://placehold.co/40x40"
-                        alt="avatar"
-                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-white cursor-pointer"
-                        onClick={() => setMenu(m => !m)}
-                    />
-                    {menu && (
-                        <div
-                            onMouseLeave={() => setMenu(false)}
-                            className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden"
-                        >
-                            <Link
-                                to="/"
-                                onClick={() => setMenu(false)}
-                                className="block px-4 py-2 hover:bg-gray-100 text-gray-800"
+                {/* Giriş yapılmamışsa: mavi "Giriş Yap" butonu */}
+                {!isAuth ? (
+                    <Link
+                        to="/login"
+                        className="px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold"
+                    >
+                        Giriş Yap
+                    </Link>
+                ) : (
+                    // Giriş yapılmışsa: avatar + menü
+                    <div className="relative">
+                        <img
+                            src="https://placehold.co/40x40"
+                            alt="avatar"
+                            className="w-10 h-10 rounded-full border-2 border-white cursor-pointer"
+                            onClick={() => setMenu((m) => !m)}
+                        />
+                        {menu && (
+                            <div
+                                className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]"
+                                onMouseLeave={() => setMenu(false)}
                             >
-                                Dashboard
-                            </Link>
-                            <button
-                                onClick={() => {
-                                    logout()
-                                    setMenu(false)
-                                    navigate('/login', { replace: true })
-                                }}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800"
-                            >
-                                Çıkış Yap
-                            </button>
-                        </div>
-                    )}
-                </div>
+                                <Link
+                                    to="/"
+                                    onClick={() => setMenu(false)}
+                                    className="block px-4 py-2 hover:bg-gray-100 text-gray-800"
+                                >
+                                    Dashboard
+                                </Link>
+                                <button
+                                    onClick={() => {
+                                        logout();
+                                        setMenu(false);
+                                        navigate('/login', { replace: true });
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800"
+                                >
+                                    Çıkış Yap
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </header>
-    )
+    );
 }
