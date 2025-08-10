@@ -2,15 +2,14 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 
-/**
- * Header artık kendi içinde:
- * - "Turnuva Oluştur" / "Alt Turnuva Oluştur" butonunun gösterilmesi ve navigasyonu
- * - Bracket sayfasında ortada alt turnuva başlığını gösterme (query ?title=…)
- * - Sağda login/avatar menüsü
- * - Arka plan (mor→yeşil, soluk) ve ikonlar
- *
- * Not: Dışarıdan yalnızca showSave (bracket’ta) gelmesi yeterli.
- */
+function todayTR() {
+    const d = new Date()
+    const day = d.getDate()
+    const month = d.toLocaleDateString('tr-TR', { month: 'long' })
+    // "21 Ağustos"
+    return `${day} ${month[0].toUpperCase()}${month.slice(1)}`
+}
+
 export default function Header({ showSave = false }: { showSave?: boolean }) {
     const { isAuth, logout } = useAuth();
     const navigate = useNavigate();
@@ -23,25 +22,15 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const isBracket = pathname.startsWith('/bracket');
     const isSubList = pathname.startsWith('/tournements/');
 
-    // Bracket sayfası için ortadaki başlık (query ?title=…)
     const centerTitle = isBracket ? (sp.get('title') ?? '') : '';
-
-    // Oluştur butonu sadece dashboard ve alt turnuva listesinde görünür
     const showCreateBtn = isDashboard || isSubList;
     const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur';
 
     const onCreate = () => {
-        if (!isAuth) {
-            navigate('/login');
-            return;
-        }
+        if (!isAuth) { navigate('/login'); return; }
         if (isSubList) {
-            // Ana turnuva ID query’de parent olarak geliyor
             const parentId = Number(new URLSearchParams(location.search).get('parent') || '0') || undefined;
-            if (!parentId) {
-                alert('Ana turnuva ID bulunamadı.');
-                return;
-            }
+            if (!parentId) { alert('Ana turnuva ID bulunamadı.'); return; }
             navigate(`/create?mode=sub&parent=${parentId}`);
         } else {
             navigate('/create?mode=main');
@@ -57,13 +46,11 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 backdropFilter: 'blur(2px)',
             }}
         >
-            {/* Sol taraf – Logo */}
             <div className="flex items-center gap-3">
                 <Link to="/" className="text-2xl font-extrabold text-white">
                     Easy Tournament
                 </Link>
 
-                {/* Oluştur butonu (sadece dashboard veya /tournements/… de) */}
                 {showCreateBtn && (
                     <button
                         onClick={onCreate}
@@ -75,16 +62,14 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 )}
             </div>
 
-            {/* Ortadaki başlık – bracket sayfasında alt turnuva başlığı */}
             {isBracket && !!centerTitle && (
                 <div className="absolute inset-x-0 flex justify-center pointer-events-none">
                     <div className="px-3 py-1 rounded text-white/90 font-semibold select-none">
-                        {centerTitle}
+                        {centerTitle} <span className="opacity-80">· {todayTR()}</span>
                     </div>
                 </div>
             )}
 
-            {/* Sağ taraf – Kaydet & Login/Avatar */}
             <div className="ml-auto flex items-center gap-3">
                 {showSave && (
                     <button
@@ -96,7 +81,6 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                     </button>
                 )}
 
-                {/* Giriş yapılmamışsa: mavi "Giriş Yap" butonu */}
                 {!isAuth ? (
                     <Link
                         to="/login"
@@ -105,7 +89,6 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                         Giriş Yap
                     </Link>
                 ) : (
-                    // Giriş yapılmışsa: avatar + menü
                     <div className="relative">
                         <img
                             src="https://placehold.co/40x40"

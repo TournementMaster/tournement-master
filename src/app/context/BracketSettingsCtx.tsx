@@ -1,8 +1,12 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
 export interface BracketSettings {
-    double:     boolean;   // Çift taraflı
-    showScores: boolean;   // Puanları göster
+    showScores: boolean;                 // skor açıkken time/court görünmez
+    showTime:   boolean;                 // skor kapalı + açık ise time yaz
+    showCourt:  boolean;                 // skor kapalı + açık ise court yaz
+    showSeeds:  boolean;                 // seed numarasını kutu dışında göster
+    placementMap: Record<number,number>|null; // seed → slotSeed yerleştirme
+    version:    number;                  // yeniden çizim tetikleyici
 }
 
 const Ctx = createContext<{
@@ -12,8 +16,12 @@ const Ctx = createContext<{
 
 export function BracketSettingsProvider({ children }: { children: ReactNode }) {
     const [settings, setSettings] = useState<BracketSettings>({
-        double: false,
         showScores: true,
+        showTime:   true,
+        showCourt:  true,
+        showSeeds:  true,
+        placementMap: null,
+        version:    0,
     });
     return (
         <Ctx.Provider value={{ settings, set: p => setSettings(s => ({ ...s, ...p })) }}>

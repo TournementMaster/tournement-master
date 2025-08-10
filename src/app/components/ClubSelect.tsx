@@ -4,20 +4,18 @@ import type { Club } from '../models/Club'
 import ClubModal from './ClubModal'
 
 interface ClubSelectProps {
-    selected: string
+    selected: string // '' = yok
     onChange: (club: string) => void
 }
 
-/** Siyah temaya uygun, "Yok" seçeneği olan dropdown + yeni kulüp oluşturma modalı */
 export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
-    const [clubs, setClubs]         = useState<Club[]>([])
-    const [open, setOpen]           = useState(false)
-    const [query, setQuery]         = useState(selected || 'Yok')
+    const [clubs, setClubs] = useState<Club[]>([])
+    const [open, setOpen] = useState(false)
+    const [query, setQuery] = useState('') // <<< 'Yok' yerine boş
     const [showModal, setShowModal] = useState(false)
-    const [busy, setBusy]           = useState(false)
+    const [busy, setBusy] = useState(false)
     const boxRef = useRef<HTMLDivElement>(null)
 
-    // Dış tıklama
     useEffect(() => {
         function handleClick(e: Event) {
             if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
@@ -26,7 +24,6 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
         return () => document.removeEventListener('mousedown', handleClick)
     }, [])
 
-    // ESC
     useEffect(() => {
         function handleKey(e: globalThis.KeyboardEvent) {
             if (e.key === 'Escape') { setOpen(false); setShowModal(false) }
@@ -35,7 +32,6 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
         return () => window.removeEventListener('keydown', handleKey)
     }, [])
 
-    // API
     useEffect(() => {
         ;(async () => {
             try {
@@ -45,15 +41,14 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
         })()
     }, [])
 
-    useEffect(() => setQuery(selected || 'Yok'), [selected])
+    // Dışarıdan seçilen değer değişirse input'u eşitle ('' ise boş kalsın)
+    useEffect(() => setQuery(selected), [selected])
 
     const filtered = useMemo(() => {
         const term = query.trim().toLowerCase()
         const base = clubs
         return term ? base.filter(c => c.name.toLowerCase().includes(term)) : base
     }, [clubs, query])
-
-    const noMatch = query.trim().length > 0 && filtered.length === 0
 
     const handleCreate = async (name: string, city: string) => {
         setBusy(true)
@@ -70,7 +65,7 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
 
     const handleRemove = (club: Club) => {
         setClubs(prev => prev.filter(c => c.id !== club.id))
-        if (selected === club.name) { onChange('Yok'); setQuery('Yok') }
+        if (selected === club.name) { onChange(''); setQuery('') }
     }
 
     return (
@@ -90,12 +85,12 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
                 <div className="absolute z-20 mt-1 w-full rounded bg-[#0b0b0b] border border-white/10 max-h-56 overflow-auto shadow-xl">
                     <button
                         className="w-full text-left px-3 py-2 hover:bg-emerald-900/30 text-white"
-                        onClick={() => { onChange('Yok'); setQuery('Yok'); setOpen(false) }}
+                        onClick={() => { onChange(''); setQuery(''); setOpen(false) }}
                     >
-                        Yok
+                        (Kulüp yok)
                     </button>
 
-                    {!noMatch && filtered.map(c => (
+                    {filtered.map(c => (
                         <button
                             key={c.id}
                             className="w-full text-left px-3 py-2 hover:bg-emerald-900/30 text-white"

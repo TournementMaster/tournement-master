@@ -2,13 +2,18 @@
 import { useContext } from 'react'
 import { PlayersContext } from '../context/BracketPlayersCtx'
 
-// Hook’un dışarı sunduğu tip
-export interface PlayersCtx {
-    players: string[]
-    setPlayers: (players: string[]) => void
+// Katılımcı tipi (seed ve kulüp içerir)
+export interface Participant {
+    name: string
+    club?: string
+    seed: number
 }
 
-// Gerçek hook: Provider içinde kullanılmalı
+export interface PlayersCtx {
+    players: Participant[]
+    setPlayers: (players: Participant[]) => void
+}
+
 export function usePlayers(): PlayersCtx {
     const ctx = useContext(PlayersContext)
     if (!ctx) {

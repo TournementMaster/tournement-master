@@ -1,29 +1,26 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { usePlayers } from '../hooks/usePlayers'
 import ClubSelect from './ClubSelect'
 
 export default function ParticipantsPanel() {
-    const { setPlayers } = usePlayers()
+    const { players, setPlayers } = usePlayers()
 
     const [inputName, setInputName] = useState('')
-    const [list, setList]           = useState<string[]>([])
-    const [club, setClub]           = useState('Yok') // varsayılan
-
-    // Liste değiştikçe şablona uygula
-    useEffect(() => {
-        setPlayers(list)
-    }, [list, setPlayers])
+    const [club, setClub] = useState('') // boş = kulüp yok
 
     const handleAdd = (e: FormEvent) => {
         e.preventDefault()
         const name = inputName.trim()
         if (!name) return
-        if (!club) {
-            alert('Lütfen kulüp seçin veya "Yok" seçeneğini belirleyin.')
-            return
-        }
-        setList(prev => [...prev, name])
+        const nextSeed = players.length + 1
+        setPlayers([...players, { name, club: club || undefined, seed: nextSeed }])
         setInputName('')
+    }
+
+    const removeAt = (idx: number) => {
+        const rest = players.filter((_, i) => i !== idx)
+        const reseeded = rest.map((p, i) => ({ ...p, seed: i + 1 }))
+        setPlayers(reseeded)
     }
 
     return (
@@ -47,19 +44,21 @@ export default function ParticipantsPanel() {
             </form>
 
             <div className="space-y-1 max-h-[calc(100vh-260px)] overflow-auto pr-1">
-                {list.map((n, i) => (
-                    <div key={`${n}-${i}`} className="flex justify-between bg-[#14161c] px-3 py-1.5 rounded">
-                        <span className="team-text">{n}</span>
+                {players.map((p, i) => (
+                    <div key={`${p.name}-${p.seed}`} className="flex justify-between bg-[#14161c] px-3 py-1.5 rounded">
+            <span className="team-text">
+              #{p.seed} — {p.name} {p.club ? <em className="text-gray-400">· {p.club}</em> : null}
+            </span>
                         <button
-                            onClick={() => setList(l => l.filter((_, idx) => idx !== i))}
+                            onClick={() => removeAt(i)}
                             className="text-red-400 hover:text-red-200"
-                            aria-label={`${n} sil`}
+                            aria-label={`${p.name} sil`}
                         >
                             ✕
                         </button>
                     </div>
                 ))}
-                {list.length === 0 && (
+                {players.length === 0 && (
                     <p className="text-sm text-gray-500">Henüz sporcu eklenmedi.</p>
                 )}
             </div>

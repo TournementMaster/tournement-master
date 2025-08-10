@@ -1,6 +1,14 @@
 /* =========================================================================
-   MATCH MODAL – sade “Report Scores” (Match Info yok)
-   – + ADD SET sorunsuz çalışır
+   MATCH MODAL – skor + (time/court girişi)
+   - İsimler sadece görüntülenir (değiştirilemez)
+   - Set sayısı: min 1, max 3
+   - Time normalizasyonu:
+       "14"   → 14.00
+       "9.3"  → 09.30
+       "9.4"  → 09.40
+       "9:5"  → 09.50
+       "07,45"→ 07.45
+   Not: Meta tipinde time/court alanları olmalı (hooks/useBracket.tsx → Meta).
    ========================================================================= */
 import ReactDOM from 'react-dom';
 import { useState } from 'react';
@@ -12,97 +20,184 @@ interface Props {
     onClose: () => void;
 }
 
-export default function MatchModal({ match, onSave, onClose }: Props) {
-    /* ---------- state ---------- */
-    const [names,  setNames]  = useState<[string,string]>([
-        match.players[0].name,
-        match.players[1].name,
-    ]);
+/** normalize "9.3","9:3","14","07,45" → "09.30","09.30","14.00","07.45" */
+function normalizeTime(input: string): string {
+    const raw = input.trim();
+    if (!raw) return '';
 
-    const [scores, setScores] = useState<[string,string][]>(
+    let s = raw.replace(',', ':').replace('.', ':');
+    if (!s.includes(':')) s = `${s}:`;
+
+    const [hStr, mStrRaw = ''] = s.split(':');
+
+    let h = parseInt(hStr || '0', 10);
+    let m: number;
+
+    if (mStrRaw === '') m = 0;
+    else if (/^\d$/.test(mStrRaw)) m = parseInt(mStrRaw, 10) * 10; // 3 → 30, 4 → 40
+    else m = parseInt(mStrRaw.slice(0, 2), 10);
+
+    if (Number.isNaN(h)) h = 0;
+    if (Number.isNaN(m)) m = 0;
+
+    h = Math.max(0, Math.min(23, h));
+    m = Math.max(0, Math.min(59, m));
+
+    return `${String(h).padStart(2, '0')}.${String(m).padStart(2, '0')}`;
+}
+
+export default function MatchModal({ match, onSave, onClose }: Props) {
+    // isimler read-only
+    const names: [string, string] = [match.players[0].name, match.players[1].name];
+
+    const [scores, setScores] = useState<[string, string][]>(
         match.meta?.scores?.length
-            ? match.meta!.scores.map(([a,b])=>[String(a),String(b)])
-            : [['','']]
+            ? match.meta!.scores.map(([a, b]) => [String(a), String(b)])
+            : [['', '']]
     );
 
-    const [manual, setManual] = useState<0|1|undefined>(match.meta?.manual);
+    const [manual, setManual] = useState<0 | 1 | undefined>(match.meta?.manual);
+    const [timeRaw, setTimeRaw] = useState(match.meta?.time ?? '');
+    const [court, setCourt] = useState(match.meta?.court ?? '');
 
-    /* ---------- handlers ---------- */
-    const addSet = () => setScores(prev=>[...prev,['','']]);
+    const addSet = () =>
+        setScores(prev => (prev.length < 3 ? [...prev, ['', '']] : prev));
+
+    const removeLastSet = () =>
+        setScores(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
 
     const save = () => {
-        const parsed : [number,number][] = scores.map(([a,b])=>[
-            Number(a)||0, Number(b)||0,
+        const parsed: [number, number][] = scores.map(([a, b]) => [
+            Number(a) || 0,
+            Number(b) || 0,
         ]);
-        const meta:Meta = { teamNames:names, scores:parsed, manual };
+
+        const t = timeRaw ? normalizeTime(timeRaw) : undefined;
+
+        const meta: Meta = {
+            scores: parsed,
+            manual,
+            time: t,
+            court: court || undefined,
+        };
         onSave(meta);
     };
 
-    /* ---------- render ---------- */
     return ReactDOM.createPortal(
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-            <div className="bg-[#3c3e46] rounded w-[550px] text-gray-100">
+            <div className="bg-[#3c3e46] rounded w-[600px] text-gray-100">
                 <header className="flex justify-between px-6 py-4 border-b border-white/10">
                     <h2 className="text-lg font-semibold">Report Scores</h2>
                     <button onClick={onClose}>✕</button>
                 </header>
 
                 <section className="p-6 space-y-6">
-                    {[0,1].map(idx=>(
+                    {/* iki takım satırı */}
+                    {[0, 1].map(idx => (
                         <div key={idx} className="flex items-center gap-4">
               <span className="w-6 text-right opacity-60">
                 {match.players[idx].seed}
               </span>
 
+                            {/* isimler değiştirilemez */}
                             <input
                                 value={names[idx]}
-                                onChange={e=>{
-                                    const v=e.target.value.slice(0,24);
-                                    setNames(t=>idx?[t[0],v]:[v,t[1]]);
-                                }}
-                                className="flex-1 bg-[#262930] px-3 py-2 rounded"
+                                disabled
+                                className="flex-1 bg-[#262930] px-3 py-2 rounded opacity-70"
                             />
 
-                            <input type="radio" name="winner"
-                                   checked={manual===idx}
-                                   onChange={()=>setManual(idx as 0|1)} />
+                            <input
+                                type="radio"
+                                name="winner"
+                                checked={manual === idx}
+                                onChange={() => setManual(idx as 0 | 1)}
+                                title="Kazananı elle işaretle"
+                            />
 
-                            {scores.map((set,setIdx)=>(
-                                <input key={setIdx}
-                                       value={set[idx]}
-                                       onChange={e=>{
-                                           const v=e.target.value.replace(/\D/g,'').slice(0,2);
-                                           setScores(arr=>{
-                                               const copy=[...arr] as [string,string][];
-                                               copy[setIdx] = idx
-                                                   ? [copy[setIdx][0], v]
-                                                   : [v, copy[setIdx][1]];
-                                               return copy;
-                                           });
-                                       }}
-                                       className="w-12 text-center bg-[#262930] px-1 py-2 rounded"/>
+                            {scores.map((set, setIdx) => (
+                                <input
+                                    key={setIdx}
+                                    value={set[idx]}
+                                    onChange={e => {
+                                        const v = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                        setScores(arr => {
+                                            const copy = [...arr] as [string, string][];
+                                            copy[setIdx] = idx
+                                                ? [copy[setIdx][0], v]
+                                                : [v, copy[setIdx][1]];
+                                            return copy;
+                                        });
+                                    }}
+                                    className="w-12 text-center bg-[#262930] px-1 py-2 rounded"
+                                />
                             ))}
                         </div>
                     ))}
 
-                    <button onClick={addSet}
-                            className="text-blue-400 hover:underline text-sm">
-                        + ADD SET
-                    </button>
+                    {/* set ekle / kaldır (min 1, max 3) */}
+                    <div className="flex items-center gap-3">
+                        <button onClick={addSet} className="text-blue-400 hover:underline text-sm">
+                            + ADD SET
+                        </button>
+                        <button
+                            onClick={removeLastSet}
+                            disabled={scores.length <= 1}
+                            className="text-sm px-3 py-1.5 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Son seti kaldır"
+                        >
+                            Remove last set
+                        </button>
+                    </div>
+
+                    {/* time & court */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block mb-1 text-sm">Time</label>
+                            <input
+                                value={timeRaw}
+                                onChange={e => setTimeRaw(e.target.value)}
+                                onBlur={() => timeRaw && setTimeRaw(normalizeTime(timeRaw))}
+                                placeholder="14.00"
+                                className="w-full bg-[#262930] px-3 py-2 rounded"
+                                inputMode="numeric"
+                            />
+                            <p className="text-xs text-gray-300 mt-1">
+                                Örn: 14, 9.3, 9:4, 07,45 → 14.00 / 09.30 / 09.40 / 07.45
+                            </p>
+                        </div>
+                        <div>
+                            <label className="block mb-1 text-sm">Court #</label>
+                            <input
+                                value={court}
+                                onChange={e => setCourt(e.target.value.replace(/[^\w- ]/g, '').slice(0, 8))}
+                                placeholder="1"
+                                className="w-full bg-[#262930] px-3 py-2 rounded"
+                            />
+                        </div>
+                    </div>
 
                     <div className="flex justify-between pt-5">
-                        <button onClick={()=>setScores([['','']])}
-                                className="text-gray-300 hover:text-white text-sm">
-                            Reset Scores
+                        <button
+                            onClick={() => {
+                                setScores([['', '']]);
+                                setManual(undefined);
+                                setTimeRaw('');
+                                setCourt('');
+                            }}
+                            className="text-gray-300 hover:text-white text-sm"
+                        >
+                            Reset
                         </button>
-                        <button onClick={save}
-                                className="bg-sky-600 hover:bg-sky-700 px-6 py-2 rounded font-semibold">
-                            Submit Scores
+                        <button
+                            onClick={save}
+                            className="bg-sky-600 hover:bg-sky-700 px-6 py-2 rounded font-semibold"
+                        >
+                            Submit
                         </button>
                     </div>
                 </section>
             </div>
         </div>,
-        document.body,
+        document.body
     );
 }
