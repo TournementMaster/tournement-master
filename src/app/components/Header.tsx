@@ -6,7 +6,6 @@ function todayTR() {
     const d = new Date()
     const day = d.getDate()
     const month = d.toLocaleDateString('tr-TR', { month: 'long' })
-    // "21 Ağustos"
     return `${day} ${month[0].toUpperCase()}${month.slice(1)}`
 }
 
@@ -39,11 +38,11 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
 
     return (
         <header
-            className="relative z-50 h-16 px-6 flex items-center"
+            className="relative z-50 h-16 px-6 flex items-center header-fix"
             style={{
-                background:
-                    'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
+                background: 'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
                 backdropFilter: 'blur(2px)',
+                WebkitBackdropFilter: 'blur(2px)',
             }}
         >
             <div className="flex items-center gap-3">
@@ -82,10 +81,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 )}
 
                 {!isAuth ? (
-                    <Link
-                        to="/login"
-                        className="px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold"
-                    >
+                    <Link to="/login" className="px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold">
                         Giriş Yap
                     </Link>
                 ) : (
@@ -97,15 +93,8 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                             onClick={() => setMenu((m) => !m)}
                         />
                         {menu && (
-                            <div
-                                className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]"
-                                onMouseLeave={() => setMenu(false)}
-                            >
-                                <Link
-                                    to="/"
-                                    onClick={() => setMenu(false)}
-                                    className="block px-4 py-2 hover:bg-gray-100 text-gray-800"
-                                >
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]" onMouseLeave={() => setMenu(false)}>
+                                <Link to="/" onClick={() => setMenu(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">
                                     Dashboard
                                 </Link>
                                 <button
@@ -124,5 +113,5 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 )}
             </div>
         </header>
-    );
+    )
 }

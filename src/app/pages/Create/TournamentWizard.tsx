@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 
-
 export type Mode = 'main' | 'sub'
 export type Editor = { id: number; username: string }
 
@@ -19,8 +18,8 @@ export default function TournamentWizard({
     const qc = useQueryClient()
     const [sp] = useSearchParams()
 
-    const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main';
-    const editId = Number(sp.get('edit') || ''); //  ← EDIT ID
+    const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main'
+    const editId = Number(sp.get('edit') || '') //  ← EDIT ID
 
     // Ana turnuva alanları
     const [title, setTitle] = useState('')
@@ -33,30 +32,30 @@ export default function TournamentWizard({
     const [isPublic, setIsPublic] = useState(true)
 
     useEffect(() => {
-        if (mode !== 'main') return;
-        if (!Number.isFinite(editId) || editId <= 0) return;
+        if (mode !== 'main') return
+        if (!Number.isFinite(editId) || editId <= 0) return
 
-        (async () => {
+            ;(async () => {
             try {
-                const { data } = await api.get(`/tournaments/${editId}/`);
+                const { data } = await api.get(`/tournaments/${editId}/`)
                 // alanları doldur
-                setTitle(data.title ?? '');
-                setSeasonYear(String(data.season_year ?? ''));
-                setCity(data.city ?? '');
-                setVenue(data.venue ?? '');
-                setStartDate(data.start_date ?? '');
-                setEndDate(data.end_date ?? '');
-                setDescription(data.description ?? '');
-                setIsPublic(!!data.public);
+                setTitle(data.title ?? '')
+                setSeasonYear(String(data.season_year ?? ''))
+                setCity(data.city ?? '')
+                setVenue(data.venue ?? '')
+                setStartDate(data.start_date ?? '')
+                setEndDate(data.end_date ?? '')
+                setDescription(data.description ?? '')
+                setIsPublic(!!data.public)
                 // Editörler opsiyonel – yalnızca id listesi geldiyse doldur
                 if (Array.isArray(data.editors)) {
-                    setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })));
+                    setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })))
                 }
             } catch {
                 // data alınamazsa sessiz geç (yeni oluşturma gibi davranır)
             }
-        })();
-    }, [mode, editId]);
+        })()
+    }, [mode, editId])
 
     // Editör ekleme
     const [editorInput, setEditorInput] = useState('')
@@ -74,9 +73,7 @@ export default function TournamentWizard({
         }
         setBusyAdd(true)
         try {
-            const { data } = await api.get<{ id: number }>(
-                `users/lookup/${encodeURIComponent(u)}/`
-            )
+            const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`)
             if (!data || typeof data.id !== 'number') {
                 setFeedback('Beklenmeyen cevap.')
             } else if (data.id === -1) {
@@ -112,11 +109,8 @@ export default function TournamentWizard({
 
     // Adımlar
     const steps = useMemo(
-        () =>
-            mode === 'main'
-                ? (['Genel Bilgiler', 'Organizasyon', 'Özet'] as const)
-                : (['Genel Bilgiler', 'Özet'] as const),
-        [mode]
+        () => (mode === 'main' ? (['Genel Bilgiler', 'Organizasyon', 'Özet'] as const) : (['Genel Bilgiler', 'Özet'] as const)),
+        [mode],
     )
     const [step, setStep] = useState(0)
 
@@ -136,34 +130,21 @@ export default function TournamentWizard({
             return vTitle && ageOK && !!subParentId
         }
         return true
-    }, [
-        mode,
-        step,
-        steps,
-        title,
-        seasonYear,
-        startDate,
-        endDate,
-        subTitle,
-        ageMin,
-        ageMax,
-        subParentId,
-    ])
+    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageMin, ageMax, subParentId])
 
     async function save() {
         if (mode === 'main') {
-            const payload = { /* ... */ };
+            const payload = { /* ... */ }
 
             try {
-                await api.post('/tournaments/', payload);           // ← data alma, direkt bekle
-                await qc.invalidateQueries({ queryKey: ['tournaments'] });
-                navigate('/', { replace: true });                   // Dashboard
+                await api.post('/tournaments/', payload) // ← data alma, direkt bekle
+                await qc.invalidateQueries({ queryKey: ['tournaments'] })
+                navigate('/', { replace: true }) // Dashboard
             } catch {
-                alert('İşlem başarısız.');
+                alert('İşlem başarısız.')
             }
-            return;
+            return
         }
-
 
         // Alt turnuva
         if (!subParentId) {
@@ -189,6 +170,15 @@ export default function TournamentWizard({
         }
     }
 
+    // İlk adımda Geri → Dashboard, diğer adımlarda bir önceki adıma
+    const onBack = () => {
+        if (step === 0) {
+            navigate('/', { replace: true })
+        } else {
+            setStep(s => Math.max(0, s - 1))
+        }
+    }
+
     return (
         <div className="mx-auto max-w-5xl">
             {/* Başlık Çubuğu */}
@@ -197,14 +187,10 @@ export default function TournamentWizard({
                     <div>
                         <div className="text-xs uppercase text-gray-400">Turnuva Sihirbazı</div>
                         <h1 className="text-2xl font-bold">
-                            {mode === 'main'
-                                ? (editId ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur')
-                                : 'Alt Turnuva Oluştur'}
+                            {mode === 'main' ? (editId ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur') : 'Alt Turnuva Oluştur'}
                         </h1>
                     </div>
-                    <div className="text-sm text-gray-400">
-                        {step + 1}/{steps.length}
-                    </div>
+                    <div className="text-sm text-gray-400">{step + 1}/{steps.length}</div>
                 </div>
                 <div className="px-3 pb-3">
                     <div className="flex gap-2 flex-wrap">
@@ -212,11 +198,7 @@ export default function TournamentWizard({
                             <button
                                 key={s}
                                 onClick={() => setStep(i)}
-                                className={`px-3 py-1.5 rounded-full text-xs ${
-                                    i === step
-                                        ? 'bg-sky-600 text-white'
-                                        : 'bg-[#3a3f49] hover:bg-[#444956] text-gray-200'
-                                }`}
+                                className={`px-3 py-1.5 rounded-full text-xs ${i === step ? 'bg-sky-600 text-white' : 'bg-[#3a3f49] hover:bg-[#444956] text-gray-200'}`}
                             >
                                 {s}
                             </button>
@@ -232,37 +214,16 @@ export default function TournamentWizard({
                     {mode === 'main' && steps[step] === 'Genel Bilgiler' && (
                         <>
                             <div className="grid gap-6 md:grid-cols-2">
-                                <Labeled
-                                    label="Başlık"
-                                    value={title}
-                                    set={setTitle}
-                                    placeholder="2025 İstanbul Şampiyonası"
-                                />
-                                <Labeled
-                                    label="Sezon Yılı"
-                                    type="number"
-                                    value={seasonYear}
-                                    set={setSeasonYear}
-                                    placeholder="2025"
-                                />
+                                <Labeled label="Başlık" value={title} set={setTitle} placeholder="2025 İstanbul Şampiyonası" />
+                                <Labeled label="Sezon Yılı" type="number" value={seasonYear} set={setSeasonYear} placeholder="2025" />
                             </div>
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled label="Şehir" value={city} set={setCity} />
                                 <Labeled label="Mekan" value={venue} set={setVenue} />
                             </div>
                             <div className="grid gap-6 md:grid-cols-2">
-                                <Labeled
-                                    label="Başlangıç Tarihi"
-                                    type="date"
-                                    value={startDate}
-                                    set={setStartDate}
-                                />
-                                <Labeled
-                                    label="Bitiş Tarihi"
-                                    type="date"
-                                    value={endDate}
-                                    set={setEndDate}
-                                />
+                                <Labeled label="Başlangıç Tarihi" type="date" value={startDate} set={setStartDate} />
+                                <Labeled label="Bitiş Tarihi" type="date" value={endDate} set={setEndDate} />
                             </div>
                             <TextArea label="Açıklama" value={description} set={setDescription} />
                             <Toggle checked={isPublic} onChange={setIsPublic}>Public</Toggle>
@@ -275,16 +236,8 @@ export default function TournamentWizard({
                             <div>
                                 <label className="block text-sm mb-1">Editör Ekle (kullanıcı adı)</label>
                                 <div className="flex gap-2">
-                                    <input
-                                        value={editorInput}
-                                        onChange={e => setEditorInput(e.target.value)}
-                                        className="flex-1 bg-[#1f2229] rounded px-3 py-2"
-                                    />
-                                    <button
-                                        disabled={busyAdd || !editorInput.trim()}
-                                        onClick={addEditor}
-                                        className="px-3 py-2 rounded bg-sky-600 disabled:opacity-50"
-                                    >
+                                    <input value={editorInput} onChange={e => setEditorInput(e.target.value)} className="flex-1 bg-[#1f2229] rounded px-3 py-2" />
+                                    <button disabled={busyAdd || !editorInput.trim()} onClick={addEditor} className="px-3 py-2 rounded bg-sky-600 disabled:opacity-50">
                                         Ekle
                                     </button>
                                 </div>
@@ -299,10 +252,7 @@ export default function TournamentWizard({
                                         {editors.map((e, i) => (
                                             <li key={i} className="flex items-center justify-between text-sm">
                                                 <span>{e.username}</span>
-                                                <button
-                                                    onClick={() => setEditors(list => list.filter((_, idx) => idx !== i))}
-                                                    className="rounded bg-gray-700 px-2 py-0.5 text-xs"
-                                                >
+                                                <button onClick={() => setEditors(list => list.filter((_, idx) => idx !== i))} className="rounded bg-gray-700 px-2 py-0.5 text-xs">
                                                     Kaldır
                                                 </button>
                                             </li>
@@ -317,26 +267,11 @@ export default function TournamentWizard({
                     {mode === 'sub' && steps[step] === 'Genel Bilgiler' && (
                         <>
                             <Labeled label="Alt Turnuva Başlığı" value={subTitle} set={setSubTitle} />
-                            <LabeledSelect
-                                label="Cinsiyet"
-                                value={gender}
-                                set={setGender}
-                                options={{ M: 'Erkek', F: 'Kadın', O: 'Karma' }}
-                            />
+                            <LabeledSelect label="Cinsiyet" value={gender} set={setGender} options={{ M: 'Erkek', F: 'Kadın', O: 'Karma' }} />
                             <TextArea label="Açıklama" value={subDesc} set={setSubDesc} />
                             <div className="grid gap-6 md:grid-cols-2">
-                                <Labeled
-                                    label="Yaş Min"
-                                    type="number"
-                                    value={ageMin}
-                                    set={setAgeMin}
-                                />
-                                <Labeled
-                                    label="Yaş Max"
-                                    type="number"
-                                    value={ageMax}
-                                    set={setAgeMax}
-                                />
+                                <Labeled label="Yaş Min" type="number" value={ageMin} set={setAgeMin} />
+                                <Labeled label="Yaş Max" type="number" value={ageMax} set={setAgeMax} />
                             </div>
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled label="Kilo Min (kg)" value={weightMin} set={setWeightMin} />
@@ -350,50 +285,22 @@ export default function TournamentWizard({
                     {steps[step] === 'Özet' && (
                         <SummaryCard
                             mode={mode}
-                            propsMain={{
-                                title,
-                                seasonYear,
-                                city,
-                                venue,
-                                startDate,
-                                endDate,
-                                isPublic,
-                                editors,
-                            }}
-                            propsSub={{
-                                subTitle,
-                                gender,
-                                ageMin,
-                                ageMax,
-                                weightMin,
-                                weightMax,
-                                subPublic,
-                            }}
+                            propsMain={{ title, seasonYear, city, venue, startDate, endDate, isPublic, editors }}
+                            propsSub={{ subTitle, gender, ageMin, ageMax, weightMin, weightMax, subPublic }}
                         />
                     )}
 
                     {/* Navigasyon */}
                     <div className="flex justify-between pt-4">
-                        <button
-                            onClick={() => setStep(s => Math.max(0, s - 1))}
-                            disabled={step === 0}
-                            className="rounded bg-[#3a3f49] px-3 py-2 disabled:opacity-40"
-                        >
+                        <button onClick={onBack} className="rounded bg-[#3a3f49] px-3 py-2">
                             Geri
                         </button>
                         {step < steps.length - 1 ? (
-                            <button
-                                onClick={() => setStep(s => s + 1)}
-                                disabled={!canNext}
-                                className="rounded bg-sky-600 px-3 py-2 disabled:opacity-40"
-                            >
+                            <button onClick={() => setStep(s => s + 1)} disabled={!canNext} className="rounded bg-sky-600 px-3 py-2 disabled:opacity-40">
                                 İleri
                             </button>
                         ) : (
-                            <button
-                                onClick={save}
-                                className="rounded bg-emerald-600 px-3 py-2"
-                            >
+                            <button onClick={save} className="rounded bg-emerald-600 px-3 py-2">
                                 Kaydet
                             </button>
                         )}
@@ -406,13 +313,7 @@ export default function TournamentWizard({
 
 /** Yardımcı bileşenler **/
 
-function GradientFrame({
-                           children,
-                           className = '',
-                       }: {
-    children: ReactNode
-    className?: string
-}) {
+function GradientFrame({ children, className = '' }: { children: ReactNode; className?: string }) {
     return (
         <div className={`wizard-frame ${className}`}>
             <div className="inner">{children}</div>
@@ -461,11 +362,7 @@ function LabeledSelect<T extends string>({
     return (
         <div className="flex flex-col">
             <label className="mb-1">{label}</label>
-            <select
-                value={value}
-                onChange={e => set(e.target.value as T)}
-                className="rounded bg-[#1f2229] px-3 py-2"
-            >
+            <select value={value} onChange={e => set(e.target.value as T)} className="rounded bg-[#1f2229] px-3 py-2">
                 {(Object.keys(options) as T[]).map(k => (
                     <option key={k} value={k}>
                         {options[k]}
@@ -476,50 +373,21 @@ function LabeledSelect<T extends string>({
     )
 }
 
-function TextArea({
-                      label,
-                      value,
-                      set,
-                  }: {
-    label: string
-    value: string
-    set: (v: string) => void
-}) {
+function TextArea({ label, value, set }: { label: string; value: string; set: (v: string) => void }) {
     return (
         <div>
             <label className="mb-1 block">{label}</label>
-            <textarea
-                value={value}
-                onChange={e => set(e.target.value)}
-                className="h-28 w-full rounded bg-[#1f2229] px-3 py-2"
-            />
+            <textarea value={value} onChange={e => set(e.target.value)} className="h-28 w-full rounded bg-[#1f2229] px-3 py-2" />
         </div>
     )
 }
 
-function Toggle({
-                    checked,
-                    onChange,
-                    children,
-                }: {
-    checked: boolean
-    onChange: (v: boolean) => void
-    children: ReactNode
-}) {
+function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
     return (
         <label className="inline-flex items-center gap-3 cursor-pointer select-none">
             <span>{children}</span>
-            <span
-                onClick={() => onChange(!checked)}
-                className={`inline-block h-8 w-14 rounded-full p-1 transition ${
-                    checked ? 'bg-emerald-500' : 'bg-gray-600'
-                }`}
-            >
-        <span
-            className={`block h-6 w-6 rounded-full bg-white transition-transform ${
-                checked ? 'translate-x-6' : 'translate-x-0'
-            }`}
-        />
+            <span onClick={() => onChange(!checked)} className={`inline-block h-8 w-14 rounded-full p-1 transition ${checked ? 'bg-emerald-500' : 'bg-gray-600'}`}>
+        <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
       </span>
         </label>
     )
@@ -564,22 +432,14 @@ function SummaryCard({
                     </div>
                     <div><b>Public:</b> {propsMain.isPublic ? 'Evet' : 'Hayır'}</div>
                     <div>
-                        <b>Editörler:</b>{' '}
-                        {propsMain.editors.length
-                            ? propsMain.editors.map(e => e.username).join(', ')
-                            : '-'}
+                        <b>Editörler:</b> {propsMain.editors.length ? propsMain.editors.map(e => e.username).join(', ') : '-'}
                     </div>
                 </>
             ) : (
                 <>
                     <div><b>Başlık:</b> {propsSub.subTitle || '-'}</div>
                     <div>
-                        <b>Cinsiyet:</b>{' '}
-                        {propsSub.gender === 'M'
-                            ? 'Erkek'
-                            : propsSub.gender === 'F'
-                                ? 'Kadın'
-                                : 'Karma'}
+                        <b>Cinsiyet:</b> {propsSub.gender === 'M' ? 'Erkek' : propsSub.gender === 'F' ? 'Kadın' : 'Karma'}
                     </div>
                     <div><b>Yaş:</b> {propsSub.ageMin || '-'} – {propsSub.ageMax || '-'}</div>
                     <div><b>Kilo:</b> {propsSub.weightMin || '-'} – {propsSub.weightMax || '-'}</div>

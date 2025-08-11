@@ -1,3 +1,4 @@
+/* src/app/styles/custom.css */
 /* -------------------------------------------------------------
    WIZARD ÇERÇEVESİ (parıltılı kenar)
 ------------------------------------------------------------- */
@@ -24,9 +25,9 @@
     content: "";
     position: absolute;
     inset: 0;
-    z-index: 0;              /* <<< önemli: doku en altta */
+    z-index: 0;
     pointer-events: none;
-    opacity: 0.12;           /* çok soluk doku */
+    opacity: 0.12;
     background-image:
             radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
             radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
@@ -84,3 +85,24 @@
 }
 .toggle.is-on { background: #22c55e; }
 .toggle.is-on .knob { transform: translateX(26px); }
+
+/* -------------------------------------------------------------
+   Bracket görünürlük/flicker düzeltmesi
+   - Zoom wrapper & content overflow: visible
+   - Kendi stacking context (isolation)
+   - Hafif compositing ipuçları
+------------------------------------------------------------- */
+.bracket-host { position: relative; isolation: isolate; }
+
+.bracket-viewport,
+.bracket-canvas,
+.react-transform-wrapper,
+.react-transform-component {
+    overflow: visible !important;
+}
+
+.bracket-canvas svg {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    will-change: transform;
+}
