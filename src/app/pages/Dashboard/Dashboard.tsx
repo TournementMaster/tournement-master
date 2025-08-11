@@ -1,34 +1,28 @@
 /* =========================================================================
    FILE: src/app/pages/Dashboard/Dashboard.tsx
-   AMAÇ
-   - Ana (owner olduğunuz) turnuvaları /api/tournaments/ üzerinden çeker.
-   - Yükleniyor / hata / boş durumlarını kullanıcı dostu şekilde gösterir.
-   - Sıralama (Zamana göre | Alfabetik) ve hızlı arama (başlık) sunar.
-   - id ↔ public_slug haritalarını sessionStorage'a yazar (detay sayfaları için).
-   - Kart tıklamasında /bracket/:id sayfasına yönlendirir.
-
-   NOT
-   - useTournaments hook'u: src/app/hooks/useTournaments.tsx
-   - Logonuz: /public/brand/main-logo.png → MAIN_LOGO_URL ile kullanılıyor.
+   - Ana turnuvaları listeler
+   - Sol üst köşedeki yıl rozeti yerine üç nokta menüsü (Düzenle/Sil)
+   - TS daraltmalar: data için Array guard, byText/filtered için net tipler
    ========================================================================= */
 
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTournaments, type Tournament } from '../../hooks/useTournaments';
+import { api } from '../../lib/api';
 
 type SortKey = 'recent' | 'alpha';
 
-const MAIN_LOGO_URL = '/brand/main-logo.png';
+
 
 export default function Dashboard() {
     const { data, isLoading, isError, error, refetch } = useTournaments();
-    console.log(data);
+
     const [sort, setSort] = useState<SortKey>('recent');
     const [q, setQ] = useState('');
 
-    // Güvenlik: Haritaları tekrar yaz (hook zaten yazıyorsa no-op niteliğinde)
+    // id↔slug haritalarını yaz
     useEffect(() => {
-        if (!data) return;
+        if (!Array.isArray(data)) return;
         try {
             const idToSlug: Record<number, string> = {};
             const slugToId: Record<string, number> = {};
@@ -39,14 +33,16 @@ export default function Dashboard() {
             sessionStorage.setItem('tournament_id_to_slug', JSON.stringify(idToSlug));
             sessionStorage.setItem('tournament_slug_to_id', JSON.stringify(slugToId));
         } catch {
-            // sessionStorage uygun değilse sessizce geç
+            // sesssionStorage kapalıysa sessiz geç
         }
     }, [data]);
 
-    const filtered = useMemo(() => {
-        const base = data ?? [];
+    const filtered = useMemo<Tournament[]>(() => {
+        // ---- TYPE GUARD: data gerçekten dizi mi? ----
+        const base: Tournament[] = Array.isArray(data) ? data : [];
+
         const term = q.trim().toLowerCase();
-        const byText = term
+        const byText: Tournament[] = term
             ? base.filter((t) => t.title.toLowerCase().includes(term))
             : base;
 
@@ -62,9 +58,7 @@ export default function Dashboard() {
         return cloned;
     }, [data, q, sort]);
 
-    /* -----------------------
-       DURUM EKRANLARI
-    ----------------------- */
+    /* ----------------------- Durum ekranları ----------------------- */
     if (isLoading) {
         return (
             <div className="max-w-6xl mx-auto py-10">
@@ -73,7 +67,7 @@ export default function Dashboard() {
                     setSort={setSort}
                     q={q}
                     setQ={setQ}
-                    total={0}
+                    total={Array.isArray(data) ? data.length : 0}
                     subdued
                 />
                 <SkeletonGrid />
@@ -89,7 +83,7 @@ export default function Dashboard() {
                     setSort={setSort}
                     q={q}
                     setQ={setQ}
-                    total={0}
+                    total={Array.isArray(data) ? data.length : 0}
                     subdued
                 />
                 <div className="mt-8 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6">
@@ -116,16 +110,14 @@ export default function Dashboard() {
                     setSort={setSort}
                     q={q}
                     setQ={setQ}
-                    total={data?.length ?? 0}
+                    total={Array.isArray(data) ? data.length : 0}
                 />
                 <EmptyState />
             </div>
         );
     }
 
-    /* -----------------------
-       NORMAL GÖRÜNÜM
-    ----------------------- */
+    /* ----------------------- Normal görünüm ----------------------- */
     return (
         <div className="max-w-6xl mx-auto">
             <HeaderBar
@@ -133,14 +125,12 @@ export default function Dashboard() {
                 setSort={setSort}
                 q={q}
                 setQ={setQ}
-                total={data?.length ?? 0}
+                total={Array.isArray(data) ? data.length : 0}
             />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-12 py-6">
                 {filtered.map((t) => (
-                    <Link key={t.id} to={`/tournements/${t.public_slug}?parent=${t.id}`} aria-label={`${t.title} detayına git`}>
-                        <Card tournament={t} />
-                    </Link>
+                    <Card key={t.id} tournament={t} onChanged={refetch} />
                 ))}
             </div>
         </div>
@@ -213,40 +203,149 @@ function HeaderBar({
     );
 }
 
-function Card({ tournament }: { tournament: Tournament }) {
+// ...dosyanın üstü aynı (import'lar vs.)
+
+function Card({
+                  tournament,
+                  onChanged,
+              }: {
+    tournament: Tournament;
+    onChanged: () => void;
+}) {
+    const navigate = useNavigate();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+
     const dateRange =
         tournament.start_date && tournament.end_date
             ? formatDateRange(tournament.start_date, tournament.end_date)
             : null;
 
+    // Tüm kart tıklanınca alt turnuva listesine git
+    const goToSubList = () =>
+        navigate(`/tournements/${tournament.public_slug}?parent=${tournament.id}`);
+
+    // Menü dışına tıkla/ESC → kapat
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onDown = (ev: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(ev.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        const onKey = (ev: KeyboardEvent) => {
+            if (ev.key === 'Escape') setMenuOpen(false);
+        };
+        window.addEventListener('mousedown', onDown);
+        window.addEventListener('keydown', onKey);
+        return () => {
+            window.removeEventListener('mousedown', onDown);
+            window.removeEventListener('keydown', onKey);
+        };
+    }, [menuOpen]);
+
+    async function doDelete() {
+        try {
+            await api.delete(`/tournaments/${tournament.id}/`);
+            setConfirmOpen(false);
+            onChanged();
+        } catch {
+            alert('Silme başarısız.');
+        }
+    }
+
     return (
         <div
-            className="group w-[260px] h-[240px] rounded-lg mx-auto bg-[#2a2d34] border border-white/5 shadow-lg shadow-black/30 relative overflow-hidden"
+            onClick={goToSubList}
+            className="group w-[260px] h-[240px] rounded-lg mx-auto bg-[#2a2d34]
+                 border border-white/5 shadow-lg shadow-black/30 relative overflow-hidden
+                 cursor-pointer"
             title={tournament.title}
         >
-            {/* Orta logo */}
-            <div className="absolute inset-0 flex items-center justify-center">
-                <img
-                    src={MAIN_LOGO_URL}
-                    alt="Ana turnuva logosu"
-                    className="w-40 h-40 md:w-44 md:h-44 object-contain drop-shadow-[0_0_28px_rgba(0,255,170,.35)]"
-                    draggable={false}
-                />
-            </div>
+            {/* ÜST BAR (3 nokta + şehir) */}
+            <div className="absolute top-0 left-0 right-0 p-2 flex items-start justify-between text-[11px] pointer-events-none">
+                <div className="relative z-20 pointer-events-auto" ref={menuRef}>
+                    {/* 3 nokta – büyütüldü */}
+                    <button
+                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(v => !v); }}
+                        className="w-11 h-11 rounded-full flex items-center justify-center
+                 bg-gray-900/70 border border-white/15 text-gray-100 text-[22px] font-semibold
+                 hover:bg-gray-900/90 shadow"
+                        title="Seçenekler"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                    >
+                        ⋯
+                    </button>
 
-            {/* Üst bilgi bandı */}
-            <div className="absolute top-0 left-0 right-0 p-2 flex items-center justify-between text-[11px]">
-        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-          {tournament.season_year}
-        </span>
+                    {/* Menü – daha geniş, ikonlu, okunaklı */}
+                    {menuOpen && (
+                        <div
+                            role="menu"
+                            className="absolute left-0 mt-2 w-56 bg-[#161a20] border border-white/10 rounded-xl
+                   overflow-hidden z-30 shadow-2xl"
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        >
+                            <button
+                                role="menuitem"
+                                onClick={(e) => {
+                                    e.preventDefault(); e.stopPropagation();
+                                    setMenuOpen(false);
+                                    navigate(`/create?mode=main&edit=${tournament.id}`);
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10"
+                            >
+                                <span className="text-[18px]">✏️</span>
+                                <span className="font-medium">Düzenle</span>
+                            </button>
+
+                            <button
+                                role="menuitem"
+                                onClick={(e) => {
+                                    e.preventDefault(); e.stopPropagation();
+                                    setMenuOpen(false);
+                                    setConfirmOpen(true);
+                                }}
+                                className="flex w-full items-center gap-3 px-4 py-2.5 text-[15px] text-red-300 hover:bg-red-500/10"
+                            >
+                                <span className="text-[18px]">🗑️</span>
+                                <span className="font-medium">Sil</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 {tournament.city && (
-                    <span className="px-2 py-0.5 rounded-full bg-gray-900/40 border border-white/10 text-gray-200">
-            {tournament.city}
-          </span>
+                    <span className="px-2 py-0.5 rounded-full bg-gray-900/40 border border-white/10 text-gray-200 self-center pointer-events-auto">
+      {tournament.city}
+    </span>
                 )}
             </div>
 
-            {/* Alt başlık bandı */}
+
+            {/* ORTA LOGO – gradient boyalı mask */}
+            <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                    className="w-40 h-40 md:w-44 md:h-44 bg-gradient-to-br from-emerald-300 via-emerald-200 to-violet-300
+               drop-shadow-[0_0_28px_rgba(167,139,250,.35)]"
+                    style={{
+                        WebkitMaskImage: "url('/brand/main-logo.png')",
+                        maskImage: "url('/brand/main-logo.png')",
+                        WebkitMaskRepeat: 'no-repeat',
+                        maskRepeat: 'no-repeat',
+                        WebkitMaskPosition: 'center',
+                        maskPosition: 'center',
+                        WebkitMaskSize: 'contain',
+                        maskSize: 'contain',
+                    }}
+                    aria-hidden
+                />
+            </div>
+
+            {/* ALT BANT: Başlık + Tarih */}
             <div className="absolute bottom-0 left-0 right-0 bg-black/30 backdrop-blur-sm border-t border-white/10">
                 <div className="px-3 py-2 text-center text-white font-semibold truncate">
                     {tournament.title}
@@ -256,8 +355,41 @@ function Card({ tournament }: { tournament: Tournament }) {
                 </div>
             </div>
 
-            {/* Hover vurgusu */}
-            <div className="absolute inset-0 ring-0 group-hover:ring-2 ring-emerald-300/50 rounded-lg transition" />
+            {/* Hover vurgusu (tıklamayı kapmasın) */}
+            <div className="absolute inset-0 ring-0 group-hover:ring-2 ring-emerald-300/50 rounded-lg transition pointer-events-none" />
+
+            {confirmOpen && (
+                <div
+                    className="fixed inset-0 z-[1000] flex items-center justify-center"
+                    onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); }}
+                >
+                    <div className="absolute inset-0 bg-black/70" />
+                    <div
+                        className="relative z-10 w-[min(90vw,28rem)] bg-[#2d3038] rounded-2xl p-6 border border-white/10 shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h4 className="text-lg font-semibold mb-2">Silmek istediğinize emin misiniz?</h4>
+                        <p className="text-sm text-gray-300">
+                            “{tournament.title}” geri alınamaz şekilde silinecek.
+                        </p>
+                        <div className="mt-5 flex gap-3 justify-end">
+                            <button
+                                onClick={() => setConfirmOpen(false)}
+                                className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600"
+                            >
+                                Vazgeç
+                            </button>
+                            <button
+                                onClick={doDelete}
+                                className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 font-semibold"
+                            >
+                                Evet, sil
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }

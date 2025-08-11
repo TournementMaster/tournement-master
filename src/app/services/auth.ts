@@ -2,6 +2,7 @@ import {api, setAuth} from "../lib/api.tsx";
 
 
 interface LoginPayload { username: string; password: string }
+interface RegisterPayload { username: string; password: string; email?: string }
 interface Tokens        { access: string; refresh: string }
 
 const ACCESS_KEY  = 'access';
@@ -14,10 +15,19 @@ export async function login(payload: LoginPayload): Promise<void> {
     storeTokens(data);
 }
 
-export async function register(payload: LoginPayload): Promise<void> {
-    await api.post('auth/users/', payload);
-    await login(payload);          // kayıt sonrası otomatik giriş
+export async function register(payload: RegisterPayload): Promise<void> {
+      await api.post('auth/users/', payload);
+      await login({ username: payload.username, password: payload.password });
 }
+
+export async function sendResetEmail(email: string): Promise<void> {
+    try {
+        await api.post('auth/users/reset_password/', { email });
+    } catch {
+        // backend yoksa sessizce geç
+    }
+}
+
 
 export function logout(): void {
     localStorage.removeItem(ACCESS_KEY);

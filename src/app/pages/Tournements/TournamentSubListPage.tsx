@@ -4,19 +4,26 @@ import { useSubTournaments } from '../../hooks/useSubTournaments';
 import SubTournamentRow from './components/SubTournamentRow';
 import SubFilterSidebar, { type SubFilters } from './components/SubFilterSidebar';
 
-type SortKey = 'alpha';
+type SortKey = 'alpha' | 'created' | 'age' | 'weight';
+
+function parseNum(x: unknown, def = NaN) {
+    const n = typeof x === 'string' ? parseFloat(x.replace(',', '.')) : Number(x);
+    return Number.isFinite(n) ? n : def;
+}
 
 export default function TournamentSubListPage() {
     const { public_slug } = useParams<{ public_slug: string }>();
     const { data, isLoading, isError, error, refetch } = useSubTournaments(public_slug);
 
     const [filters, setFilters] = useState<SubFilters>({
-        status: 'all',   // Geleceğe hazır; veri yoksa etkisiz kalır
+        status: 'all',
         gender: 'all',
-        age: 'all',
-        weight: 'all',
+        ageMin: '',
+        ageMax: '',
+        weightMin: '',
+        weightMax: '',
     });
-    const [sort] = useState<SortKey>('alpha');
+    const [sort, setSort] = useState<SortKey>('alpha');
     const [q, setQ] = useState('');
 
     const list = useMemo(() => {
@@ -24,53 +31,57 @@ export default function TournamentSubListPage() {
             !q ? true : s.title.toLowerCase().includes(q.toLowerCase())
         );
 
-        // --- Gender ---
-        const byGender = base.filter(s =>
-            filters.gender === 'all' ? true : (s.gender?.toUpperCase() === filters.gender)
+        // status (şimdilik veri yoksa etkisiz)
+        const byStatus = base; // ileride s.status karşılaştır
+
+        // gender
+        const byGender = byStatus.filter(s =>
+            filters.gender === 'all' ? true : (String(s.gender || '').toUpperCase() === filters.gender)
         );
 
-        // --- Age group ---
-        const ageRanges: Record<NonNullable<SubFilters['age']>, [number, number]> = {
-            all: [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY],
-            U12: [0, 12],
-            U14: [0, 14],
-            U16: [0, 16],
-            U18: [0, 18],
-            '19+': [19, Number.POSITIVE_INFINITY],
-        };
-        const [amin, amax] = ageRanges[filters.age];
+        // age min–max
+        const amin = filters.ageMin ? parseInt(filters.ageMin, 10) : -Infinity;
+        const amax = filters.ageMax ? parseInt(filters.ageMax, 10) :  Infinity;
         const byAge = byGender.filter(s => {
-            if (filters.age === 'all') return true;
-            const lo = Number.isFinite(s.age_min) ? Number(s.age_min) : 0;
-            const hi = Number.isFinite(s.age_max) ? Number(s.age_max) : 99;
-            // Grupla örtüşüyor mu?
+            const lo = Number.isFinite(s.age_min as never) ? Number(s.age_min) : -Infinity;
+            const hi = Number.isFinite(s.age_max as never) ? Number(s.age_max) :  Infinity;
+            // aralıklarla kesişim var mı?
             return !(hi < amin || lo > amax);
         });
 
-        // --- Weight group ---
-        const W = Number.POSITIVE_INFINITY;
-        const weightRanges: Record<NonNullable<SubFilters['weight']>, [number, number]> = {
-            all: [-W, W],
-            '≤40': [-W, 40],
-            '40-50': [40, 50],
-            '50-60': [50, 60],
-            '60-70': [60, 70],
-            '70+': [70, W],
-        };
-        const [wmin, wmax] = weightRanges[filters.weight];
+        // weight min–max
+        const wmin = filters.weightMin ? parseNum(filters.weightMin, -Infinity) : -Infinity;
+        const wmax = filters.weightMax ? parseNum(filters.weightMax,  Infinity) :  Infinity;
         const byWeight = byAge.filter(s => {
-            if (filters.weight === 'all') return true;
-            const min = parseFloat(String(s.weight_min).replace(',', '.'));
-            const max = parseFloat(String(s.weight_max).replace(',', '.'));
-            const lo = isNaN(min) ? -W : min;
-            const hi = isNaN(max) ?  W : max;
+            const lo = parseNum(s.weight_min, -Infinity);
+            const hi = parseNum(s.weight_max,  Infinity);
             return !(hi < wmin || lo > wmax);
         });
 
-        const cloned = [...byWeight];
-        cloned.sort((a, b) => a.title.localeCompare(b.title, 'tr'));
-        return cloned;
-    }, [data, q, sort, filters]);
+        const arr = [...byWeight];
+
+        // sıralama
+        arr.sort((a, b) => {
+            switch (sort) {
+                case 'alpha':
+                    return a.title.localeCompare(b.title, 'tr');
+                case 'created':
+                    return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
+                case 'age': {
+                    const ax = Number(a.age_min ?? 0);
+                    const bx = Number(b.age_min ?? 0);
+                    return ax - bx || a.title.localeCompare(b.title, 'tr');
+                }
+                case 'weight': {
+                    const aw = (parseNum(a.weight_min) + parseNum(a.weight_max)) / 2;
+                    const bw = (parseNum(b.weight_min) + parseNum(b.weight_max)) / 2;
+                    return (aw - bw) || a.title.localeCompare(b.title, 'tr');
+                }
+            }
+        });
+
+        return arr;
+    }, [data, q, filters, sort]);
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -103,11 +114,19 @@ export default function TournamentSubListPage() {
                                     </button>
                                 )}
                             </div>
-                            {/* sıralama tek seçenek: alfabetik */}
+
+                            {/* sıralama */}
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-400">SIRALA:</span>
-                                <select value={sort} onChange={() => {}} className="bg-gray-700 px-2 py-2 rounded text-sm" disabled>
+                                <select
+                                    value={sort}
+                                    onChange={(e) => setSort(e.target.value as SortKey)}
+                                    className="bg-gray-700 px-2 py-2 rounded text-sm"
+                                >
                                     <option value="alpha">Alfabetik (A–Z)</option>
+                                    <option value="created">Oluşturma Tarihi (Yeni → Eski)</option>
+                                    <option value="age">Yaşa göre (Min yaş ↑)</option>
+                                    <option value="weight">Kiloya göre (Ortalama ↑)</option>
                                 </select>
                             </div>
                         </div>
@@ -146,9 +165,6 @@ export default function TournamentSubListPage() {
         </div>
     );
 }
-
-// aynı SkeletonList...
-
 
 function SkeletonList() {
     return (

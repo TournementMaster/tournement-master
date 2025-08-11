@@ -23,40 +23,41 @@ function buildSubtitle(s: SubTournament) {
 
 export default function SubTournamentRow({ item }: { item: SubTournament }) {
     const subtitle = buildSubtitle(item);
+    const to = `/bracket/${item.public_slug}?title=${encodeURIComponent(item.title)}`;
 
     return (
-        <div className="bg-[#2d3038] rounded-lg px-5 py-4 flex items-center justify-between border border-transparent">
-            {/* Sol kısım: ikon + başlık */}
-            <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black/40">
-                    <div className="w-5 h-5 border-2 rounded-sm border-gray-300" />
-                </div>
-                <div>
-                    <div className="font-semibold">{item.title}</div>
-                    <div className="text-gray-400 text-sm">{subtitle || '—'}</div>
-                </div>
-            </div>
-
-            {/* Sağ kısım: katılımcı (bilinmiyor) + progress 0% + yönlendirme */}
-            <div className="flex items-center gap-6">
-                <div className="text-sm text-gray-300">— <span className="opacity-70">👤</span></div>
-                <div className="flex items-center gap-2">
-                    <div className="w-32 h-5 bg-gray-700 rounded">
-                        <div className="h-5 bg-green-500 rounded" style={{ width: `0%` }} />
+        <Link
+            to={to}
+            state={item}
+            className="block rounded-lg bg-[#2d3038] px-5 py-4 border border-transparent
+                 hover:bg-[#2f333b] hover:border-emerald-400/30
+                 focus:outline-none focus:ring-2 focus:ring-emerald-400/40
+                 cursor-pointer"
+            title="Alt turnuvayı görüntüle"
+        >
+            <div className="flex items-center justify-between">
+                {/* Sol: ikon + başlık */}
+                <div className="flex items-center gap-4">
+                    {/* İkon değiştirildi */}
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center
+                          bg-emerald-500/15 text-emerald-300 text-xl select-none">🏆</div>
+                    <div>
+                        <div className="font-semibold">{item.title}</div>
+                        <div className="text-gray-400 text-sm">{subtitle || '—'}</div>
                     </div>
-                    <span className="text-sm text-gray-200 w-12 text-right">0%</span>
                 </div>
 
-                {/* İleri: isterseniz burada /bracket/:id gösterimine geçebilirsiniz */}
-                <Link
-                    to={`/bracket/${item.public_slug}?title=${encodeURIComponent(item.title)}`}
-                    state={item}  // ← EKLENDİ
-                    className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-sm"
-                    title="Alt turnuvayı görüntüle"
-                >
-                    →
-                </Link>
+                {/* Sağ: (şimdilik) katılımcı & progress */}
+                <div className="flex items-center gap-6">
+                    <div className="text-sm text-gray-300">— <span className="opacity-70">👤</span></div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-32 h-5 bg-gray-700 rounded">
+                            <div className="h-5 bg-green-500 rounded" style={{ width: `0%` }} />
+                        </div>
+                        <span className="text-sm text-gray-200 w-12 text-right">0%</span>
+                    </div>
+                </div>
             </div>
-        </div>
+        </Link>
     );
 }

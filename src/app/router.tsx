@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard/Dashboard.tsx';
 import CreatePage from './pages/Create/CreatePage.tsx';
 import ProtectedRoute from './context/ProtectedRoute.tsx';
 import TournamentSubListPage from './pages/Tournements/TournamentSubListPage.tsx';
+import ForgotPasswordPage from './pages/ForgotPasswordPage.tsx';
 
 export const router = createBrowserRouter([
     {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
             /* ------- Auth ------- */
             { path: 'login',    element: <LoginPage /> },
             { path: 'register', element: <RegisterPage /> },
+            { path: 'forgot',   element: <ForgotPasswordPage /> },
 
             /* ------- Protected ------- */
             {

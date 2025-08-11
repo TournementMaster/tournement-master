@@ -20,8 +20,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuth(true);
     };
 
-    const register = async (u: string, p: string) => {
-        await auth.register({ username: u, password: p });
+    const register = async (u: string, p: string, email?: string) => {
+           await auth.register({ username: u, password: p, email });
         setIsAuth(true);
     };
 

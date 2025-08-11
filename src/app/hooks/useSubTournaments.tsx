@@ -5,14 +5,15 @@ export interface SubTournament {
     id: number;
     title: string;
     description: string;
-    age_min: number;   // ör: 65535
-    age_max: number;   // ör: 65535
-    weight_min: string; // ör: "-"
-    weight_max: string; // ör: "22."
+    age_min: number;
+    age_max: number;
+    weight_min: string;
+    weight_max: string;
     gender: 'M' | 'F' | 'O' | string;
     public: boolean;
     public_slug: string;
-    tournament: number; // parent id
+    tournament: number;
+    created_at?: string;     // ← sıralama için opsiyonel
 }
 
 export function useSubTournaments(publicSlug: string | undefined) {

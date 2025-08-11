@@ -1,8 +1,9 @@
 // src/app/pages/Create/TournamentWizard.tsx
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
+
 
 export type Mode = 'main' | 'sub'
 export type Editor = { id: number; username: string }
@@ -18,8 +19,8 @@ export default function TournamentWizard({
     const qc = useQueryClient()
     const [sp] = useSearchParams()
 
-    // mode’u önce query param’dan sonra prop’tan al
-    const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main'
+    const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main';
+    const editId = Number(sp.get('edit') || ''); //  ← EDIT ID
 
     // Ana turnuva alanları
     const [title, setTitle] = useState('')
@@ -30,6 +31,32 @@ export default function TournamentWizard({
     const [endDate, setEndDate] = useState('')
     const [description, setDescription] = useState('')
     const [isPublic, setIsPublic] = useState(true)
+
+    useEffect(() => {
+        if (mode !== 'main') return;
+        if (!Number.isFinite(editId) || editId <= 0) return;
+
+        (async () => {
+            try {
+                const { data } = await api.get(`/tournaments/${editId}/`);
+                // alanları doldur
+                setTitle(data.title ?? '');
+                setSeasonYear(String(data.season_year ?? ''));
+                setCity(data.city ?? '');
+                setVenue(data.venue ?? '');
+                setStartDate(data.start_date ?? '');
+                setEndDate(data.end_date ?? '');
+                setDescription(data.description ?? '');
+                setIsPublic(!!data.public);
+                // Editörler opsiyonel – yalnızca id listesi geldiyse doldur
+                if (Array.isArray(data.editors)) {
+                    setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })));
+                }
+            } catch {
+                // data alınamazsa sessiz geç (yeni oluşturma gibi davranır)
+            }
+        })();
+    }, [mode, editId]);
 
     // Editör ekleme
     const [editorInput, setEditorInput] = useState('')
@@ -123,29 +150,20 @@ export default function TournamentWizard({
         subParentId,
     ])
 
-    // Kaydetme işlemi
     async function save() {
         if (mode === 'main') {
+            const payload = { /* ... */ };
+
             try {
-                const payload = {
-                    title,
-                    season_year: Number(seasonYear),
-                    city,
-                    venue,
-                    start_date: startDate,
-                    end_date: endDate,
-                    description,
-                    public: isPublic,
-                    editors: editors.map(e => e.id),
-                }
-                const { data } = await api.post<{ id: number }>('/tournaments/', payload)
-                await qc.invalidateQueries({ queryKey: ['tournaments'] })
-                navigate(`/create?mode=sub&parent=${data.id}`, { replace: true })
+                await api.post('/tournaments/', payload);           // ← data alma, direkt bekle
+                await qc.invalidateQueries({ queryKey: ['tournaments'] });
+                navigate('/', { replace: true });                   // Dashboard
             } catch {
-                alert('Ana turnuva oluşturulamadı.')
+                alert('İşlem başarısız.');
             }
-            return
+            return;
         }
+
 
         // Alt turnuva
         if (!subParentId) {
@@ -179,7 +197,9 @@ export default function TournamentWizard({
                     <div>
                         <div className="text-xs uppercase text-gray-400">Turnuva Sihirbazı</div>
                         <h1 className="text-2xl font-bold">
-                            {mode === 'main' ? 'Ana Turnuva Oluştur' : 'Alt Turnuva Oluştur'}
+                            {mode === 'main'
+                                ? (editId ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur')
+                                : 'Alt Turnuva Oluştur'}
                         </h1>
                     </div>
                     <div className="text-sm text-gray-400">
@@ -245,9 +265,7 @@ export default function TournamentWizard({
                                 />
                             </div>
                             <TextArea label="Açıklama" value={description} set={setDescription} />
-                            <Toggle checked={isPublic} onChange={setIsPublic}>
-                                Public
-                            </Toggle>
+                            <Toggle checked={isPublic} onChange={setIsPublic}>Public</Toggle>
                         </>
                     )}
 
@@ -324,9 +342,7 @@ export default function TournamentWizard({
                                 <Labeled label="Kilo Min (kg)" value={weightMin} set={setWeightMin} />
                                 <Labeled label="Kilo Max (kg)" value={weightMax} set={setWeightMax} />
                             </div>
-                            <Toggle checked={subPublic} onChange={setSubPublic}>
-                                Public
-                            </Toggle>
+                            <Toggle checked={subPublic} onChange={setSubPublic}>Public</Toggle>
                         </>
                     )}
 
@@ -388,7 +404,7 @@ export default function TournamentWizard({
     )
 }
 
-/** Yardımcı bileşenler aşağıda tanımlıdır **/
+/** Yardımcı bileşenler **/
 
 function GradientFrame({
                            children,
