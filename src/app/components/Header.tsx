@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
+import BracketHeaderActions from '../layouts/BracketHeaderActions';
 
 function todayTR() {
     const d = new Date()
@@ -70,6 +71,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             )}
 
             <div className="ml-auto flex items-center gap-3">
+                <BracketHeaderActions />
                 {showSave && (
                     <button
                         onClick={() => {
