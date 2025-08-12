@@ -110,7 +110,7 @@ function propagate(matrix: Matrix): Matrix {
                 // SONRAKİ TUR: oyuncuyu taşı ama winner bayrağını SIFIRLA
                 const next = mat[r+1][Math.floor(idx/2)]
                 const moved = { ...m.players[winner] }
-                delete (moved ).winner
+                delete (moved).winner
                 next.players[idx%2] = moved
             }
         })
@@ -176,6 +176,17 @@ export default memo(function InteractiveBracket(){
     const stageW = svgWidth  + STAGE_PAD * 2
     const stageH = svgHeight + STAGE_PAD * 2
 
+    /* İlk açılışta şablonu biraz daha YUKARI & SOL’A getir (kullanıcı isteği) */
+    const INITIAL_POS = { left: 320, top: 120, scale: 1 } // px
+    const applied = useRef(false)
+    useEffect(() => {
+        if (!twRef.current || applied.current) return
+        const x = -(STAGE_PAD - INITIAL_POS.left)
+        const y = -(STAGE_PAD - INITIAL_POS.top)
+        twRef.current.setTransform(x, y, INITIAL_POS.scale, 0) // animasyonsuz yerleştir
+        applied.current = true
+    }, [stageW, stageH])
+
     const saveMeta=(meta:Meta)=>{
         if(!selected) return
         setRounds(prev=>{
@@ -190,7 +201,12 @@ export default memo(function InteractiveBracket(){
     }
 
     /* Sağ-alt köşedeki “sıfırla” düğmesi: ilk konuma döndür */
-    const resetView = () => twRef.current?.resetTransform()
+    const resetView = () => {
+        if (!twRef.current) return
+        const x = -(STAGE_PAD - INITIAL_POS.left)
+        const y = -(STAGE_PAD - INITIAL_POS.top)
+        twRef.current.setTransform(x, y, INITIAL_POS.scale, 300) // hafif animasyonla
+    }
 
     return (
         <div className="relative">
