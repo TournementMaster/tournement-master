@@ -15,7 +15,14 @@ import type { Club } from '../../../models/Club';
 import type { SubTournament } from '../../../hooks/useSubTournaments';
 
 /* --------------------------------- Types --------------------------------- */
-export interface Player { seed: number; name: string; club?: string; winner?: boolean }
+export interface Player {
+    seed: number;
+    name: string;
+    club?: string;
+    winner?: boolean;
+    /** Backend’ten geldiyse gerçek Athlete PK (lokalde yoksa undefined) */
+    athleteId?: number | null;
+}
 export interface Meta   { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string }
 export interface Match  { players: Player[]; meta?: Meta }
 type Matrix = Match[][]
@@ -187,12 +194,13 @@ function buildFromBackend(
             const p2 = m.athlete2 ? (aMap.get(m.athlete2) ?? { name: '—' }) : { name: '—' };
 
             const players: Player[] = [
-                { seed: 0, name: p1.name, club: p1.club },
-                { seed: 0, name: p2.name, club: p2.club },
+                { seed: 0, name: p1.name, club: p1.club, athleteId: m.athlete1 ?? null },
+                { seed: 0, name: p2.name, club: p2.club, athleteId: m.athlete2 ?? null },
             ];
 
             const meta: Meta = {};
             if (Array.isArray(m.sets) && m.sets.length) meta.scores = m.sets.map(s => [s.a1_score, s.a2_score]);
+
             const t = toHHMM(m.scheduled_at);
             if (t) meta.time = t;
             if (m.court_no != null) meta.court = String(m.court_no);
@@ -472,31 +480,39 @@ export default memo(function InteractiveBracket(){
             const roundsForSave: Matrix =
                 (rounds.length ? rounds : propagate(buildMatrix(sorted as Participant[], settings.placementMap)));
 
+            const getAthleteIdFor = (p?: Player): number | null => {
+                if (!p) return null;
+                if (p.athleteId != null) return p.athleteId;               // backend’ten geldiyse direkt kullan
+                const s = p.seed || 0;
+                return s > 0 ? (seedToAthlete[s] ?? null) : null;           // lokalse seed’ten eşle
+            };
+
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
-                    const a1Seed = m.players[0]?.seed || 0;
-                    const a2Seed = m.players[1]?.seed || 0;
-                    const a1 = a1Seed > 0 ? (seedToAthlete[a1Seed] ?? null) : null;
-                    const a2 = a2Seed > 0 ? (seedToAthlete[a2Seed] ?? null) : null;
+                    const a1 = getAthleteIdFor(m.players[0]);
+                    const a2 = getAthleteIdFor(m.players[1]);
                     const winner =
                         m.players[0]?.winner ? a1 :
                             m.players[1]?.winner ? a2 : null;
+
                     const court_no = (() => {
                         const raw = m.meta?.court?.trim();
                         const n = raw ? parseInt(raw, 10) : NaN;
                         return Number.isFinite(n) ? n : null;
                     })();
+
                     const scheduled_at = timeToISO(m.meta?.time);
+
                     return {
-                        round_no    : rIdx + 1,
-                        position    : iIdx + 1,
+                        round_no      : rIdx + 1,
+                        position      : iIdx + 1,
                         court_no,
-                        scheduled_at: scheduled_at ?? undefined,
-                        extra_note  : '',
+                        scheduled_at  : scheduled_at ?? undefined,
+                        extra_note    : '',
                         sub_tournament: subId,
-                        athlete1    : a1,
-                        athlete2    : a2,
-                        winner      : winner ?? null,
+                        athlete1      : a1,
+                        athlete2      : a2,
+                        winner        : winner ?? null,
                     };
                 })
             );
