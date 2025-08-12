@@ -247,7 +247,7 @@ function Card({
 
     async function doDelete() {
         try {
-            await api.delete(`/tournaments/${tournament.id}/`);
+            await api.delete(`tournaments/${encodeURIComponent(tournament.public_slug)}/`);
             setConfirmOpen(false);
             onChanged();
         } catch {
@@ -294,7 +294,7 @@ function Card({
                                 onClick={(e) => {
                                     e.preventDefault(); e.stopPropagation();
                                     setMenuOpen(false);
-                                    navigate(`/create?mode=main&edit=${tournament.id}`);
+                                    navigate(`/create?mode=main&edit=${encodeURIComponent(tournament.public_slug)}`);
                                 }}
                                 className="flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10"
                             >

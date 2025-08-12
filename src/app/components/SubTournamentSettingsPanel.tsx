@@ -106,7 +106,7 @@ export default function SubTournamentSettingsPanel() {
     }, [detail])
 
     async function save() {
-        if (!detail?.id) return
+        if (!detail?.public_slug) return
         setBusy(true)
         setErr(null)
         try {
@@ -120,7 +120,7 @@ export default function SubTournamentSettingsPanel() {
                 gender,
                 public: isPublic,
             }
-            await api.patch(`subtournaments/${detail.id}/`, payload)
+            await api.patch(`subtournaments/${encodeURIComponent(detail.public_slug)}/`, payload)
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
             await qc.invalidateQueries({ queryKey: ['subtournament', slug] })
 

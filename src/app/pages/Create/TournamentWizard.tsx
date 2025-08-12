@@ -19,7 +19,7 @@ export default function TournamentWizard({
     const [sp] = useSearchParams()
 
     const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main'
-    const editId = Number(sp.get('edit') || '') //  ← EDIT ID
+    const editSlug = (sp.get('edit') || '').trim(); //  ← EDIT SLUG
 
     // Ana turnuva alanları
     const [title, setTitle] = useState('')
@@ -32,12 +32,11 @@ export default function TournamentWizard({
     const [isPublic, setIsPublic] = useState(true)
 
     useEffect(() => {
-        if (mode !== 'main') return
-        if (!Number.isFinite(editId) || editId <= 0) return
-
+        if (mode !== 'main') return;
+        if (!editSlug) return;
             ;(async () => {
             try {
-                const { data } = await api.get(`/tournaments/${editId}/`)
+                const { data } = await api.get(`tournaments/${encodeURIComponent(editSlug)}/`)
                 // alanları doldur
                 setTitle(data.title ?? '')
                 setSeasonYear(String(data.season_year ?? ''))
@@ -55,7 +54,7 @@ export default function TournamentWizard({
                 // data alınamazsa sessiz geç (yeni oluşturma gibi davranır)
             }
         })()
-    }, [mode, editId])
+    }, [mode, editSlug])
 
     // Editör ekleme
     const [editorInput, setEditorInput] = useState('')
@@ -134,10 +133,37 @@ export default function TournamentWizard({
 
     async function save() {
         if (mode === 'main') {
-            const payload = { /* ... */ }
+            // owner id'yi çöz
+            async function resolveOwnerId(): Promise<number> {
+                const u = (localStorage.getItem('username') || '').trim();
+                if (!u) return 0;
+                try {
+                    const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`);
+                    return typeof data?.id === 'number' ? data.id : 0;
+                } catch { return 0; }
+            }
+
+            const basePayload = {
+                title: title.trim(),
+                season_year: Number(seasonYear) || 0,
+                city: city.trim(),
+                venue: venue.trim(),
+                start_date: startDate || null,
+                end_date: endDate || null,
+                description: description.trim(),
+                public: isPublic,
+                editors: editors.map(e => e.id),
+            };
 
             try {
-                await api.post('/tournaments/', payload) // ← data alma, direkt bekle
+                if (editSlug) {
+                    // DÜZENLEME → PATCH slug ile
+                    await api.patch(`tournaments/${encodeURIComponent(editSlug)}/`, basePayload);
+                } else {
+                    // OLUŞTURMA → POST + owner zorunlu
+                    const owner = await resolveOwnerId();
+                    await api.post('tournaments/', { ...basePayload, owner });
+                }
                 await qc.invalidateQueries({ queryKey: ['tournaments'] })
                 navigate('/', { replace: true }) // Dashboard
             } catch {
@@ -152,7 +178,7 @@ export default function TournamentWizard({
             return
         }
         try {
-            await api.post('/subtournaments/', {
+            await api.post('subtournaments/', {
                 tournament: subParentId,
                 title: subTitle,
                 description: subDesc,
@@ -187,7 +213,7 @@ export default function TournamentWizard({
                     <div>
                         <div className="text-xs uppercase text-gray-400">Turnuva Sihirbazı</div>
                         <h1 className="text-2xl font-bold">
-                            {mode === 'main' ? (editId ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur') : 'Alt Turnuva Oluştur'}
+                            {mode === 'main' ? (editSlug ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur') : 'Alt Turnuva Oluştur'}
                         </h1>
                     </div>
                     <div className="text-sm text-gray-400">{step + 1}/{steps.length}</div>

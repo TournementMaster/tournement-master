@@ -28,8 +28,8 @@ export default function RegisterPage() {
         try {
             await register(username, password, email);
             navigate('/', { replace: true });
-        } catch {
-            setErr('Kayıt başarısız, lütfen tekrar deneyin');
+        } catch (e) {
+            setErr(e instanceof Error ? e.message : 'Kayıt başarısız, lütfen tekrar deneyin');
         }
     }
 
@@ -38,7 +38,7 @@ export default function RegisterPage() {
             <form onSubmit={handleSubmit} className="bg-[#2d3038] p-8 rounded shadow w-[360px] space-y-4">
                 <h1 className="text-center text-lg mb-2">Kayıt Ol</h1>
 
-                {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+                {error && <p className="text-sm text-red-400 text-center whitespace-pre-line">{error}</p>}
 
                 <input
                     className="w-full px-3 py-2 rounded bg-gray-700"
