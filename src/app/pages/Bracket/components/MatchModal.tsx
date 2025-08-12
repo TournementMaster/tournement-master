@@ -20,32 +20,6 @@ interface Props {
     onClose: () => void;
 }
 
-/** normalize "9.3","9:3","14","07,45" → "09.30","09.30","14.00","07.45" */
-function normalizeTime(input: string): string {
-    const raw = input.trim();
-    if (!raw) return '';
-
-    let s = raw.replace(',', ':').replace('.', ':');
-    if (!s.includes(':')) s = `${s}:`;
-
-    const [hStr, mStrRaw = ''] = s.split(':');
-
-    let h = parseInt(hStr || '0', 10);
-    let m: number;
-
-    if (mStrRaw === '') m = 0;
-    else if (/^\d$/.test(mStrRaw)) m = parseInt(mStrRaw, 10) * 10; // 3 → 30, 4 → 40
-    else m = parseInt(mStrRaw.slice(0, 2), 10);
-
-    if (Number.isNaN(h)) h = 0;
-    if (Number.isNaN(m)) m = 0;
-
-    h = Math.max(0, Math.min(23, h));
-    m = Math.max(0, Math.min(59, m));
-
-    return `${String(h).padStart(2, '0')}.${String(m).padStart(2, '0')}`;
-}
-
 export default function MatchModal({ match, onSave, onClose }: Props) {
     // isimler read-only
     const names: [string, string] = [match.players[0].name, match.players[1].name];
@@ -57,7 +31,11 @@ export default function MatchModal({ match, onSave, onClose }: Props) {
     );
 
     const [manual, setManual] = useState<0 | 1 | undefined>(match.meta?.manual);
-    const [timeRaw, setTimeRaw] = useState(match.meta?.time ?? '');
+    // "14.00" gelmişse input="time" için "14:00" yap
+    const [timeRaw, setTimeRaw] = useState(
+        match.meta?.time ? match.meta.time.replace('.', ':') : ''
+    );
+
     const [court, setCourt] = useState(match.meta?.court ?? '');
 
     const addSet = () =>
@@ -72,12 +50,11 @@ export default function MatchModal({ match, onSave, onClose }: Props) {
             Number(b) || 0,
         ]);
 
-        const t = timeRaw ? normalizeTime(timeRaw) : undefined;
-
         const meta: Meta = {
             scores: parsed,
             manual,
-            time: t,
+            // input="time" → "HH:MM"
+            time: timeRaw || undefined,
             court: court || undefined,
         };
         onSave(meta);
@@ -154,16 +131,14 @@ export default function MatchModal({ match, onSave, onClose }: Props) {
                         <div>
                             <label className="block mb-1 text-sm">Time</label>
                             <input
+                                type="time"
+                                step={60}
                                 value={timeRaw}
                                 onChange={e => setTimeRaw(e.target.value)}
-                                onBlur={() => timeRaw && setTimeRaw(normalizeTime(timeRaw))}
-                                placeholder="14.00"
                                 className="w-full bg-[#262930] px-3 py-2 rounded"
-                                inputMode="numeric"
-                            />
-                            <p className="text-xs text-gray-300 mt-1">
-                                Örn: 14, 9.3, 9:4, 07,45 → 14.00 / 09.30 / 09.40 / 07.45
-                            </p>
+                             />
+                             <p className="text-xs text-gray-300 mt-1">Saat seçiniz (örn: 14:00)</p>
+
                         </div>
                         <div>
                             <label className="block mb-1 text-sm">Court #</label>

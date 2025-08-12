@@ -72,7 +72,10 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             <div className="ml-auto flex items-center gap-3">
                 {showSave && (
                     <button
-                        onClick={() => alert('Kaydedildi!')}
+                        onClick={() => {
+                            // Bracket bileşeni bu olayı dinleyip gerçek kaydı yapacak
+                            window.dispatchEvent(new CustomEvent('bracket:save'));
+                        }}
                         className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 font-semibold shadow"
                     >
                         <span className="text-lg leading-none">💾</span>

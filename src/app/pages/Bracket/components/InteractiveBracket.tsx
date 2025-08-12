@@ -1,215 +1,486 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
     TransformWrapper,
     TransformComponent,
     type ReactZoomPanPinchRef,
-} from 'react-zoom-pan-pinch'
-import MatchModal from './MatchModal'
-import { useBracketTheme, type BracketThemeKey } from '../../../context/BracketThemeContext'
-import { PALETTES, type ThemeKey, type Palette } from '../../../context/themePalettes'
-import { usePlayers, type Participant } from '../../../hooks/usePlayers'
-import { useSettings } from '../../../context/BracketSettingsCtx'
+} from 'react-zoom-pan-pinch';
+import MatchModal from './MatchModal';
+import { useBracketTheme, type BracketThemeKey } from '../../../context/BracketThemeContext';
+import { PALETTES, type ThemeKey, type Palette } from '../../../context/themePalettes';
+import { usePlayers, type Participant } from '../../../hooks/usePlayers';
+import { useSettings } from '../../../context/BracketSettingsCtx';
+import { useLocation } from 'react-router-dom';
+import { api } from '../../../lib/api';
+import type { Club } from '../../../models/Club';
+import type { SubTournament } from '../../../hooks/useSubTournaments';
 
 /* --------------------------------- Types --------------------------------- */
 export interface Player { seed: number; name: string; club?: string; winner?: boolean }
-export interface Meta   { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string; }
+export interface Meta   { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string }
 export interface Match  { players: Player[]; meta?: Meta }
 type Matrix = Match[][]
 
+type ApiAthlete = {
+    id: number; first_name: string; last_name: string;
+    birth_year: number; weight: string | number; gender: 'M' | 'F' | string;
+    club: number | null;
+};
+
+type ApiMatchSet = { id: number; set_no: number; a1_score: number; a2_score: number; match: number };
+type ApiMatch = {
+    id: number; sets: ApiMatchSet[];
+    round_no: number; position: number;
+    court_no: number | null; scheduled_at: string | null; extra_note: string;
+    sub_tournament: number; athlete1: number | null; athlete2: number | null; winner: number | null;
+};
+type ClubRow = { id: number; name: string; city?: string };
+
 /* ----------------------------- Layout constants -------------------------- */
-const BOX_W = 340
-const BOX_H = 78
-const GAP   = 120
-const BASE  = BOX_H
-const CORNER = 10
-type Pos = { mid:number; y1:number; y2:number }
+const BOX_W = 340;
+const BOX_H = 78;
+const GAP   = 120;
+const BASE  = BOX_H;
+const CORNER = 10;
+type Pos = { mid:number; y1:number; y2:number };
 
-/* SVG yardımcıları */
+/* -------------------------------- Helpers -------------------------------- */
 function blank(): Match { return { players:[{seed:0,name:'—'},{seed:0,name:'—'}] } }
-function ellipsize(s: string, max = 16) { return s && s.length>max ? s.slice(0, max-1)+'…' : s }
 
-/* ------------------------------ Seeding utils ---------------------------- */
 function seedOrder(size:number): number[] {
-    if (size < 2) return [1]
-    let prev = [1,2]
+    if (size < 2) return [1];
+    let prev = [1,2];
     while (prev.length < size) {
-        const n = prev.length * 2
-        const comp = prev.map(x => n + 1 - x)
-        const next:number[] = []
+        const n = prev.length * 2;
+        const comp = prev.map(x => n + 1 - x);
+        const next:number[] = [];
         for (let i=0;i<prev.length;i+=2){
-            const a = prev[i],   b = prev[i+1]
-            const A = comp[i],   B = comp[i+1]
-            next.push(a, A, B, b)
+            const a = prev[i],   b = prev[i+1];
+            const A = comp[i],   B = comp[i+1];
+            next.push(a, A, B, b);
         }
-        prev = next
+        prev = next;
     }
-    return prev
+    return prev;
 }
 function nextPowerOfTwo(n: number) { let s=1; while(s<n) s<<=1; return Math.max(4,s) }
 
-/* İlk turu ve boş turları oluştur (placementMap destekli) */
+/* Yerelden ilk turu kur */
 function buildMatrix(participants: Participant[], placementMap: Record<number,number>|null): Matrix {
-    const n = participants.length
-    const size = nextPowerOfTwo(n)
-    const order = seedOrder(size)
+    const n = participants.length;
+    const size = nextPowerOfTwo(n);
+    const order = seedOrder(size);
 
-    // slotSeed → player (oyuncunun seed'i değişmeden görünür)
-    const slotToPlayer = new Map<number, Player>()
+    const slotToPlayer = new Map<number, Player>();
     for (const p of participants) {
-        const slotSeed = placementMap?.[p.seed] ?? p.seed
-        slotToPlayer.set(slotSeed, { seed: p.seed, name: p.name, club: p.club })
+        const slotSeed = placementMap?.[p.seed] ?? p.seed;
+        slotToPlayer.set(slotSeed, { seed: p.seed, name: p.name, club: p.club });
     }
 
-    // İlk raund
-    const r0: Match[] = []
+    const r0: Match[] = [];
     for (let i=0; i<order.length; i+=2){
-        const a = slotToPlayer.get(order[i])   ?? { seed:0, name:'—' }
-        const b = slotToPlayer.get(order[i+1]) ?? { seed:0, name:'—' }
-        r0.push({ players: [a, b] })
+        const a = slotToPlayer.get(order[i])   ?? { seed:0, name:'—' };
+        const b = slotToPlayer.get(order[i+1]) ?? { seed:0, name:'—' };
+        r0.push({ players: [a, b] });
     }
 
-    // Sonraki raundlar
-    const rounds: Matrix = [r0]
-    let games = size/4
+    const rounds: Matrix = [r0];
+    let games = size/4;
     while (games >= 1) { rounds.push(Array(games).fill(0).map(blank)); games /= 2 }
-    return rounds
+    return rounds;
 }
 
-/* Kazananları bir sonraki tura taşı */
+/* Kazananları sonraki tura taşı */
 function propagate(matrix: Matrix): Matrix {
     const mat: Matrix = matrix.map(r => r.map(m => ({
         players: m.players.map(p => ({ ...p })),
         meta: m.meta ? { ...m.meta, scores: m.meta.scores ? [...m.meta.scores] as [number,number][] : undefined } : undefined,
-    })))
+    })));
 
     for (let r = 0; r < mat.length - 1; r++) {
         mat[r].forEach((m, idx) => {
-            const [p1, p2] = m.players
-            let winner: 0 | 1 | undefined
+            const [p1, p2] = m.players;
+            let winner: 0 | 1 | undefined;
 
-            // Bye/boş kontrolü SADECE ilk turda
-            if (r === 0) {
-                const aBye = p1.seed === 0 || p1.name === '—'
-                const bBye = p2.seed === 0 || p2.name === '—'
-                if (aBye && !bBye) winner = 1
-                else if (bBye && !aBye) winner = 0
+            if (r === 0) { // ilk tur bye
+                const aBye = p1.seed === 0 || p1.name === '—';
+                const bBye = p2.seed === 0 || p2.name === '—';
+                if (aBye && !bBye) winner = 1;
+                else if (bBye && !aBye) winner = 0;
             }
 
-            // Skor veya manuel kazanan
             if (winner == null && m.meta?.scores?.length) {
-                const [a, b] = m.meta.scores[0]
-                if (a !== b) winner = a > b ? 0 : 1
-                else if (m.meta.manual != null) winner = m.meta.manual
+                const [a, b] = m.meta.scores[0];
+                if (a !== b) winner = a > b ? 0 : 1;
+                else if (m.meta.manual != null) winner = m.meta.manual;
             }
 
             if (winner != null) {
-                // bu maç bitti → tik/soluklaştırma
-                m.players[winner]   = { ...m.players[winner], winner: true }
-                m.players[1-winner] = { ...m.players[1-winner], winner: false }
+                m.players[winner]   = { ...m.players[winner], winner: true };
+                m.players[1-winner] = { ...m.players[1-winner], winner: false };
 
-                // SONRAKİ TUR: oyuncuyu taşı ama winner bayrağını SIFIRLA
-                const next = mat[r+1][Math.floor(idx/2)]
-                const moved = { ...m.players[winner] }
-                delete (moved).winner
-                next.players[idx%2] = moved
+                const next = mat[r+1][Math.floor(idx/2)];
+                const moved = { ...m.players[winner] };
+                delete (moved).winner;
+                next.players[idx%2] = moved;
             }
-        })
+        });
     }
-    return mat
+    return mat;
 }
 
 /* Tema anahtarı çözümle */
 function resolveThemeKey(k: BracketThemeKey): ThemeKey {
     switch (k) {
         case 'classic-dark':
-        case 'classic-light': return 'classic'
+        case 'classic-light': return 'classic';
         case 'modern-dark':
-        case 'modern-light':  return 'purple'
-        case 'purple-orange': return 'orange'
-        case 'black-white':   return 'invert'
-        case 'ocean':   return 'ocean'
-        case 'forest':  return 'forest'
-        case 'rose':    return 'rose'
-        case 'gold':    return 'gold'
-        case 'crimson': return 'crimson'
-        case 'teal':    return 'teal'
-        case 'slate':   return 'slate'
-        default:        return 'classic'
+        case 'modern-light':  return 'purple';
+        case 'purple-orange': return 'orange';
+        case 'black-white':   return 'invert';
+        case 'ocean':   return 'ocean';
+        case 'forest':  return 'forest';
+        case 'rose':    return 'rose';
+        case 'gold':    return 'gold';
+        case 'crimson': return 'crimson';
+        case 'teal':    return 'teal';
+        case 'slate':   return 'slate';
+        default:        return 'classic';
     }
+}
+
+/* ISO → HH.MM */
+function toHHMM(iso: string | null | undefined): string | undefined {
+    if (!iso) return undefined;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return undefined;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}.${mm}`;
+}
+
+/* ------------------------- Backend → Matrix builder ----------------------- */
+function buildFromBackend(
+    athletes: ApiAthlete[],
+    matches: ApiMatch[],
+    clubs: ClubRow[],
+): { matrix: Matrix; firstRound: Participant[] } {
+    const clubMap = new Map<number, string>();
+    clubs.forEach(c => clubMap.set(c.id, c.name));
+
+    const aMap = new Map<number, { name: string; club?: string }>();
+    athletes.forEach(a => {
+        const name = (a.first_name || '').trim() || `${a.first_name} ${a.last_name}`.trim() || '—';
+        const club = a.club != null ? clubMap.get(a.club) : undefined;
+        aMap.set(a.id, { name, club });
+    });
+
+    const maxRound = matches.length ? Math.max(...matches.map(m => m.round_no)) : 0;
+    const matrix: Matrix = maxRound ? Array.from({ length: maxRound }, () => []) : [];
+
+    for (let r = 1; r <= maxRound; r++) {
+        const inRound = matches.filter(m => m.round_no === r);
+        const maxPos = inRound.length ? Math.max(...inRound.map(m => m.position)) : 0;
+        matrix[r - 1] = Array.from({ length: maxPos }, () => blank());
+
+        inRound.forEach(m => {
+            const p1 = m.athlete1 ? (aMap.get(m.athlete1) ?? { name: '—' }) : { name: '—' };
+            const p2 = m.athlete2 ? (aMap.get(m.athlete2) ?? { name: '—' }) : { name: '—' };
+
+            const players: Player[] = [
+                { seed: 0, name: p1.name, club: p1.club },
+                { seed: 0, name: p2.name, club: p2.club },
+            ];
+
+            const meta: Meta = {};
+            if (Array.isArray(m.sets) && m.sets.length) meta.scores = m.sets.map(s => [s.a1_score, s.a2_score]);
+            const t = toHHMM(m.scheduled_at);
+            if (t) meta.time = t;
+            if (m.court_no != null) meta.court = String(m.court_no);
+
+            if (m.winner != null) {
+                if (m.winner === m.athlete1) {
+                    players[0] = { ...players[0], winner: true };
+                    players[1] = { ...players[1], winner: false };
+                } else if (m.winner === m.athlete2) {
+                    players[1] = { ...players[1], winner: true };
+                    players[0] = { ...players[0], winner: false };
+                }
+            }
+
+            matrix[r - 1][m.position - 1] = { players, meta };
+        });
+    }
+
+    // İlk turdan yan panel için participants listesi
+    const firstRound: Participant[] = (matrix[0] ?? []).flatMap((m, idx) => {
+        const out: Participant[] = [];
+        if (m.players[0]?.name && m.players[0].name !== '—') {
+            out.push({ name: m.players[0].name, club: m.players[0].club, seed: idx * 2 + 1 });
+        }
+        if (m.players[1]?.name && m.players[1].name !== '—') {
+            out.push({ name: m.players[1].name, club: m.players[1].club, seed: idx * 2 + 2 });
+        }
+        return out;
+    });
+
+    // Backend maç döndürmüyorsa ama atletler varsa → atletlerden şablon kur
+    if (!matrix.length && athletes.length) {
+        const fallbackParticipants: Participant[] = athletes.map((a, i) => ({
+            name: (a.first_name || '').trim() || `${a.first_name} ${a.last_name}`.trim() || '—',
+            club: a.club != null ? clubMap.get(a.club) : undefined,
+            seed: i + 1,
+        }));
+        const mtx = buildMatrix(fallbackParticipants, null);
+        return { matrix: mtx, firstRound: fallbackParticipants };
+    }
+
+    return { matrix, firstRound };
+}
+
+/* --------------------------- Backend data loader -------------------------- */
+function BackendBracketLoader({
+                                  slug,
+                                  onBuilt,
+                                  pollMs = 10_000,
+                              }: {
+    slug: string;
+    onBuilt: (m: Matrix, p: Participant[]) => void;
+    pollMs?: number;
+}) {
+    useEffect(() => {
+        if (!slug) return;
+
+        let mounted = true;
+        let timer: number | null = null;
+
+        const fetchAll = async () => {
+            try {
+                const [athRes, matchRes, clubsRes] = await Promise.all([
+                    api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`),
+                    api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`),
+                    api.get<ClubRow[]>('clubs/').catch(() => ({ data: [] as ClubRow[] })),
+                ]);
+                if (!mounted) return;
+
+                const athletes = Array.isArray(athRes.data) ? athRes.data : [];
+                const matches  = Array.isArray(matchRes.data) ? matchRes.data : [];
+                const clubs    = Array.isArray(clubsRes.data) ? clubsRes.data : [];
+
+                const built = buildFromBackend(athletes, matches, clubs);
+                onBuilt(propagate(built.matrix), built.firstRound);
+            } catch (e) {
+                // Sessiz: backend geçici hata verebilir; bir sonraki poll'da toparlar
+                // console.error(e);
+            }
+        };
+
+        // İlk yükleme
+        void fetchAll();
+        // Polling
+        timer = window.setInterval(fetchAll, pollMs);
+
+        return () => {
+            mounted = false;
+            if (timer) window.clearInterval(timer);
+        };
+    }, [slug, pollMs, onBuilt]);
+
+    return null;
 }
 
 /* -------------------------------- Component ------------------------------- */
 export default memo(function InteractiveBracket(){
-    const { players }  = usePlayers()
-    const { settings } = useSettings()
-    const themeKey     = useBracketTheme()
-    const palette:Palette = PALETTES[resolveThemeKey(themeKey)]
+    const { players, setPlayers }  = usePlayers();
+    const { settings } = useSettings();
+    const themeKey     = useBracketTheme();
+    const palette:Palette = PALETTES[resolveThemeKey(themeKey)];
 
-    const [rounds,setRounds]=useState<Matrix>(()=>propagate(buildMatrix(players, settings.placementMap)))
-    const [selected,setSelected]=useState<{r:number;m:number}|null>(null)
+    const location = useLocation();
+    const slug = useMemo(() => location.pathname.match(/^\/bracket\/(.+)/)?.[1] ?? '', [location.pathname]);
+    const stateItem = (location.state as SubTournament | undefined) || null;
+    const [subId, setSubId] = useState<number | null>(stateItem?.id ?? null);
 
-    // Zoom/pan kontrolü için ref
-    const twRef = useRef<ReactZoomPanPinchRef | null>(null)
+    const isBackend = !!slug;
 
-    // oyuncular veya yerleşim haritası / versiyon değiştiğinde yeniden kur
+    const [rounds,setRounds]=useState<Matrix>(() => {
+        return players.length ? propagate(buildMatrix(players, settings.placementMap)) : [];
+    });
+    const [selected, setSelected] = useState<{r:number;m:number}|null>(null);
+    const [saving,setSaving]=useState(false);
+    const [saveMsg, setSaveMsg]=useState<string|null>(null);
+
+    const handleBuilt = useCallback(
+        (matrix: Matrix, firstRoundParticipants: Participant[]) => {
+            setRounds(matrix);                 // already propagated
+            if (firstRoundParticipants.length) setPlayers(firstRoundParticipants);
+        },
+        [setPlayers]
+    );
+
+    // Zoom/pan kontrolü
+    const twRef = useRef<ReactZoomPanPinchRef | null>(null);
+
+    // Yerel mod: oyuncular değişince bracket’i güncelle
     useEffect(()=>{
-        setRounds(propagate(buildMatrix(players, settings.placementMap)))
-    },[players, settings.placementMap, settings.version])
+        if (isBackend) return;
+        setRounds(propagate(buildMatrix(players, settings.placementMap)));
+    },[isBackend, players, settings.placementMap, settings.version]);
 
-    /* Pozisyonlar */
-    const layout=useMemo<Pos[][]>(()=>rounds.map((round,r)=>{
-        const span=BASE<<r
-        return round.map((_,i)=>{
-            const mid=BASE+span+i*span*2
-            return {mid,y1:mid-span/2,y2:mid+span/2}
-        })
-    }),[rounds])
-
-    /* Boyutlar */
-    const svgHeight=(layout[0]?.at(-1)?.mid ?? 0)+BASE
-    const svgWidth =56+rounds.length*(BOX_W+GAP)+200
-
-    /* “Perde arkasına saklanma” hissini azaltmak için:
-       - İçeriği büyük bir “stage” içine koyuyoruz (her yönde ekstra boşluk)
-       - wrapper/content overflow’unu visible yapıyoruz. */
-    const STAGE_PAD = 400
-    const stageW = svgWidth  + STAGE_PAD * 2
-    const stageH = svgHeight + STAGE_PAD * 2
-
-    /* İlk açılışta şablonu biraz daha YUKARI & SOL’A getir (kullanıcı isteği) */
-    const INITIAL_POS = { left: 320, top: 120, scale: 1 } // px
-    const applied = useRef(false)
+    // Slug ile geldiysek SubTournament id’sini çek
     useEffect(() => {
-        if (!twRef.current || applied.current) return
-        const x = -(STAGE_PAD - INITIAL_POS.left)
-        const y = -(STAGE_PAD - INITIAL_POS.top)
-        twRef.current.setTransform(x, y, INITIAL_POS.scale, 0) // animasyonsuz yerleştir
-        applied.current = true
-    }, [stageW, stageH])
+        if (!isBackend || subId) return;
+        (async () => {
+            try {
+                const { data } = await api.get<SubTournament>(`subtournaments/${slug}/`);
+                if (data?.id) setSubId(data.id);
+            } catch {
+                setSaveMsg('Alt turnuva bilgisi alınamadı (slug).');
+            }
+        })();
+    }, [isBackend, slug, subId]);
+
+    // Pozisyon ve boyutlar
+    const layout=useMemo<Pos[][]>(()=>rounds.map((round,r)=>{
+        const span=BASE<<r;
+        return round.map((_,i)=>{
+            const mid=BASE+span+i*span*2;
+            return {mid,y1:mid-span/2,y2:mid+span/2};
+        });
+    }),[rounds]);
+
+    const svgHeight = Math.max(((layout[0]?.at(-1)?.mid ?? 0) + BASE), 420);
+    const svgWidth  = Math.max((56 + rounds.length*(BOX_W+GAP) + 200), 820);
+
+    const STAGE_PAD = 400;
+    const stageW = svgWidth  + STAGE_PAD * 2;
+    const stageH = svgHeight + STAGE_PAD * 2;
+
+    const INITIAL_POS = { left: 320, top: 120, scale: 1 };
+    const applied = useRef(false);
+    useEffect(() => {
+        if (!twRef.current || applied.current) return;
+        const x = -(STAGE_PAD - INITIAL_POS.left);
+        const y = -(STAGE_PAD - INITIAL_POS.top);
+        twRef.current.setTransform(x, y, INITIAL_POS.scale, 0);
+        applied.current = true;
+    }, [stageW, stageH]);
 
     const saveMeta=(meta:Meta)=>{
-        if(!selected) return
+        if(!selected) return;
         setRounds(prev=>{
             const copy:Matrix=prev.map(rnd=>rnd.map(m=>({
                 players:m.players.map(p=>({...p})),
                 meta:m.meta?{...m.meta}:undefined
-            })))
-            copy[selected.r][selected.m].meta=meta
-            return propagate(copy)
-        })
-        setSelected(null)
+            })));
+            copy[selected.r][selected.m].meta=meta;
+            return propagate(copy);
+        });
+        setSelected(null);
+    };
+
+    // "HH.MM" → bugünün tarihi ile ISO
+    function timeToISO(t?: string): string | null {
+        if (!t) return null;
+        const s = t.replace('.', ':');
+        const m = s.match(/^(\d{2}):(\d{2})$/);
+        if (!m) return null;
+        const [, hh, mm] = m;
+        const now = new Date();
+        const local = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Number(hh), Number(mm), 0, 0);
+        return local.toISOString();
     }
 
-    /* Sağ-alt köşedeki “sıfırla” düğmesi: ilk konuma döndür */
+    const persistBracket = useCallback(async () => {
+        if (!slug) { setSaveMsg('Slug okunamadı.'); return; }
+        if (!subId) { setSaveMsg('Alt turnuva ID bulunamadı.'); return; }
+        if (!players.length) { setSaveMsg('Kaydedilecek katılımcı yok.'); return; }
+        setSaving(true); setSaveMsg(null);
+        try {
+            let clubs: Club[] = [];
+            try {
+                const { data } = await api.get<Club[]>('clubs/');
+                if (Array.isArray(data)) clubs = data;
+            } catch { /* noop */ }
+            const clubIdByName = new Map(clubs.map(c => [c.name.trim().toLowerCase(), c.id]));
+
+            const sorted = [...players].sort((a,b)=>a.seed-b.seed);
+            const athletePayload = sorted.map(p => ({
+                first_name: p.name,
+                last_name : 'Example',
+                birth_year: 1453,
+                weight    : '-1.00',
+                gender    : 'M',
+                club      : clubIdByName.get((p.club||'').trim().toLowerCase()) ?? null,
+            }));
+            const { data: created } = await api.post<Array<{id:number}>>('athletes/bulk/', athletePayload);
+            if (!Array.isArray(created) || created.length !== sorted.length) {
+                throw new Error('Athlete bulk sonucu beklenen sayıda değil.');
+            }
+            const seedToAthlete: Record<number, number> = {};
+            created.forEach((a, idx) => { seedToAthlete[sorted[idx].seed] = a.id; });
+
+            const matchPayload = rounds.flatMap((round, rIdx) =>
+                round.map((m, iIdx) => {
+                    const a1Seed = m.players[0]?.seed || 0;
+                    const a2Seed = m.players[1]?.seed || 0;
+                    const a1 = a1Seed > 0 ? (seedToAthlete[a1Seed] ?? null) : null;
+                    const a2 = a2Seed > 0 ? (seedToAthlete[a2Seed] ?? null) : null;
+                    const winner =
+                        m.players[0]?.winner ? a1 :
+                            m.players[1]?.winner ? a2 : null;
+                    const court_no = (() => {
+                        const raw = m.meta?.court?.trim();
+                        const n = raw ? parseInt(raw, 10) : NaN;
+                        return Number.isFinite(n) ? n : null;
+                    })();
+                    const scheduled_at = timeToISO(m.meta?.time);
+                    return {
+                        round_no    : rIdx + 1,
+                        position    : iIdx + 1,
+                        court_no,
+                        scheduled_at: scheduled_at ?? undefined,
+                        extra_note  : '',
+                        sub_tournament: subId,
+                        athlete1    : a1,
+                        athlete2    : a2,
+                        winner      : winner ?? null,
+                    };
+                })
+            );
+            await api.post('matches/bulk/', matchPayload);
+            setSaveMsg('Kaydedildi.');
+        } catch (e) {
+            setSaveMsg(e instanceof Error ? e.message : 'Kaydetme sırasında hata oluştu.');
+        } finally {
+            setSaving(false);
+            setTimeout(()=>setSaveMsg(null), 2500);
+        }
+    }, [slug, subId, players, rounds]);
+
+    useEffect(() => {
+        const h = () => { if (!saving) void persistBracket(); };
+        window.addEventListener('bracket:save', h);
+        return () => window.removeEventListener('bracket:save', h);
+    }, [persistBracket, saving]);
+
     const resetView = () => {
-        if (!twRef.current) return
-        const x = -(STAGE_PAD - INITIAL_POS.left)
-        const y = -(STAGE_PAD - INITIAL_POS.top)
-        twRef.current.setTransform(x, y, INITIAL_POS.scale, 300) // hafif animasyonla
-    }
+        if (!twRef.current) return;
+        const x = -(STAGE_PAD - INITIAL_POS.left);
+        const y = -(STAGE_PAD - INITIAL_POS.top);
+        twRef.current.setTransform(x, y, INITIAL_POS.scale, 300);
+    };
 
     return (
         <div className="relative">
+            {/* Backend verisini yükle (slug varsa) */}
+            {isBackend && (
+                <BackendBracketLoader
+                    slug={slug}
+                    onBuilt={handleBuilt}
+                    pollMs={30_000}
+                />
+            )}
+
             <TransformWrapper
                 ref={twRef}
                 minScale={0.4}
@@ -222,18 +493,10 @@ export default memo(function InteractiveBracket(){
                 pinch={{ step: 10 }}
             >
                 <TransformComponent
-                    /* Bu iki stil önemli: görünümü kesmeyelim */
-                    wrapperStyle={{ width: '100%', height: '100%', overflow: 'visible' }}
+                    wrapperStyle={{ width: '100%', minHeight: '600px', height: '70vh', overflow: 'visible' }}
                     contentStyle={{ overflow: 'visible' }}
                 >
-                    {/* Sahne: fazladan boşluk veriyoruz */}
-                    <div
-                        style={{
-                            width: stageW,
-                            height: stageH,
-                            position: 'relative',
-                        }}
-                    >
+                    <div style={{ width: stageW, height: stageH, position: 'relative' }}>
                         <svg
                             width={svgWidth}
                             height={svgHeight}
@@ -260,123 +523,158 @@ export default memo(function InteractiveBracket(){
                                 </linearGradient>
                             </defs>
 
-                            {rounds.map((round,r)=>{
-                                const x0base=64+r*(BOX_W+GAP)
-                                const x1=x0base+BOX_W+GAP
-                                return round.map((m,i)=>{
-                                    const {mid,y1,y2}=layout[r][i]
-                                    const sets=m.meta?.scores
-                                    const scoreText=(idx:0|1)=>(sets??[]).map(s=>String(s[idx]??0)).join('·')
-                                    const bothHaveNames = m.players.every(p => p.name && p.name !== '—')
-                                    const finished = m.players.some(p => p.winner != null)
-                                    const x0 = x0base
+                            {rounds.map((round, r) => {
+                                const x0base = 64 + r * (BOX_W + GAP);
+                                const x1 = x0base + BOX_W + GAP;
+                                return round.map((m, i) => {
+                                    const { mid, y1, y2 } = layout[r][i];
+                                    const sets = m.meta?.scores;
+                                    const scoreText = (idx: 0 | 1) =>
+                                        (sets ?? []).map(s => String(s[idx] ?? 0)).join('·');
+                                    const bothHaveNames = m.players.every(p => p.name && p.name !== '—');
+                                    const finished = m.players.some(p => p.winner != null);
+                                    const x0 = x0base;
 
                                     return (
                                         <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
-                                            {/* seed numaraları – KUTU DIŞINDA (sol) */}
-                                            {settings.showSeeds && m.players.map((p,idx)=>(
-                                                p.seed>0 && p.name!=='—' ? (
-                                                    <text key={`seed-${idx}`} className="seed" x={x0-14} y={(mid+(idx?22:-22))} textAnchor="end">
+                                            {/* seed numaraları */}
+                                            {settings.showSeeds && m.players.map((p, idx) => (
+                                                p.seed > 0 && p.name !== '—' ? (
+                                                    <text
+                                                        key={`seed-${idx}`}
+                                                        className="seed"
+                                                        x={x0 - 14}
+                                                        y={mid + (idx ? 22 : -22)}
+                                                        textAnchor="end"
+                                                    >
                                                         {p.seed}
                                                     </text>
                                                 ) : null
                                             ))}
 
-                                            <rect className="rect" x={x0} y={mid-BOX_H/2} width={BOX_W} height={BOX_H} rx={CORNER}/>
-                                            <rect className="bar"  x={x0-8} y={mid-BOX_H/2} width={8} height={BOX_H} rx={CORNER}/>
-                                            {m.players.some(p=>p.winner)&&(
-                                                <rect className="win" x={x0+BOX_W} y={mid-BOX_H/2} width={8} height={BOX_H} rx={CORNER}/>
+                                            <rect className="rect" x={x0} y={mid - BOX_H / 2} width={BOX_W} height={BOX_H} rx={CORNER}/>
+                                            <rect className="bar"  x={x0 - 8} y={mid - BOX_H / 2} width={8} height={BOX_H} rx={CORNER}/>
+                                            {m.players.some(p => p.winner) && (
+                                                <rect className="win" x={x0 + BOX_W} y={mid - BOX_H / 2} width={8} height={BOX_H} rx={CORNER}/>
                                             )}
-                                            <line className="mid" x1={x0} x2={x0+BOX_W} y1={mid} y2={mid}/>
+                                            <line className="mid" x1={x0} x2={x0 + BOX_W} y1={mid} y2={mid}/>
 
-                                            {m.players.map((p,idx)=>{
-                                                const y = mid+(idx?22:-22)
+                                            {m.players.map((p, idx) => {
+                                                const y = mid + (idx ? 22 : -22);
                                                 return (
                                                     <g key={idx}>
-                                                        {/* İsim + tik */}
-                                                        <text className="txt" x={x0+18} y={y}>
+                                                        <text className="txt" x={x0 + 18} y={y}>
                                                             <tspan>{p.name}</tspan>
                                                             {p.winner && <tspan className="tick" dx="8">✓</tspan>}
                                                         </text>
-
-                                                        {/* Kulüp (alt satır) */}
                                                         {!!p.club && (
-                                                            <text className="sub" x={x0+18} y={y+16}>
-                                                                {ellipsize(p.club, 16)}
+                                                            <text className="sub" x={x0 + 18} y={y + 16}>
+                                                                {p.club.length > 16 ? `${p.club.slice(0, 15)}…` : p.club}
                                                             </text>
                                                         )}
                                                     </g>
-                                                )
+                                                );
                                             })}
 
-                                            {/* Skorlar SADECE showScores=true iken */}
+                                            {/* Skorlar */}
                                             {settings.showScores && sets?.length && (
-                                                m.players.map((_,idx)=>(
-                                                    <text key={`s-${idx}`} className="txt" fontSize={13} fill="#fff"
-                                                          x={x0+BOX_W-10} y={mid+(idx?22:-22)} textAnchor="end">
-                                                        {scoreText(idx as 0|1)}
+                                                m.players.map((_, idx) => (
+                                                    <text
+                                                        key={`s-${idx}`}
+                                                        className="txt"
+                                                        fontSize={13}
+                                                        x={x0 + BOX_W - 10}
+                                                        y={mid + (idx ? 22 : -22)}
+                                                        textAnchor="end"
+                                                    >
+                                                        {scoreText(idx as 0 | 1)}
                                                     </text>
                                                 ))
                                             )}
 
-                                            {/* Time/Court yalnızca: skor kapalı && ilgili global anahtar açık */}
-                                            {!settings.showScores && (m.meta?.time && settings.showTime) && (
-                                                <text className="sub" x={x0+BOX_W-10} y={mid-BOX_H/2+14} textAnchor="end">
+                                            {/* Saat/Kort */}
+                                            {(m.meta?.time && settings.showTime) && (
+                                                <text className="sub" x={x0 + BOX_W - 10} y={mid - BOX_H / 2 + 14} textAnchor="end">
                                                     {m.meta.time}
                                                 </text>
                                             )}
-                                            {!settings.showScores && (m.meta?.court && settings.showCourt) && (
-                                                <text className="sub" x={x0+BOX_W-10} y={mid+BOX_H/2-12} textAnchor="end">
+                                            {(m.meta?.court && settings.showCourt) && (
+                                                <text className="sub" x={x0 + BOX_W - 10} y={mid + BOX_H / 2 - 12} textAnchor="end">
                                                     Court {m.meta.court}
                                                 </text>
                                             )}
 
-                                            <line className="ln" x1={x0-8} y1={y1} x2={x0-8} y2={y2}/>
-                                            <line className="ln" x1={x0-8} y1={mid} x2={x0} y2={mid}/>
-                                            {r<rounds.length-1 && <line className="ln" x1={x0+BOX_W+8} y1={mid} x2={x1-8} y2={mid}/>}
+                                            <line className="ln" x1={x0 - 8} y1={y1} x2={x0 - 8} y2={y2}/>
+                                            <line className="ln" x1={x0 - 8} y1={mid} x2={x0} y2={mid}/>
+                                            {r < rounds.length - 1 && (
+                                                <line className="ln" x1={x0 + BOX_W + 8} y1={mid} x2={x1 - 8} y2={mid}/>
+                                            )}
 
+                                            {/* Tıklanabilir alan */}
                                             <rect
                                                 className="hit"
                                                 x={x0}
-                                                y={mid-BOX_H/2}
+                                                y={mid - BOX_H / 2}
                                                 width={BOX_W}
                                                 height={BOX_H}
                                                 fill="transparent"
-                                                onClick={()=> bothHaveNames && setSelected({r,m:i})}
+                                                onClick={() => bothHaveNames && setSelected({ r, m: i })}
                                             />
-                                            <rect className="outline" x={x0-8} y={mid-BOX_H/2} width={BOX_W+16} height={BOX_H} rx={CORNER+2}/>
+                                            <rect
+                                                className="outline"
+                                                x={x0 - 8}
+                                                y={mid - BOX_H / 2}
+                                                width={BOX_W + 16}
+                                                height={BOX_H}
+                                                rx={CORNER + 2}
+                                            />
                                         </g>
-                                    )
-                                })
+                                    );
+                                });
                             })}
                         </svg>
                     </div>
                 </TransformComponent>
             </TransformWrapper>
 
-            {/* Sağ-alt “Reset” butonu */}
+            {/* Reset */}
             <button
                 onClick={resetView}
                 title="Şablonu ilk konuma getir"
                 aria-label="Şablonu sıfırla"
                 className="fixed bottom-4 right-4 z-[60] w-12 h-12 rounded-full border border-white/25 text-white
-                   bg-[#0f1217]/95 hover:bg-[#0f1217] shadow flex items-center justify-center"
+                 bg-[#0f1217]/95 hover:bg-[#0f1217] shadow flex items-center justify-center"
             >
-                {/* Basit hedef/nişangâh simgesi */}
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                    viewBox="0 0 24 24"
+                    width="22"
+                    height="22"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                >
                     <circle cx="12" cy="12" r="8"></circle>
                     <path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path>
                     <circle cx="12" cy="12" r="2.5"></circle>
                 </svg>
             </button>
 
+            {/* Skor girişi modalı */}
             {selected && (
                 <MatchModal
                     match={rounds[selected.r][selected.m]}
                     onSave={saveMeta}
-                    onClose={()=>setSelected(null)}
+                    onClose={() => setSelected(null)}
                 />
             )}
+
+            {saveMsg && (
+                <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] px-4 py-2 rounded bg-black/70 text-white text-sm">
+                    {saveMsg}
+                </div>
+            )}
         </div>
-    )
-})
+    );
+});
