@@ -98,40 +98,57 @@ function buildMatrix(participants: Participant[], placementMap: Record<number,nu
 
 /* Kazananları sonraki tura taşı */
 function propagate(matrix: Matrix): Matrix {
+    // Derin kopya
     const mat: Matrix = matrix.map(r => r.map(m => ({
         players: m.players.map(p => ({ ...p })),
-        meta: m.meta ? { ...m.meta, scores: m.meta.scores ? [...m.meta.scores] as [number,number][] : undefined } : undefined,
+        meta: m.meta ? { ...m.meta, scores: m.meta.scores ? [...m.meta.scores] as [number, number][] : undefined } : undefined,
     })));
 
-    for (let r = 0; r < mat.length - 1; r++) {
+    // 🔁 TÜM turları işle (final dâhil). Son turda sadece winner flag set edilir, ileri taşınmaz.
+    for (let r = 0; r < mat.length; r++) {
         mat[r].forEach((m, idx) => {
             const [p1, p2] = m.players;
             let winner: 0 | 1 | undefined;
 
-            if (r === 0) { // ilk tur bye
+            // 1) İlk tur bye kuralı
+            if (r === 0) {
                 const aBye = p1.seed === 0 || p1.name === '—';
                 const bBye = p2.seed === 0 || p2.name === '—';
                 if (aBye && !bBye) winner = 1;
                 else if (bBye && !aBye) winner = 0;
             }
 
+            // 2) Manuel seçim → her zaman skorlara üstün gelsin
+            if (winner == null && m.meta?.manual != null) {
+                winner = m.meta.manual;
+            }
+
+            // 3) Skorlardan çıkar (manuel yoksa)
             if (winner == null && m.meta?.scores?.length) {
                 const [a, b] = m.meta.scores[0];
                 if (a !== b) winner = a > b ? 0 : 1;
-                else if (m.meta.manual != null) winner = m.meta.manual;
             }
 
             if (winner != null) {
+                // mevcut maçta winner/loser flag’lerini ata
                 m.players[winner]   = { ...m.players[winner], winner: true };
-                m.players[1-winner] = { ...m.players[1-winner], winner: false };
+                m.players[1 - winner] = { ...m.players[1 - winner], winner: false };
 
-                const next = mat[r+1][Math.floor(idx/2)];
-                const moved = { ...m.players[winner] };
-                delete (moved).winner;
-                next.players[idx%2] = moved;
+                // son tur değilse kazananı bir sonraki tura taşı
+                if (r < mat.length - 1) {
+                    const next = mat[r + 1][Math.floor(idx / 2)];
+                    const moved = { ...m.players[winner] };
+                    delete moved.winner; // üst tura flag’siz çıkar
+                    next.players[idx % 2] = moved;
+                }
+            } else {
+                // kararsızsa flag’leri temiz tut
+                m.players[0] = { ...m.players[0], winner: undefined };
+                m.players[1] = { ...m.players[1], winner: undefined };
             }
         });
     }
+
     return mat;
 }
 
@@ -214,6 +231,13 @@ function buildFromBackend(
                     players[0] = { ...players[0], winner: false };
                 }
             }
+
+            // Winner geldiyse modal/propagate tutarlılığı için manual’ı da yaz
+            if (m.winner != null) {
+                if (m.winner === m.athlete1) (meta as Meta).manual = 0;
+                else if (m.winner === m.athlete2) (meta as Meta).manual = 1;
+            }
+
 
             matrix[r - 1][m.position - 1] = { players, meta };
         });
@@ -325,9 +349,6 @@ export default memo(function InteractiveBracket(){
     const slug = useMemo(() => location.pathname.match(/^\/bracket\/(.+)/)?.[1] ?? '', [location.pathname]);
     const stateItem = (location.state as (SubTournament & { can_edit?: boolean }) | undefined) || null;
     const [subId, setSubId] = useState<number | null>(stateItem?.id ?? null);
-    const [started, setStarted] = useState<boolean>(false);
-    const startedRef = useRef(false);
-    useEffect(() => { startedRef.current = started; }, [started]);
 
     // "Başlat?" lightbox kontrolü
     const [showStartConfirm, setShowStartConfirm] = useState(false);
@@ -337,6 +358,12 @@ export default memo(function InteractiveBracket(){
     const [mode, setMode] = useState<'view'|'edit'>('view');
     const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true)); // istersen backend’le bağlarız
     const [refreshKey, setRefreshKey] = useState(0);
+
+    // Turnuva başladı mı? (backend’den gelir; yoksa false)
+    type SubTournamentDetail = SubTournament & { started?: boolean; can_edit?: boolean };
+    const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
+    const startedRef = useRef<boolean>(started);
+    useEffect(() => { startedRef.current = started; }, [started]);
 
     /* Çizim matrisi */
     const [rounds, setRounds] = useState<Matrix>([]);
@@ -348,6 +375,8 @@ export default memo(function InteractiveBracket(){
 
     const [dirty, setDirty] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+    const editBaselineRef = useRef<{ playersLen: number } | null>(null);
 
     const handleBuilt = useCallback(
         (matrix: Matrix, firstRoundParticipants: Participant[]) => {
@@ -389,23 +418,22 @@ export default memo(function InteractiveBracket(){
     }, [mode, started]);
 
     useEffect(() => {
-        if (!slug || subId) return
+        if (!slug || subId) return;
         (async () => {
             try {
-                const { data } = await api.get<any>(`subtournaments/${slug}/`)
-                if (data?.id) setSubId(data.id)
-                if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit))
-
-                // ↓↓↓ EKLE — backend’den gelen started bilgisini yükle
-                if (typeof data?.started === 'boolean') {
-                    setStarted(data.started)
-                    startedRef.current = data.started
-                }
+                const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
+                if (data?.id) setSubId(data.id);
+                if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
+                // backend started → state’e işle
+                if (typeof data?.started === 'boolean') setStarted(Boolean(data.started));
+                // bazı projelerde farklı isimlendirme olabiliyor, emniyet için:
+                if (typeof (data as any)?.has_started === 'boolean') setStarted(Boolean((data as any).has_started));
             } catch {
-                setSaveMsg('Alt turnuva bilgisi alınamadı (slug).')
+                setSaveMsg('Alt turnuva bilgisi alınamadı (slug).');
             }
-        })()
-    }, [slug, subId])
+        })();
+    }, [slug, subId]);
+
 
     /* Yerel katılımcılardan bracket kurma */
     useEffect(() => {
@@ -431,10 +459,21 @@ export default memo(function InteractiveBracket(){
         }
     }, [mode, players, settings.placementMap, settings.version]);
 
+    useEffect(() => {
+        if (mode !== 'edit') return;
+        const base = editBaselineRef.current?.playersLen ?? players.length;
+        if (players.length !== base) setDirty(true);
+    }, [players.length, mode]);
+
     /* Header/Sidebar’dan gelecek kontrol olayları */
     useEffect(() => {
         const enterEdit = () => {
             if (!canEdit) return;
+
+            // ⬇⬇⬇ EKLE — Edit’e girerken baseline'ı yakala ve dirty'yi sıfırla
+            editBaselineRef.current = { playersLen: players.length };
+            setDirty(false);
+
             setMode('edit');
             // rounds boşsa tek seferlik doldur
             setRounds(prev => {
@@ -465,6 +504,17 @@ export default memo(function InteractiveBracket(){
             window.removeEventListener('bracket:refresh', refresh);
         };
     }, [canEdit, mode, dirty, players.length, settings.placementMap]);
+
+    useEffect(() => {
+        const participantsViewOnly = (mode === 'view') || startedRef.current;
+        window.dispatchEvent(new CustomEvent('bracket:view-only', {
+            detail: { value: participantsViewOnly }
+        }));
+
+        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', {
+            detail: { mode }  // 'view' | 'edit' -> Settings paneli buna göre disable/enable
+        }));
+    }, [mode, started]);
 
     /* Kaydet (header’daki buton zaten bracket:save olayı atıyor) */
     const timeToISO = (t?: string): string | null => {
@@ -594,35 +644,32 @@ export default memo(function InteractiveBracket(){
     const saveMeta = (meta: Meta) => {
         if (!selected) return;
 
-        // Bu maç turnuvayı "başlatır" mı? (yalnızca 2 sporcu da varsa)
         const m = rounds[selected.r]?.[selected.m];
         const bothPresent =
             !!m?.players?.[0]?.name && m.players[0].name !== '—' &&
             !!m?.players?.[1]?.name && m.players[1].name !== '—';
 
-        // Skorla karar verilmiş mi veya manuel winner seçilmiş mi?
-        const decidedByScore =
-            Array.isArray(meta.scores) &&
-            meta.scores.some(([a, b]) => Number.isFinite(a as number) || Number.isFinite(b as number)) &&
-            meta.scores.some(([a, b]) => (a ?? 0) !== (b ?? 0));
+        // skor girilip fark oluşması veya manuel kazanan seçimi "başlatır"
+        const decidedByScore = Array.isArray(meta.scores)
+            && meta.scores.some(([a, b]) => Number.isFinite(a as number) || Number.isFinite(b as number))
+            && meta.scores.some(([a, b]) => (a ?? 0) !== (b ?? 0));
 
         const decidedManually = meta.manual === 0 || meta.manual === 1;
-
         const startsTournamentNow = bothPresent && (decidedByScore || decidedManually);
 
-        // Edit modunda ve henüz başlamamışsa → önce başlat onayı iste
-        // (startedRef.current kullan: sayfa tazelense bile backend’le senkron)
+        // Edit modunda ve henüz başlamamışsa → önce onay iste
         if (mode === 'edit' && !startedRef.current && startsTournamentNow) {
             pendingMetaRef.current = { r: selected.r, m: selected.m, meta };
             setShowStartConfirm(true);
             return;
         }
 
-        // Sadece saat/kort gibi zararsız değişiklikler veya zaten başlamışsa → direkt uygula
+        // Zaten başladıysa ya da sadece saat/kort gibi zararsız update ise direkt uygula
         applyMeta(selected.r, selected.m, meta);
     };
 
-    const applyMeta = useCallback((r:number, m:number, meta: Meta) => {
+
+    const applyMeta = useCallback((r: number, m: number, meta: Meta) => {
         setRounds(prev => {
             const copy: Matrix = prev.map(rnd => rnd.map(match => ({
                 players: match.players.map(p => ({ ...p })),
@@ -632,6 +679,7 @@ export default memo(function InteractiveBracket(){
             return propagate(copy);
         });
         setSelected(null);
+        setDirty(true); // ⬅ skor/saat/kort değişikliği de “kaydedilmemiş değişiklik” sayılır
     }, []);
 
     const resetView = () => {
@@ -753,7 +801,6 @@ export default memo(function InteractiveBracket(){
                                         const sets = m.meta?.scores;
                                         const scoreText = (idx: 0 | 1) =>
                                             (sets ?? []).map(s => String(s[idx] ?? 0)).join('·');
-                                        const bothHaveNames = m.players.every(p => p.name && p.name !== '—');
                                         const finished = m.players.some(p => p.winner != null);
                                         const x0 = x0base;
 

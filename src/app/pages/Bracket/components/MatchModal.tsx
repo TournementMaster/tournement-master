@@ -11,7 +11,7 @@
    Not: Meta tipinde time/court alanları olmalı (hooks/useBracket.tsx → Meta).
    ========================================================================= */
 import ReactDOM from 'react-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Match, Meta } from '../../../hooks/useBracket';
 
 interface Props {
@@ -30,13 +30,39 @@ export default function MatchModal({ match, onSave, onClose }: Props) {
             : [['', '']]
     );
 
-    const [manual, setManual] = useState<0 | 1 | undefined>(match.meta?.manual);
+    const initialManual =
+        match.meta?.manual ??
+        (match.players[0]?.winner ? 0 : match.players[1]?.winner ? 1 : undefined);
+
+    const [manual, setManual] = useState<0 | 1 | undefined>(initialManual);
     // "14.00" gelmişse input="time" için "14:00" yap
     const [timeRaw, setTimeRaw] = useState(
         match.meta?.time ? match.meta.time.replace('.', ':') : ''
     );
 
     const [court, setCourt] = useState(match.meta?.court ?? '');
+    useEffect(() => {
+        const p0 = match?.players?.[0];
+        const p1 = match?.players?.[1];
+
+        // Winner önceliği: oyuncu bayrakları → manual → skordan çıkarım → null
+        if (p0?.winner === true) {
+            setManual(0);
+        } else if (p1?.winner === true) {
+            setManual(1);
+        } else if (typeof match?.meta?.manual === 'number') {
+            setManual(match.meta!.manual as 0 | 1);
+        } else if (Array.isArray(match?.meta?.scores) && match!.meta!.scores.length) {
+            const [a, b] = match!.meta!.scores[0] || [0, 0];
+            setManual(a !== b ? ((a > b ? 0 : 1) as 0 | 1) : undefined);
+        } else {
+            setManual(undefined);
+        }
+
+        // time/court’i de prop’tan tazele
+        setTimeRaw(match?.meta?.time ? match.meta.time.replace('.', ':') : '');
+        setCourt(match?.meta?.court ?? '');
+    }, [match]);
 
     const addSet = () =>
         setScores(prev => (prev.length < 3 ? [...prev, ['', '']] : prev));
