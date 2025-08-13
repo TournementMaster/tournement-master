@@ -1,11 +1,11 @@
-import {useState, type FormEvent, useEffect} from 'react'
+import { useState, type FormEvent, useEffect } from 'react'
 import { usePlayers } from '../hooks/usePlayers'
 import ClubSelect from './ClubSelect'
 
 export default function ParticipantsPanel() {
     const { players, setPlayers } = usePlayers()
 
-    // ▼ View modunda kilitleme durumu
+    // ▼ View modunda kilitleme durumu (mode === 'view' iken true)
     const [viewOnly, setViewOnly] = useState<boolean>(() => {
         const v = localStorage.getItem('bracket.viewOnly')
         return v ? JSON.parse(v) : false
@@ -20,12 +20,23 @@ export default function ParticipantsPanel() {
         return () => window.removeEventListener('bracket:view-only', h)
     }, [])
 
+    // ▼ Turnuva başladıysa oyuncu ekleme/çıkarma kilidi
+    const [locked, setLocked] = useState<boolean>(false)
+    useEffect(() => {
+        const h = (e: any) => setLocked(Boolean(e.detail?.value))
+        window.addEventListener('bracket:players-locked', h)
+        return () => window.removeEventListener('bracket:players-locked', h)
+    }, [])
+
+    // Türetilmiş okuma modu: View modunda veya turnuva başladıysa → true
+    const readOnly = viewOnly || locked
+
     const [inputName, setInputName] = useState('')
     const [club, setClub] = useState('') // boş = kulüp yok
 
     const handleAdd = (e: FormEvent) => {
         e.preventDefault()
-        if (viewOnly) return // ▼ View modunda ekleme yok
+        if (readOnly) return // ▼ kilitliyken ekleme yok
 
         const name = inputName.trim()
         if (!name) return
@@ -35,7 +46,7 @@ export default function ParticipantsPanel() {
     }
 
     const removeAt = (idx: number) => {
-        if (viewOnly) return // ▼ View modunda silme yok
+        if (readOnly) return // ▼ kilitliyken silme yok
         const rest = players.filter((_, i) => i !== idx)
         const reseeded = rest.map((p, i) => ({ ...p, seed: i + 1 }))
         setPlayers(reseeded)
@@ -45,20 +56,20 @@ export default function ParticipantsPanel() {
         <div className="space-y-4">
             <h3 className="font-semibold">Katılımcılar</h3>
 
-            {/* View modunda form alanlarını okunur metne çeviriyoruz */}
+            {/* View/Locked durumlarında form alanlarını kilitliyoruz */}
             <form onSubmit={handleAdd} className="flex flex-col gap-2">
                 {/* İsim alanı */}
                 <input
                     className="w-full bg-[#111318] rounded px-3 py-2"
                     value={inputName}
                     onChange={e => setInputName(e.target.value)}
-                    readOnly={viewOnly}
-                    disabled={viewOnly}
+                    readOnly={readOnly}
+                    disabled={readOnly}
                     placeholder="Sporcu adı girin…"
                 />
 
-                {/* Kulüp alanı: viewOnly ise ClubSelect yerine salt-okunur input göster */}
-                {viewOnly ? (
+                {/* Kulüp alanı: readOnly ise ClubSelect yerine salt-okunur input göster */}
+                {readOnly ? (
                     <input
                         className="w-full bg-[#111318] rounded px-3 py-2 text-white/80"
                         value={club}
@@ -71,8 +82,8 @@ export default function ParticipantsPanel() {
                     <ClubSelect selected={club} onChange={setClub} />
                 )}
 
-                {/* Ekle butonu viewOnly’de görünmesin */}
-                {!viewOnly && (
+                {/* Ekle butonu kilitliyken görünmesin */}
+                {!readOnly && (
                     <button
                         type="submit"
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white"
@@ -81,10 +92,12 @@ export default function ParticipantsPanel() {
                     </button>
                 )}
 
-                {/* View modunda küçük bir bilgi etiketi (opsiyonel) */}
-                {viewOnly && (
+                {/* Bilgi etiketi */}
+                {readOnly && (
                     <div className="text-xs text-white/50">
-                        View modunda düzenleme yapılamaz.
+                        {locked
+                            ? 'Turnuva başladı: katılımcı listesi kilitli.'
+                            : 'View modunda düzenleme yapılamaz.'}
                     </div>
                 )}
             </form>
@@ -101,8 +114,8 @@ export default function ParticipantsPanel() {
                 {p.club ? <em className="text-gray-400">· {p.club}</em> : null}
             </span>
 
-                        {/* Silme butonu viewOnly’de görünmesin */}
-                        {!viewOnly && (
+                        {/* Silme butonu kilitliyken görünmesin */}
+                        {!readOnly && (
                             <button
                                 onClick={() => removeAt(i)}
                                 className="text-red-400 hover:text-red-200"

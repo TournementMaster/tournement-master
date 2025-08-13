@@ -71,6 +71,7 @@ function seedOrder(size:number): number[] {
 }
 function nextPowerOfTwo(n: number) { let s=1; while(s<n) s<<=1; return Math.max(4,s) }
 
+
 /* Yerelden ilk turu kur */
 function buildMatrix(participants: Participant[], placementMap: Record<number,number>|null): Matrix {
     const n = participants.length;
@@ -365,6 +366,10 @@ export default memo(function InteractiveBracket(){
     const startedRef = useRef<boolean>(started);
     useEffect(() => { startedRef.current = started; }, [started]);
 
+    const [startedKnown, setStartedKnown] = useState<boolean>(
+        typeof (stateItem as any)?.started === 'boolean'
+    );
+
     /* Çizim matrisi */
     const [rounds, setRounds] = useState<Matrix>([]);
     const backendMatrixRef = useRef<Matrix>([]);
@@ -413,11 +418,6 @@ export default memo(function InteractiveBracket(){
     }, [mode, started])
 
     useEffect(() => {
-        const viewOnly = (mode === 'view') || started;
-        window.dispatchEvent(new CustomEvent('bracket:view-only', { detail: { value: viewOnly } }));
-    }, [mode, started]);
-
-    useEffect(() => {
         if (!slug || subId) return;
         (async () => {
             try {
@@ -425,9 +425,15 @@ export default memo(function InteractiveBracket(){
                 if (data?.id) setSubId(data.id);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
                 // backend started → state’e işle
-                if (typeof data?.started === 'boolean') setStarted(Boolean(data.started));
+                if (typeof data?.started === 'boolean') {
+                    setStarted(Boolean(data.started));
+                    setStartedKnown(true);
+                }
                 // bazı projelerde farklı isimlendirme olabiliyor, emniyet için:
-                if (typeof (data as any)?.has_started === 'boolean') setStarted(Boolean((data as any).has_started));
+                if (typeof (data as any)?.has_started === 'boolean') {
+                    setStarted(Boolean((data as any).has_started));
+                    setStartedKnown(true);
+                }
             } catch {
                 setSaveMsg('Alt turnuva bilgisi alınamadı (slug).');
             }
@@ -649,7 +655,6 @@ export default memo(function InteractiveBracket(){
             !!m?.players?.[0]?.name && m.players[0].name !== '—' &&
             !!m?.players?.[1]?.name && m.players[1].name !== '—';
 
-        // skor girilip fark oluşması veya manuel kazanan seçimi "başlatır"
         const decidedByScore = Array.isArray(meta.scores)
             && meta.scores.some(([a, b]) => Number.isFinite(a as number) || Number.isFinite(b as number))
             && meta.scores.some(([a, b]) => (a ?? 0) !== (b ?? 0));
@@ -657,14 +662,12 @@ export default memo(function InteractiveBracket(){
         const decidedManually = meta.manual === 0 || meta.manual === 1;
         const startsTournamentNow = bothPresent && (decidedByScore || decidedManually);
 
-        // Edit modunda ve henüz başlamamışsa → önce onay iste
-        if (mode === 'edit' && !startedRef.current && startsTournamentNow) {
+        if (mode === 'edit' && startedKnown && !startedRef.current && startsTournamentNow) {
             pendingMetaRef.current = { r: selected.r, m: selected.m, meta };
             setShowStartConfirm(true);
             return;
         }
 
-        // Zaten başladıysa ya da sadece saat/kort gibi zararsız update ise direkt uygula
         applyMeta(selected.r, selected.m, meta);
     };
 
