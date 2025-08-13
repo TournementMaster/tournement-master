@@ -325,6 +325,13 @@ export default memo(function InteractiveBracket(){
     const slug = useMemo(() => location.pathname.match(/^\/bracket\/(.+)/)?.[1] ?? '', [location.pathname]);
     const stateItem = (location.state as (SubTournament & { can_edit?: boolean }) | undefined) || null;
     const [subId, setSubId] = useState<number | null>(stateItem?.id ?? null);
+    const [started, setStarted] = useState<boolean>(false);
+    const startedRef = useRef(false);
+    useEffect(() => { startedRef.current = started; }, [started]);
+
+    // "Başlat?" lightbox kontrolü
+    const [showStartConfirm, setShowStartConfirm] = useState(false);
+    const pendingMetaRef = useRef<null | { r: number; m: number; meta: Meta }>(null);
 
     /* Mode & izin */
     const [mode, setMode] = useState<'view'|'edit'>('view');
@@ -365,17 +372,40 @@ export default memo(function InteractiveBracket(){
     }, [mode]);
 
     useEffect(() => {
-        if (!slug || subId) return;
+        // Sidebar panellerine duyuru: View modu mu? (readonly)
+        window.dispatchEvent(new CustomEvent('bracket:view-only', {
+            detail: { value: mode === 'view' }
+        }))
+
+        // Oyuncu ekleme/çıkarma kilidi (turnuva başladıysa true)
+        window.dispatchEvent(new CustomEvent('bracket:players-locked', {
+            detail: { value: started }
+        }))
+    }, [mode, started])
+
+    useEffect(() => {
+        const viewOnly = (mode === 'view') || started;
+        window.dispatchEvent(new CustomEvent('bracket:view-only', { detail: { value: viewOnly } }));
+    }, [mode, started]);
+
+    useEffect(() => {
+        if (!slug || subId) return
         (async () => {
             try {
-                const { data } = await api.get<any>(`subtournaments/${slug}/`);
-                if (data?.id) setSubId(data.id);
-                if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
+                const { data } = await api.get<any>(`subtournaments/${slug}/`)
+                if (data?.id) setSubId(data.id)
+                if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit))
+
+                // ↓↓↓ EKLE — backend’den gelen started bilgisini yükle
+                if (typeof data?.started === 'boolean') {
+                    setStarted(data.started)
+                    startedRef.current = data.started
+                }
             } catch {
-                setSaveMsg('Alt turnuva bilgisi alınamadı (slug).');
+                setSaveMsg('Alt turnuva bilgisi alınamadı (slug).')
             }
-        })();
-    }, [slug, subId]);
+        })()
+    }, [slug, subId])
 
     /* Yerel katılımcılardan bracket kurma */
     useEffect(() => {
@@ -561,19 +591,48 @@ export default memo(function InteractiveBracket(){
         applied.current = true;
     }, [stageW, stageH]);
 
-    const saveMeta=(meta:Meta)=>{
-        if(!selected) return;
-        setRounds(prev=>{
-            const copy:Matrix=prev.map(rnd=>rnd.map(m=>({
-                players:m.players.map(p=>({...p})),
-                meta:m.meta?{...m.meta}:undefined
+    const saveMeta = (meta: Meta) => {
+        if (!selected) return;
+
+        // Bu maç turnuvayı "başlatır" mı? (yalnızca 2 sporcu da varsa)
+        const m = rounds[selected.r]?.[selected.m];
+        const bothPresent =
+            !!m?.players?.[0]?.name && m.players[0].name !== '—' &&
+            !!m?.players?.[1]?.name && m.players[1].name !== '—';
+
+        // Skorla karar verilmiş mi veya manuel winner seçilmiş mi?
+        const decidedByScore =
+            Array.isArray(meta.scores) &&
+            meta.scores.some(([a, b]) => Number.isFinite(a as number) || Number.isFinite(b as number)) &&
+            meta.scores.some(([a, b]) => (a ?? 0) !== (b ?? 0));
+
+        const decidedManually = meta.manual === 0 || meta.manual === 1;
+
+        const startsTournamentNow = bothPresent && (decidedByScore || decidedManually);
+
+        // Edit modunda ve henüz başlamamışsa → önce başlat onayı iste
+        // (startedRef.current kullan: sayfa tazelense bile backend’le senkron)
+        if (mode === 'edit' && !startedRef.current && startsTournamentNow) {
+            pendingMetaRef.current = { r: selected.r, m: selected.m, meta };
+            setShowStartConfirm(true);
+            return;
+        }
+
+        // Sadece saat/kort gibi zararsız değişiklikler veya zaten başlamışsa → direkt uygula
+        applyMeta(selected.r, selected.m, meta);
+    };
+
+    const applyMeta = useCallback((r:number, m:number, meta: Meta) => {
+        setRounds(prev => {
+            const copy: Matrix = prev.map(rnd => rnd.map(match => ({
+                players: match.players.map(p => ({ ...p })),
+                meta: match.meta ? { ...match.meta } : undefined,
             })));
-            copy[selected.r][selected.m].meta=meta;
+            copy[r][m].meta = meta;
             return propagate(copy);
         });
-        setDirty(true);
         setSelected(null);
-    };
+    }, []);
 
     const resetView = () => {
         if (!twRef.current) return;
@@ -584,6 +643,30 @@ export default memo(function InteractiveBracket(){
 
     const isBackend = !!slug;
     const pollingEnabled = isBackend && mode === 'view';
+
+    const confirmStart = async () => {
+        // Backend’e started bayrağını yaz
+        try {
+            if (slug) {
+                await api.patch(`subtournaments/${slug}/`, { started: true });
+            }
+            setStarted(true);
+        } catch {
+            // istersen küçük bir hata bildirimi ekleyebilirsin
+        } finally {
+            setShowStartConfirm(false);
+        }
+
+        // Bekleyen meta’yı uygula
+        const pending = pendingMetaRef.current;
+        pendingMetaRef.current = null;
+        if (pending) applyMeta(pending.r, pending.m, pending.meta);
+    };
+
+    const cancelStart = () => {
+        setShowStartConfirm(false);
+        pendingMetaRef.current = null;   // değişikliği iptal
+    };
 
     return (
         <div className="relative">
@@ -601,8 +684,9 @@ export default memo(function InteractiveBracket(){
             {/* SAĞ ÜSTTE SADECE MOD ETİKETİ (tıklanamaz) */}
             <div className="absolute right-3 top-3 z-[40] pointer-events-none select-none">
         <span className="px-2 py-1 rounded text-xs bg-white/10 text-white/90">
-          Mode: <b>{mode.toUpperCase()}</b>
-        </span>
+  Mode: <b>{mode.toUpperCase()}</b>
+            {started && <span className="ml-2 text-emerald-400">(Started)</span>}
+</span>
             </div>
 
             <TransformWrapper
@@ -845,6 +929,31 @@ export default memo(function InteractiveBracket(){
                                 }}
                             >
                                 Kaydet
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showStartConfirm && (
+                <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center">
+                    <div className="w-[420px] max-w-[90vw] rounded-lg bg-[#0f1217] border border-white/10 p-5 text-white">
+                        <h4 className="text-lg font-semibold mb-2">Turnuvayı başlat?</h4>
+                        <p className="text-sm text-white/80">
+                            Bu işlemden sonra katılımcı ekleyip çıkaramazsınız. Yalnızca sonuç (kazanan) ve skor/saat/kort güncelleyebilirsiniz.
+                        </p>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button
+                                onClick={cancelStart}
+                                className="px-3 py-2 rounded border border-white/20 hover:bg-white/5"
+                            >
+                                Vazgeç
+                            </button>
+                            <button
+                                onClick={confirmStart}
+                                className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+                            >
+                                Evet, başlat
                             </button>
                         </div>
                     </div>
