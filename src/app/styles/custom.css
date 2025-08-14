@@ -106,3 +106,14 @@
     backface-visibility: hidden;
     will-change: transform;
 }
+
+/* -------------------------------------------------------------
+   Premium Menü Tipografisi (emoji + gradient yazı)
+   - Hem Dashboard kartlarının 3 nokta menüsünde
+   - Hem de Alt Turnuva satırlarının menüsünde kullanılıyor
+------------------------------------------------------------- */
+.font-premium {
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 600;
+    letter-spacing: .1px;
+}

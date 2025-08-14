@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useSubTournaments } from '../../hooks/useSubTournaments';
 import SubTournamentRow from './components/SubTournamentRow';
 import SubFilterSidebar, { type SubFilters } from './components/SubFilterSidebar';
@@ -13,6 +13,10 @@ function parseNum(x: unknown, def = NaN) {
 
 export default function TournamentSubListPage() {
     const { public_slug } = useParams<{ public_slug: string }>();
+    const [sp] = useSearchParams();
+    const parentIdFromQuery = Number(sp.get('parent') || '');
+    const parentId = Number.isFinite(parentIdFromQuery) ? parentIdFromQuery : undefined;
+
     const { data, isLoading, isError, error, refetch } = useSubTournaments(public_slug);
 
     const [filters, setFilters] = useState<SubFilters>({
@@ -150,12 +154,31 @@ export default function TournamentSubListPage() {
                         <>
                             {!list.length ? (
                                 <div className="rounded-lg border border-white/10 bg-[#2a2d34] p-8 text-center">
-                                    <div className="text-lg font-semibold mb-2">Alt turnuva bulunamadı</div>
-                                    <p className="text-sm text-gray-300">Seçilen filtrelerle eşleşen kayıt yok.</p>
+                                    <div className="text-lg font-semibold mb-2">Henüz alt turnuvanız yok</div>
+                                    <p className="text-sm text-gray-300 mb-5">
+                                        Oluşturmak ister misiniz?
+                                    </p>
+                                    {parentId ? (
+                                        <Link
+                                            to={`/create?mode=sub&parent=${parentId}`}
+                                            className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            Alt Turnuva Oluştur
+                                        </Link>
+                                    ) : (
+                                        <Link
+                                            to="/create?mode=sub"
+                                            className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
+                                        >
+                                            Alt Turnuva Oluştur
+                                        </Link>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="space-y-4 pb-8">
-                                    {list.map((s) => <SubTournamentRow key={s.id} item={s} />)}
+                                    {list.map((s) => (
+                                        <SubTournamentRow key={s.id} item={s} onChanged={refetch} />
+                                    ))}
                                 </div>
                             )}
                         </>

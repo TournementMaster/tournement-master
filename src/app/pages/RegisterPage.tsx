@@ -76,9 +76,9 @@ export default function RegisterPage() {
                     Kaydol
                 </button>
 
+                {/* Şifremi Unuttum bağlantısı artık burada değil – Login sayfasına taşındı */}
                 <div className="flex items-center justify-between text-sm">
                     <Link to="/login" className="text-blue-400 hover:underline">Giriş Yap</Link>
-                    <Link to="/forgot" className="text-blue-400 hover:underline">Şifremi Unuttum</Link>
                 </div>
             </form>
         </div>

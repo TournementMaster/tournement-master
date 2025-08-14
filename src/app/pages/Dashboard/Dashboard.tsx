@@ -3,6 +3,7 @@
    - Ana turnuvaları listeler
    - Sol üst köşedeki yıl rozeti yerine üç nokta menüsü (Düzenle/Sil)
    - TS daraltmalar: data için Array guard, byText/filtered için net tipler
+   - Menü öğelerine premium yazı stili ve emoji uygulandı
    ========================================================================= */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -11,8 +12,6 @@ import { useTournaments, type Tournament } from '../../hooks/useTournaments';
 import { api } from '../../lib/api';
 
 type SortKey = 'recent' | 'alpha';
-
-
 
 export default function Dashboard() {
     const { data, isLoading, isError, error, refetch } = useTournaments();
@@ -203,8 +202,6 @@ function HeaderBar({
     );
 }
 
-// ...dosyanın üstü aynı (import'lar vs.)
-
 function Card({
                   tournament,
                   onChanged,
@@ -255,6 +252,11 @@ function Card({
         }
     }
 
+    /* Premium menü stilleri */
+    const premiumItem =
+        'flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10 font-premium';
+    const premiumText = 'bg-gradient-to-r from-amber-200 via-emerald-200 to-violet-300 bg-clip-text text-transparent';
+
     return (
         <div
             onClick={goToSubList}
@@ -280,7 +282,7 @@ function Card({
                         ⋯
                     </button>
 
-                    {/* Menü – daha geniş, ikonlu, okunaklı */}
+                    {/* Menü – premium görünüm */}
                     {menuOpen && (
                         <div
                             role="menu"
@@ -296,10 +298,10 @@ function Card({
                                     setMenuOpen(false);
                                     navigate(`/create?mode=main&edit=${encodeURIComponent(tournament.public_slug)}`);
                                 }}
-                                className="flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10"
+                                className={premiumItem}
                             >
                                 <span className="text-[18px]">✏️</span>
-                                <span className="font-medium">Düzenle</span>
+                                <span className={premiumText}>Düzenle</span>
                             </button>
 
                             <button
@@ -309,10 +311,10 @@ function Card({
                                     setMenuOpen(false);
                                     setConfirmOpen(true);
                                 }}
-                                className="flex w-full items-center gap-3 px-4 py-2.5 text-[15px] text-red-300 hover:bg-red-500/10"
+                                className={`${premiumItem} text-red-300 hover:bg-red-500/10`}
                             >
                                 <span className="text-[18px]">🗑️</span>
-                                <span className="font-medium">Sil</span>
+                                <span className={premiumText}>Sil</span>
                             </button>
                         </div>
                     )}
@@ -320,11 +322,10 @@ function Card({
 
                 {tournament.city && (
                     <span className="px-2 py-0.5 rounded-full bg-gray-900/40 border border-white/10 text-gray-200 self-center pointer-events-auto">
-      {tournament.city}
-    </span>
+                        {tournament.city}
+                    </span>
                 )}
             </div>
-
 
             {/* ORTA LOGO – gradient boyalı mask */}
             <div className="absolute inset-0 flex items-center justify-center">
@@ -355,7 +356,7 @@ function Card({
                 </div>
             </div>
 
-            {/* Hover vurgusu (tıklamayı kapmasın) */}
+            {/* Hover vurgusu */}
             <div className="absolute inset-0 ring-0 group-hover:ring-2 ring-emerald-300/50 rounded-lg transition pointer-events-none" />
 
             {confirmOpen && (
@@ -389,7 +390,6 @@ function Card({
                     </div>
                 </div>
             )}
-
         </div>
     );
 }
@@ -414,9 +414,9 @@ function SkeletonGrid() {
 function EmptyState() {
     return (
         <div className="mt-8 rounded-lg border border-white/10 bg-[#2a2d34] p-8 text-center">
-            <div className="text-lg font-semibold mb-2">Henüz ana turnuva bulunmuyor</div>
+            <div className="text-lg font-semibold mb-2">Henüz ana turnuvanız yok</div>
             <p className="text-sm text-gray-300 mb-5">
-                Yeni bir organizasyona başlamak için “Turnuva Oluştur” düğmesini kullanabilirsiniz.
+                Oluşturmak ister misiniz?
             </p>
             <Link
                 to="/create?mode=main"

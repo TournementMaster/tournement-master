@@ -1,8 +1,6 @@
-
 import {type FormEvent, useState } from 'react';
 import {Link, useNavigate} from 'react-router-dom';
 import {useAuth} from "../context/useAuth.ts";
-
 
 export default function LoginPage() {
     const navigate = useNavigate();
@@ -54,12 +52,21 @@ export default function LoginPage() {
                     className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded"
                 >
                     Gönder
-                </button><p className="text-center text-sm">
-                Hesabın yok mu?{' '}
-                <Link to="/register" className="text-blue-400 hover:underline">
-                    Kayıt Ol
-                </Link>
-            </p>
+                </button>
+
+                {/* İstediğiniz gibi: 'Giriş yap' bölümünün ALTINDA şifremi unuttum */}
+                <div className="text-center text-sm">
+                    <Link to="/forgot" className="text-blue-400 hover:underline">
+                        Şifremi Unuttum
+                    </Link>
+                </div>
+
+                <p className="text-center text-sm">
+                    Hesabın yok mu?{' '}
+                    <Link to="/register" className="text-blue-400 hover:underline">
+                        Kayıt Ol
+                    </Link>
+                </p>
             </form>
         </div>
     );
