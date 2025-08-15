@@ -19,7 +19,7 @@ export default function TournamentWizard({
     const [sp] = useSearchParams()
 
     const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main'
-    const editSlug = (sp.get('edit') || '').trim(); //  ← EDIT SLUG
+    const editSlug = (sp.get('edit') || '').trim(); //  ← EDIT SLUG (main ve sub için)
 
     // Ana turnuva alanları
     const [title, setTitle] = useState('')
@@ -31,10 +31,11 @@ export default function TournamentWizard({
     const [description, setDescription] = useState('')
     const [isPublic, setIsPublic] = useState(true)
 
+    // MAIN: Düzenleme modunda alanları doldur
     useEffect(() => {
         if (mode !== 'main') return;
         if (!editSlug) return;
-            ;(async () => {
+        (async () => {
             try {
                 const { data } = await api.get(`tournaments/${encodeURIComponent(editSlug)}/`)
                 // alanları doldur
@@ -98,6 +99,27 @@ export default function TournamentWizard({
     const [gender, setGender] = useState<'M' | 'F' | 'O'>('M')
     const [subPublic, setSubPublic] = useState(true)
 
+    // SUB: Düzenleme modunda alanları doldur
+    useEffect(() => {
+        if (mode !== 'sub') return;
+        if (!editSlug) return;
+        (async () => {
+            try {
+                const { data } = await api.get(`subtournaments/${encodeURIComponent(editSlug)}/`);
+                setSubTitle(data.title ?? '');
+                setSubDesc(data.description ?? '');
+                setAgeMin(Number.isFinite(data.age_min as never) ? String(data.age_min) : '');
+                setAgeMax(Number.isFinite(data.age_max as never) ? String(data.age_max) : '');
+                setWeightMin((data.weight_min ?? '').toString());
+                setWeightMax((data.weight_max ?? '').toString());
+                setGender((data.gender as never) || 'M');
+                setSubPublic(!!data.public);
+            } catch {
+                // yoksa sessiz geç
+            }
+        })();
+    }, [mode, editSlug]);
+
     // Alt turnuva için parentId belirle
     const subParentId = (() => {
         const p = Number(sp.get('parent') || '')
@@ -126,10 +148,11 @@ export default function TournamentWizard({
             const m = Number(ageMin) || undefined
             const M = Number(ageMax) || undefined
             const ageOK = m == null || M == null || m <= M
-            return vTitle && ageOK && !!subParentId
+            // Düzenleme modunda parent zorunlu olmasın
+            return vTitle && ageOK && (!!subParentId || !!editSlug)
         }
         return true
-    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageMin, ageMax, subParentId])
+    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageMin, ageMax, subParentId, editSlug])
 
     async function save() {
         if (mode === 'main') {
@@ -173,6 +196,28 @@ export default function TournamentWizard({
         }
 
         // Alt turnuva
+        if (editSlug) {
+            // DÜZENLEME
+            try {
+                await api.patch(`subtournaments/${encodeURIComponent(editSlug)}/`, {
+                    title: subTitle,
+                    description: subDesc,
+                    age_min: Number(ageMin) || 0,
+                    age_max: Number(ageMax) || 0,
+                    weight_min: weightMin,
+                    weight_max: weightMax,
+                    gender,
+                    public: subPublic,
+                });
+                await qc.invalidateQueries({ queryKey: ['subtournaments'] });
+                navigate(-1);
+            } catch {
+                alert('Alt turnuva güncellenemedi.');
+            }
+            return;
+        }
+
+        // OLUŞTURMA
         if (!subParentId) {
             alert('Ana turnuva ID bulunamadı.')
             return
@@ -213,7 +258,9 @@ export default function TournamentWizard({
                     <div>
                         <div className="text-xs uppercase text-gray-400">Turnuva Sihirbazı</div>
                         <h1 className="text-2xl font-bold">
-                            {mode === 'main' ? (editSlug ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur') : 'Alt Turnuva Oluştur'}
+                            {mode === 'main'
+                                ? (editSlug ? 'Ana Turnuva Düzenle' : 'Ana Turnuva Oluştur')
+                                : (editSlug ? 'Alt Turnuva Düzenle' : 'Alt Turnuva Oluştur')}
                         </h1>
                     </div>
                     <div className="text-sm text-gray-400">{step + 1}/{steps.length}</div>
@@ -413,8 +460,8 @@ function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (
         <label className="inline-flex items-center gap-3 cursor-pointer select-none">
             <span>{children}</span>
             <span onClick={() => onChange(!checked)} className={`inline-block h-8 w-14 rounded-full p-1 transition ${checked ? 'bg-emerald-500' : 'bg-gray-600'}`}>
-        <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
-      </span>
+                <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
+            </span>
         </label>
     )
 }
@@ -437,7 +484,7 @@ function SummaryCard({
     }
     propsSub: {
         subTitle: string
-        gender: string
+        gender: 'M' | 'F' | 'O'
         ageMin: string
         ageMax: string
         weightMin: string
@@ -445,32 +492,30 @@ function SummaryCard({
         subPublic: boolean
     }
 }) {
+    const { title, seasonYear, city, venue, startDate, endDate, isPublic, editors } = propsMain
+    const { subTitle, gender, ageMin, ageMax, weightMin, weightMax, subPublic } = propsSub
+
     return (
-        <div className="rounded bg-[#23252b] p-4 text-sm">
+        <div className="space-y-4 text-sm">
             {mode === 'main' ? (
-                <>
-                    <div><b>Başlık:</b> {propsMain.title || '-'}</div>
-                    <div><b>Sezon:</b> {propsMain.seasonYear || '-'}</div>
-                    <div><b>Şehir:</b> {propsMain.city || '-'}</div>
-                    <div><b>Mekan:</b> {propsMain.venue || '-'}</div>
-                    <div>
-                        <b>Tarih:</b> {propsMain.startDate || '-'} – {propsMain.endDate || '-'}
-                    </div>
-                    <div><b>Public:</b> {propsMain.isPublic ? 'Evet' : 'Hayır'}</div>
-                    <div>
-                        <b>Editörler:</b> {propsMain.editors.length ? propsMain.editors.map(e => e.username).join(', ') : '-'}
-                    </div>
-                </>
+                <div className="grid gap-4 md:grid-cols-2">
+                    <div><b>Başlık:</b> {title}</div>
+                    <div><b>Sezon:</b> {seasonYear}</div>
+                    <div><b>Şehir:</b> {city}</div>
+                    <div><b>Mekan:</b> {venue}</div>
+                    <div><b>Başlangıç:</b> {startDate}</div>
+                    <div><b>Bitiş:</b> {endDate}</div>
+                    <div><b>Public:</b> {isPublic ? 'Evet' : 'Hayır'}</div>
+                    <div><b>Editörler:</b> {editors.length ? editors.map(e=>e.username).join(', ') : '—'}</div>
+                </div>
             ) : (
-                <>
-                    <div><b>Başlık:</b> {propsSub.subTitle || '-'}</div>
-                    <div>
-                        <b>Cinsiyet:</b> {propsSub.gender === 'M' ? 'Erkek' : propsSub.gender === 'F' ? 'Kadın' : 'Karma'}
-                    </div>
-                    <div><b>Yaş:</b> {propsSub.ageMin || '-'} – {propsSub.ageMax || '-'}</div>
-                    <div><b>Kilo:</b> {propsSub.weightMin || '-'} – {propsSub.weightMax || '-'}</div>
-                    <div><b>Public:</b> {propsSub.subPublic ? 'Evet' : 'Hayır'}</div>
-                </>
+                <div className="grid gap-4 md:grid-cols-2">
+                    <div><b>Başlık:</b> {subTitle}</div>
+                    <div><b>Cinsiyet:</b> {gender === 'M' ? 'Erkek' : gender === 'F' ? 'Kadın' : 'Karma'}</div>
+                    <div><b>Yaş:</b> {(ageMin || '?') + '–' + (ageMax || '?')}</div>
+                    <div><b>Kilo:</b> {(weightMin || '?') + '–' + (weightMax || '?')} kg</div>
+                    <div><b>Public:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
+                </div>
             )}
         </div>
     )

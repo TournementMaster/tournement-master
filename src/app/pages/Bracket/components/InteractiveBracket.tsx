@@ -239,7 +239,6 @@ function buildFromBackend(
                 else if (m.winner === m.athlete2) (meta as Meta).manual = 1;
             }
 
-
             matrix[r - 1][m.position - 1] = { players, meta };
         });
     }
@@ -362,12 +361,12 @@ export default memo(function InteractiveBracket(){
 
     // Turnuva başladı mı? (backend’den gelir; yoksa false)
     type SubTournamentDetail = SubTournament & { started?: boolean; can_edit?: boolean };
-    const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
+    const [started, setStarted] = useState<boolean>(Boolean((stateItem )?.started ?? false));
     const startedRef = useRef<boolean>(started);
     useEffect(() => { startedRef.current = started; }, [started]);
 
     const [startedKnown, setStartedKnown] = useState<boolean>(
-        typeof (stateItem as any)?.started === 'boolean'
+        typeof (stateItem )?.started === 'boolean'
     );
 
     /* Çizim matrisi */
@@ -430,8 +429,8 @@ export default memo(function InteractiveBracket(){
                     setStartedKnown(true);
                 }
                 // bazı projelerde farklı isimlendirme olabiliyor, emniyet için:
-                if (typeof (data as any)?.has_started === 'boolean') {
-                    setStarted(Boolean((data as any).has_started));
+                if (typeof (data)?.has_started === 'boolean') {
+                    setStarted(Boolean((data).has_started));
                     setStartedKnown(true);
                 }
             } catch {
@@ -734,10 +733,10 @@ export default memo(function InteractiveBracket(){
 
             {/* SAĞ ÜSTTE SADECE MOD ETİKETİ (tıklanamaz) */}
             <div className="absolute right-3 top-3 z-[40] pointer-events-none select-none">
-        <span className="px-2 py-1 rounded text-xs bg-white/10 text-white/90">
-  Mode: <b>{mode.toUpperCase()}</b>
-            {started && <span className="ml-2 text-emerald-400">(Started)</span>}
-</span>
+                <span className="px-2 py-1 rounded text-xs bg-white/10 text-white/90">
+                    Mode: <b>{mode.toUpperCase()}</b>
+                    {started && <span className="ml-2 text-emerald-400">(Started)</span>}
+                </span>
             </div>
 
             <TransformWrapper
@@ -802,6 +801,10 @@ export default memo(function InteractiveBracket(){
                                         const y2 = mid + span / 2;
 
                                         const sets = m.meta?.scores;
+                                        const showScores = settings.showScores && !!(sets && sets.length);
+                                        const showTime   = !settings.showScores && settings.showTime  && !!m.meta?.time;
+                                        const showCourt  = !settings.showScores && settings.showCourt && !!m.meta?.court;
+
                                         const scoreText = (idx: 0 | 1) =>
                                             (sets ?? []).map(s => String(s[idx] ?? 0)).join('·');
                                         const finished = m.players.some(p => p.winner != null);
@@ -809,8 +812,8 @@ export default memo(function InteractiveBracket(){
 
                                         return (
                                             <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
-                                                {/* seed numaraları */}
-                                                {m.players.map((p, idx) => (
+                                                {/* seed numaraları (ayar ile yönetilir) */}
+                                                {settings.showSeeds && m.players.map((p, idx) => (
                                                     (p.seed > 0 && p.name !== '—') ? (
                                                         <text
                                                             key={`seed-${idx}`}
@@ -848,8 +851,8 @@ export default memo(function InteractiveBracket(){
                                                     );
                                                 })}
 
-                                                {/* Skorlar */}
-                                                {sets?.length && (
+                                                {/* Skorlar (ayar: showScores) */}
+                                                {showScores && (
                                                     m.players.map((_, idx) => (
                                                         <text
                                                             key={`s-${idx}`}
@@ -864,15 +867,15 @@ export default memo(function InteractiveBracket(){
                                                     ))
                                                 )}
 
-                                                {/* Saat/Kort */}
-                                                {m.meta?.time && (
+                                                {/* Saat/Kort (Skor kapalıyken gösterilsin) */}
+                                                {showTime && (
                                                     <text className="sub" x={x0 + BOX_W - 10} y={mid - BOX_H / 2 + 14} textAnchor="end">
-                                                        {m.meta.time}
+                                                        {m.meta?.time}
                                                     </text>
                                                 )}
-                                                {m.meta?.court && (
+                                                {showCourt && (
                                                     <text className="sub" x={x0 + BOX_W - 10} y={mid + BOX_H / 2 - 12} textAnchor="end">
-                                                        Court {m.meta.court}
+                                                        Court {m.meta?.court}
                                                     </text>
                                                 )}
 

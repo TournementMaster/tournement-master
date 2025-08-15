@@ -1,14 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import BracketHeaderActions from '../layouts/BracketHeaderActions';
-
-function todayTR() {
-    const d = new Date()
-    const day = d.getDate()
-    const month = d.toLocaleDateString('tr-TR', { month: 'long' })
-    return `${day} ${month[0].toUpperCase()}${month.slice(1)}`
-}
+import { api } from '../lib/api';
+import type { SubTournament } from '../hooks/useSubTournaments';
 
 export default function Header({ showSave = false }: { showSave?: boolean }) {
     const { isAuth, logout } = useAuth();
@@ -22,7 +17,43 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const isBracket = pathname.startsWith('/bracket');
     const isSubList = pathname.startsWith('/tournements/');
 
-    const centerTitle = isBracket ? (sp.get('title') ?? '') : '';
+    // Orta başlık: Bracket sayfasında alt turnuva başlığı + cinsiyet + kilo aralığı
+    const [headerText, setHeaderText] = useState<string>('');
+
+    useEffect(() => {
+        if (!isBracket) { setHeaderText(''); return; }
+
+        const slug = pathname.match(/^\/bracket\/(.+)/)?.[1];
+        if (!slug) { setHeaderText(''); return; }
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const { data } = await api.get<SubTournament>(`subtournaments/${slug}/`);
+                if (cancelled || !data) return;
+
+                const g = (data.gender || '').toUpperCase();
+                const genderLabel = g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : 'Karma';
+
+                const wMin = (data.weight_min ?? '').toString().trim();
+                const wMax = (data.weight_max ?? '').toString().trim();
+                const weight = wMin || wMax ? `${wMin || '?'}–${wMax || '?'} kg` : '';
+
+                const title = (data.title || sp.get('title') || '').toString().trim();
+
+                setHeaderText([title, genderLabel, weight].filter(Boolean).join(' · '));
+            } catch {
+                // API düşerse en azından URL'deki title'ı göster
+                const t = sp.get('title') || '';
+                setHeaderText(t);
+            }
+        })();
+
+        return () => { cancelled = true; };
+        // location.search değiştiğinde (örn. başlık güncellendiğinde) tazele
+    }, [isBracket, pathname, sp]);
+
     const showCreateBtn = isDashboard || isSubList;
     const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur';
 
@@ -62,10 +93,11 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 )}
             </div>
 
-            {isBracket && !!centerTitle && (
+            {/* Bracket sayfasında orta başlık: Başlık · Cinsiyet · Kilo aralığı */}
+            {isBracket && !!headerText && (
                 <div className="absolute inset-x-0 flex justify-center pointer-events-none">
                     <div className="px-3 py-1 rounded text-white/90 font-semibold select-none">
-                        {centerTitle} <span className="opacity-80">· {todayTR()}</span>
+                        {headerText}
                     </div>
                 </div>
             )}
@@ -118,5 +150,5 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 )}
             </div>
         </header>
-    )
+    );
 }
