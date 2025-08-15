@@ -71,6 +71,15 @@ function seedOrder(size:number): number[] {
 }
 function nextPowerOfTwo(n: number) { let s=1; while(s<n) s<<=1; return Math.max(4,s) }
 
+// Sadece ad+kulüp karşılaştır (seed edit’te değişebilir)
+function samePlayersList(a: Participant[], b: Participant[]) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if ((a[i]?.name || '') !== (b[i]?.name || '')) return false;
+        if ((a[i]?.club || '') !== (b[i]?.club || '')) return false;
+    }
+    return true;
+}
 
 /* Yerelden ilk turu kur */
 function buildMatrix(participants: Participant[], placementMap: Record<number,number>|null): Matrix {
@@ -380,6 +389,9 @@ export default memo(function InteractiveBracket(){
     const [dirty, setDirty] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+    // Edit moduna girildiği andaki oyuncu listesinin “snapshot”u.
+    // Bu snapshot değişmedikçe bracket’i yeniden kurmuyoruz.
+    const editPlayersSnapshotRef = useRef<Participant[] | null>(null);
     const editBaselineRef = useRef<{ playersLen: number } | null>(null);
 
     const handleBuilt = useCallback(
@@ -452,13 +464,23 @@ export default memo(function InteractiveBracket(){
         const placement = settings.placementMap;
 
         if (mode === 'edit') {
+            // Başlamışsa her zaman backend gerçek kaynaktır
             if (startedRef.current) {
-                // Turnuva başladı → backend tek gerçek
                 setRounds(backendMatrixRef.current);
-            } else {
-                // Başlamadı → oyuncu listesinden her değişiklikte bütünüyle yeniden kur
-                setRounds(players.length ? propagate(buildMatrix(players, placement)) : []);
+                return;
             }
+
+            // Başlamamışsa: yalnızca oyuncu listesi snapshot'tan farklıysa yeniden kur
+            const snap = editPlayersSnapshotRef.current;
+            const now  = players.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
+
+            if (!snap || !samePlayersList(snap, now)) {
+                // oyuncu eklendi/silindi/değişti → bracket'i baştan oluştur
+                setRounds(players.length ? propagate(buildMatrix(players, placement)) : []);
+                // snapshot'ı güncelle ki bir dahaki render'da aynı yerde kalsın
+                editPlayersSnapshotRef.current = now;
+            }
+            // Değişiklik yoksa hiçbir şey yapma → backend düzeni korunur
             return;
         }
 
@@ -470,7 +492,7 @@ export default memo(function InteractiveBracket(){
         } else {
             setRounds([]);
         }
-    }, [mode, players, settings.placementMap, settings.version, started]); // started'ı da izle
+    }, [mode, players, settings.placementMap, settings.version, started]); // started'ı izlemeye devam
 
     useEffect(() => {
         if (mode !== 'edit') return;
@@ -488,25 +510,27 @@ export default memo(function InteractiveBracket(){
     useEffect(() => {
         const enterEdit = () => {
             if (!canEdit) return;
+
+            // ① Edit snapshot'ını al (ad+kulüp sırayı koruyarak)
+            editPlayersSnapshotRef.current = players.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
+
             setMode('edit');
 
+            // ② İlk girişte dizilimi backend'den göster → yerler değişmesin
             setRounds(() => {
-                if (startedRef.current) {
-                    // başladıysa backend’i göster
-                    return backendMatrixRef.current.length ? backendMatrixRef.current : [];
-                }
-                // başlamadıysa oyunculardan sıfırdan kur
-                return players.length
-                    ? propagate(buildMatrix(players, settings.placementMap))
-                    : [];
+                if (backendMatrixRef.current.length) return backendMatrixRef.current;
+                // Backend boşsa yerelden kur
+                return players.length ? propagate(buildMatrix(players, settings.placementMap)) : [];
             });
         };
 
         const enterView = () => {
             if (mode === 'edit' && dirty) {
-                setShowExitConfirm(true);  // onay modalını aç
+                setShowExitConfirm(true);
             } else {
                 setMode('view');
+                // View'a dönerken snapshot'ı sıfırlamak opsiyonel (temiz)
+                editPlayersSnapshotRef.current = null;
             }
         };
 
@@ -515,13 +539,12 @@ export default memo(function InteractiveBracket(){
         window.addEventListener('bracket:enter-edit', enterEdit);
         window.addEventListener('bracket:enter-view', enterView);
         window.addEventListener('bracket:refresh', refresh);
-
         return () => {
             window.removeEventListener('bracket:enter-edit', enterEdit);
             window.removeEventListener('bracket:enter-view', enterView);
             window.removeEventListener('bracket:refresh', refresh);
         };
-    }, [canEdit, mode, dirty, players.length, settings.placementMap]);
+    }, [canEdit, mode, dirty, players, settings.placementMap]);
 
     useEffect(() => {
         const participantsViewOnly = (mode === 'view') || startedRef.current;
