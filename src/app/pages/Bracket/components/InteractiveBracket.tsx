@@ -602,7 +602,7 @@ export default memo(function InteractiveBracket(){
                         round_no      : rIdx + 1,
                         position      : iIdx + 1,
                         court_no,
-                        scheduled_at  : scheduled_at ?? undefined,
+                        scheduled_at  : scheduled_at,
                         extra_note    : '',
                         sub_tournament: subId,
                         athlete1      : a1,
