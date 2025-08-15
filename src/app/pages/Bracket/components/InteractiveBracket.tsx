@@ -429,12 +429,15 @@ export default memo(function InteractiveBracket(){
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
                 // backend started → state’e işle
                 if (typeof data?.started === 'boolean') {
-                    setStarted(Boolean(data.started));
+                    const s = Boolean(data.started);
+                    setStarted(s);
+                    startedRef.current = s;        // ← anında senkronize et
                     setStartedKnown(true);
                 }
-                // bazı projelerde farklı isimlendirme olabiliyor, emniyet için:
-                if (typeof (data)?.has_started === 'boolean') {
-                    setStarted(Boolean((data).has_started));
+                if (typeof (data as any)?.has_started === 'boolean') {
+                    const s = Boolean((data as any).has_started);
+                    setStarted(s);
+                    startedRef.current = s;        // ← anında senkronize et
                     setStartedKnown(true);
                 }
             } catch {
@@ -546,9 +549,12 @@ export default memo(function InteractiveBracket(){
     const persistBracket = useCallback(async () => {
         if (!slug) { setSaveMsg('Slug okunamadı.'); return; }
         if (!subId) { setSaveMsg('Alt turnuva ID bulunamadı.'); return; }
-        if (!players.length) { setSaveMsg('Kaydedilecek katılımcı yok.'); return; }
+        // Turnuva başlamamışsa katılımcı şart; başlamışsa skor güncellemesi için boş olabilir
+        if (!players.length && !startedRef.current) { setSaveMsg('Kaydedilecek katılımcı yok.'); return; }
+
         setSaving(true); setSaveMsg(null);
         try {
+            // Kulüp ID eşlemesi (katılımcı oluştururken lazım)
             let clubs: Club[] = [];
             try {
                 const { data } = await api.get<Club[]>('clubs/');
@@ -556,53 +562,95 @@ export default memo(function InteractiveBracket(){
             } catch { /* noop */ }
             const clubIdByName = new Map(clubs.map(c => [c.name.trim().toLowerCase(), c.id]));
 
-            const sorted = [...players].sort((a,b)=>a.seed-b.seed);
-            const athletePayload = sorted.map(p => ({
-                first_name: p.name,
-                last_name : 'Example',
-                birth_year: 1453,
-                weight    : '-1.00',
-                gender    : 'M',
-                club      : clubIdByName.get((p.club||'').trim().toLowerCase()) ?? null,
-            }));
-            const { data: created } = await api.post<Array<{id:number}>>('athletes/bulk/', athletePayload);
-            if (!Array.isArray(created) || created.length !== sorted.length) {
-                throw new Error('Athlete bulk sonucu beklenen sayıda değil.');
+            // ▼ Başlamamış turnuvada oyuncuları (seed -> athlete) oluştur/haritala
+            //   Başlamış turnuvada asla yeni athlete oluşturma.
+            let seedToAthlete: Record<number, number> = {};
+            if (!startedRef.current) {
+                const sorted = [...players].sort((a, b) => a.seed - b.seed);
+                const athletePayload = sorted.map(p => ({
+                    first_name: p.name,
+                    last_name : 'Example',
+                    birth_year: 1453,
+                    weight    : '-1.00',
+                    gender    : 'M',
+                    club      : clubIdByName.get((p.club || '').trim().toLowerCase()) ?? null,
+                }));
+                const { data: created } = await api.post<Array<{ id: number }>>('athletes/bulk/', athletePayload);
+                if (!Array.isArray(created) || created.length !== sorted.length) {
+                    throw new Error('Athlete bulk sonucu beklenen sayıda değil.');
+                }
+                created.forEach((a, idx) => { seedToAthlete[sorted[idx].seed] = a.id; });
             }
-            const seedToAthlete: Record<number, number> = {};
-            created.forEach((a, idx) => { seedToAthlete[sorted[idx].seed] = a.id; });
 
-            const roundsForSave: Matrix =
-                (rounds.length ? rounds : propagate(buildMatrix(sorted as Participant[], settings.placementMap)));
+            // Kaydedilecek matrix:
+            // - Elimizde rounds varsa onu kullan
+            // - Yoksa (örn. ilk kayıt) yerelden üret
+            const roundsForSave: Matrix = (
+                rounds.length
+                    ? rounds
+                    : propagate(
+                        buildMatrix(
+                            [...players].sort((a, b) => a.seed - b.seed) as Participant[],
+                            settings.placementMap
+                        )
+                    )
+            );
 
+            // Player -> athlete id çözümleyici (başlamamışsa seed map; backend’ten geldiyse athleteId)
             const getAthleteIdFor = (p?: Player): number | null => {
                 if (!p) return null;
-                if (p.athleteId != null) return p.athleteId;               // backend’ten geldiyse direkt kullan
+                if (p.athleteId != null) return p.athleteId;      // backend’ten gelmişse doğrudan kullan
                 const s = p.seed || 0;
-                return s > 0 ? (seedToAthlete[s] ?? null) : null;           // lokalse seed’ten eşle
+                return s > 0 ? (seedToAthlete[s] ?? null) : null;  // lokalse seed’ten eşle
             };
+
+            // ▼ Başlamış turnuvada (r,position) bazında mevcut athlete’leri dondur
+            const existingByKey = new Map<string, { a1: number | null; a2: number | null }>();
+            if (startedRef.current) {
+                backendMatrixRef.current.forEach((round, rIdx) => {
+                    round.forEach((m, iIdx) => {
+                        existingByKey.set(`${rIdx + 1}:${iIdx + 1}`, {
+                            a1: m.players[0]?.athleteId ?? null,
+                            a2: m.players[1]?.athleteId ?? null,
+                        });
+                    });
+                });
+            }
 
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
-                    const a1 = getAthleteIdFor(m.players[0]);
-                    const a2 = getAthleteIdFor(m.players[1]);
+                    // Normal akışta UI’dan hesapla
+                    let a1 = getAthleteIdFor(m.players[0]);
+                    let a2 = getAthleteIdFor(m.players[1]);
+
+                    // Başlamışsa: mevcut DB oyuncularını zorla (oyuncu değişikliği yok!)
+                    if (startedRef.current) {
+                        const keep = existingByKey.get(`${rIdx + 1}:${iIdx + 1}`);
+                        if (keep) {
+                            a1 = keep.a1;
+                            a2 = keep.a2;
+                        }
+                    }
+
+                    // Winner’ı athlete id’ye çevir
                     const winner =
                         m.players[0]?.winner ? a1 :
                             m.players[1]?.winner ? a2 : null;
 
+                    // Kort & saat
                     const court_no = (() => {
                         const raw = m.meta?.court?.trim();
                         const n = raw ? parseInt(raw, 10) : NaN;
                         return Number.isFinite(n) ? n : null;
                     })();
 
-                    const scheduled_at = timeToISO(m.meta?.time);
+                    const scheduled_at = timeToISO(m.meta?.time); // string | null
 
                     return {
                         round_no      : rIdx + 1,
                         position      : iIdx + 1,
                         court_no,
-                        scheduled_at  : scheduled_at,
+                        scheduled_at,           // null olabilir
                         extra_note    : '',
                         sub_tournament: subId,
                         athlete1      : a1,
@@ -611,7 +659,9 @@ export default memo(function InteractiveBracket(){
                     };
                 })
             );
+
             await api.post('matches/bulk/', matchPayload);
+
             setDirty(false);
             setSaveMsg('Kaydedildi.');
             setMode('view');
@@ -620,7 +670,7 @@ export default memo(function InteractiveBracket(){
             setSaveMsg(e instanceof Error ? e.message : 'Kaydetme sırasında hata oluştu.');
         } finally {
             setSaving(false);
-            setTimeout(()=>setSaveMsg(null), 2500);
+            setTimeout(() => setSaveMsg(null), 2500);
         }
     }, [slug, subId, players, rounds, settings.placementMap]);
 
@@ -705,19 +755,16 @@ export default memo(function InteractiveBracket(){
     const pollingEnabled = isBackend && mode === 'view';
 
     const confirmStart = async () => {
-        // Backend’e started bayrağını yaz
         try {
-            if (slug) {
-                await api.patch(`subtournaments/${slug}/`, { started: true });
-            }
+            if (slug) await api.patch(`subtournaments/${slug}/`, { started: true });
             setStarted(true);
-        } catch {
-            // istersen küçük bir hata bildirimi ekleyebilirsin
-        } finally {
-            setShowStartConfirm(false);
-        }
+            startedRef.current = true;   // ← hemen güncel tut
+            // Sidebar kilitleri de anında güncellensin:
+            window.dispatchEvent(new CustomEvent('bracket:view-only',   { detail: { value: true } }));
+            window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: true } }));
+        } catch { /* noop */ }
+        finally { setShowStartConfirm(false); }
 
-        // Bekleyen meta’yı uygula
         const pending = pendingMetaRef.current;
         pendingMetaRef.current = null;
         if (pending) applyMeta(pending.r, pending.m, pending.meta);
