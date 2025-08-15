@@ -361,12 +361,12 @@ export default memo(function InteractiveBracket(){
 
     // Turnuva başladı mı? (backend’den gelir; yoksa false)
     type SubTournamentDetail = SubTournament & { started?: boolean; can_edit?: boolean };
-    const [started, setStarted] = useState<boolean>(Boolean((stateItem )?.started ?? false));
+    const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
     const startedRef = useRef<boolean>(started);
     useEffect(() => { startedRef.current = started; }, [started]);
 
     const [startedKnown, setStartedKnown] = useState<boolean>(
-        typeof (stateItem )?.started === 'boolean'
+        typeof (stateItem as any)?.started === 'boolean'
     );
 
     /* Çizim matrisi */
@@ -387,7 +387,11 @@ export default memo(function InteractiveBracket(){
             backendMatrixRef.current = matrix;
             if (mode === 'view') setRounds(matrix);
             else if (!rounds.length) setRounds(matrix); // edit’e boş girildiyse bir defa doldur
-            if (firstRoundParticipants.length && !players.length) setPlayers(firstRoundParticipants);
+            if (firstRoundParticipants.length && !players.length) {
+                // backend boş slotları atladığı için seed’ler delikli gelebiliyor → 1..N yap
+                const reseeded = firstRoundParticipants.map((p, i) => ({ ...p, seed: i + 1 }));
+                setPlayers(reseeded);
+            }
         },
         [mode, rounds.length, players.length, setPlayers]
     );
@@ -440,29 +444,30 @@ export default memo(function InteractiveBracket(){
     }, [slug, subId]);
 
 
-    /* Yerel katılımcılardan bracket kurma */
+    /* Bracket kaynağı seçimi (VIEW / EDIT + started) */
     useEffect(() => {
         const placement = settings.placementMap;
 
         if (mode === 'edit') {
-            // Önce backend’ten gelen matrisi kullan; yoksa yerelden kur
-            if (backendMatrixRef.current.length) {
+            if (startedRef.current) {
+                // Turnuva başladı → backend tek gerçek
                 setRounds(backendMatrixRef.current);
-            } else if (players.length) {
-                setRounds(propagate(buildMatrix(players, placement)));
             } else {
-                setRounds([]);
+                // Başlamadı → oyuncu listesinden her değişiklikte bütünüyle yeniden kur
+                setRounds(players.length ? propagate(buildMatrix(players, placement)) : []);
             }
             return;
         }
 
-        // VIEW: backend gelmediyse ancak local oyuncu varsa yerelden kur
-        if ((backendMatrixRef.current?.length ?? 0) === 0 && players.length) {
+        // VIEW: varsa backend, yoksa yerel fallback
+        if (backendMatrixRef.current.length) {
+            setRounds(backendMatrixRef.current);
+        } else if (players.length) {
             setRounds(propagate(buildMatrix(players, placement)));
         } else {
-            setRounds(backendMatrixRef.current);
+            setRounds([]);
         }
-    }, [mode, players, settings.placementMap, settings.version]);
+    }, [mode, players, settings.placementMap, settings.version, started]); // started'ı da izle
 
     useEffect(() => {
         if (mode !== 'edit') return;
@@ -470,22 +475,27 @@ export default memo(function InteractiveBracket(){
         if (players.length !== base) setDirty(true);
     }, [players.length, mode]);
 
+    useEffect(() => {
+        if (mode === 'edit' && !startedRef.current) {
+            setDirty(true);
+        }
+    }, [players]);
+
     /* Header/Sidebar’dan gelecek kontrol olayları */
     useEffect(() => {
         const enterEdit = () => {
             if (!canEdit) return;
-
-            // ⬇⬇⬇ EKLE — Edit’e girerken baseline'ı yakala ve dirty'yi sıfırla
-            editBaselineRef.current = { playersLen: players.length };
-            setDirty(false);
-
             setMode('edit');
-            // rounds boşsa tek seferlik doldur
-            setRounds(prev => {
-                if (prev.length) return prev;
-                if (backendMatrixRef.current.length) return backendMatrixRef.current;
-                if (players.length) return propagate(buildMatrix(players, settings.placementMap));
-                return [];
+
+            setRounds(() => {
+                if (startedRef.current) {
+                    // başladıysa backend’i göster
+                    return backendMatrixRef.current.length ? backendMatrixRef.current : [];
+                }
+                // başlamadıysa oyunculardan sıfırdan kur
+                return players.length
+                    ? propagate(buildMatrix(players, settings.placementMap))
+                    : [];
             });
         };
 
@@ -719,7 +729,7 @@ export default memo(function InteractiveBracket(){
     };
 
     return (
-        <div className="relative">
+        <div className="relative h-[calc(100vh-64px)] overflow-hidden">
             {/* Backend verisini yükle (View modunda/poll açıkken) */}
             {isBackend && (
                 <BackendBracketLoader
@@ -751,7 +761,7 @@ export default memo(function InteractiveBracket(){
                 pinch={{ step: 10 }}
             >
                 <TransformComponent
-                    wrapperStyle={{ width: '100%', minHeight: '600px', height: '70vh', overflow: 'visible' }}
+                    wrapperStyle={{ width: '100%', height: '100%', minHeight: '100%', overflow: 'visible' }}
                     contentStyle={{ overflow: 'visible' }}
                 >
                     <div style={{ width: stageW, height: stageH, position: 'relative' }}>
