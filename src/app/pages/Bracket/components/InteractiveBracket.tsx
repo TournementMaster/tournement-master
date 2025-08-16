@@ -432,24 +432,22 @@ export default memo(function InteractiveBracket(){
         }))
     }, [mode, started])
 
+    // Slug → SubTournament id & izin al
     useEffect(() => {
         if (!slug || subId) return;
         (async () => {
             try {
                 const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
+
                 if (data?.id) setSubId(data.id);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
-                // backend started → state’e işle
-                if (typeof data?.started === 'boolean') {
-                    const s = Boolean(data.started);
-                    setStarted(s);
-                    startedRef.current = s;        // ← anında senkronize et
+
+                // ✅ Öncelik: started; yoksa has_started
+                if (Object.prototype.hasOwnProperty.call(data, 'started')) {
+                    setStarted(Boolean(data.started));
                     setStartedKnown(true);
-                }
-                if (typeof (data as any)?.has_started === 'boolean') {
-                    const s = Boolean((data as any).has_started);
-                    setStarted(s);
-                    startedRef.current = s;        // ← anında senkronize et
+                } else if (Object.prototype.hasOwnProperty.call(data as any, 'has_started')) {
+                    setStarted(Boolean((data as any).has_started));
                     setStartedKnown(true);
                 }
             } catch {
@@ -640,46 +638,41 @@ export default memo(function InteractiveBracket(){
                 });
             }
 
+            const isStarted = startedRef.current;   // ✅
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
-                    // Normal akışta UI’dan hesapla
-                    let a1 = getAthleteIdFor(m.players[0]);
-                    let a2 = getAthleteIdFor(m.players[1]);
-
-                    // Başlamışsa: mevcut DB oyuncularını zorla (oyuncu değişikliği yok!)
-                    if (startedRef.current) {
-                        const keep = existingByKey.get(`${rIdx + 1}:${iIdx + 1}`);
-                        if (keep) {
-                            a1 = keep.a1;
-                            a2 = keep.a2;
-                        }
-                    }
-
-                    // Winner’ı athlete id’ye çevir
+                    const a1 = getAthleteIdFor(m.players[0]);
+                    const a2 = getAthleteIdFor(m.players[1]);
                     const winner =
                         m.players[0]?.winner ? a1 :
                             m.players[1]?.winner ? a2 : null;
 
-                    // Kort & saat
                     const court_no = (() => {
                         const raw = m.meta?.court?.trim();
                         const n = raw ? parseInt(raw, 10) : NaN;
                         return Number.isFinite(n) ? n : null;
                     })();
 
-                    const scheduled_at = timeToISO(m.meta?.time); // string | null
+                    const scheduled_at = timeToISO(m.meta?.time);
 
-                    return {
+                    // Temel alanlar
+                    const row: any = {
                         round_no      : rIdx + 1,
                         position      : iIdx + 1,
                         court_no,
-                        scheduled_at,           // null olabilir
+                        scheduled_at,
                         extra_note    : '',
                         sub_tournament: subId,
-                        athlete1      : a1,
-                        athlete2      : a2,
                         winner        : winner ?? null,
                     };
+
+                    // ⛔ Başladıysa oyuncuları asla göndermeyin
+                    if (!isStarted) {
+                        row.athlete1 = a1;
+                        row.athlete2 = a2;
+                    }
+
+                    return row;
                 })
             );
 
@@ -781,16 +774,14 @@ export default memo(function InteractiveBracket(){
         try {
             if (slug) await api.patch(`subtournaments/${slug}/`, { started: true });
             setStarted(true);
-            startedRef.current = true;   // ← hemen güncel tut
-            // Sidebar kilitleri de anında güncellensin:
-            window.dispatchEvent(new CustomEvent('bracket:view-only',   { detail: { value: true } }));
-            window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: true } }));
-        } catch { /* noop */ }
-        finally { setShowStartConfirm(false); }
-
-        const pending = pendingMetaRef.current;
-        pendingMetaRef.current = null;
-        if (pending) applyMeta(pending.r, pending.m, pending.meta);
+            setStartedKnown(true);   // ✅
+        } catch {
+            /* noop */
+        } finally {
+            setShowStartConfirm(false);
+        }
+        const p = pendingMetaRef.current; pendingMetaRef.current = null;
+        if (p) applyMeta(p.r, p.m, p.meta);
     };
 
     const cancelStart = () => {
