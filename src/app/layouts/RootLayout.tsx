@@ -30,7 +30,7 @@ export default function RootLayout() {
                                     isOpen={sidebarOpen}
                                     onToggle={() => setSidebarOpen((o) => !o)}
                                 />
-                                <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
+                                <main className="flex-1 overflow-visible bg-[#1f2229] p-4">
                                     <Outlet />
                                 </main>
                             </BracketThemeProvider>
