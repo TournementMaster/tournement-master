@@ -23,7 +23,7 @@ export interface Player {
     /** Backend’ten geldiyse gerçek Athlete PK (lokalde yoksa undefined) */
     athleteId?: number | null;
 }
-export interface Meta   { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string }
+export interface Meta   { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string; matchNo?: number }
 export interface Match  { players: Player[]; meta?: Meta }
 type Matrix = Match[][]
 
@@ -39,6 +39,7 @@ type ApiMatch = {
     round_no: number; position: number;
     court_no: number | null; scheduled_at: string | null; extra_note: string;
     sub_tournament: number; athlete1: number | null; athlete2: number | null; winner: number | null;
+    match_no?: number | null; // ⬅ backend generate-match-numbers set eder
 };
 type ClubRow = { id: number; name: string; city?: string };
 
@@ -232,6 +233,10 @@ function buildFromBackend(
             if (t) meta.time = t;
             if (m.court_no != null) meta.court = String(m.court_no);
 
+            if (typeof m.match_no === 'number' && Number.isFinite(m.match_no)) {
+                (meta as Meta).matchNo = m.match_no;
+            }
+
             if (m.winner != null) {
                 if (m.winner === m.athlete1) {
                     players[0] = { ...players[0], winner: true };
@@ -359,6 +364,10 @@ export default memo(function InteractiveBracket(){
     const stateItem = (location.state as (SubTournament & { can_edit?: boolean }) | undefined) || null;
     const [subId, setSubId] = useState<number | null>(stateItem?.id ?? null);
 
+    // Ana turnuva public_slug (numaralandırma endpoint’i için lazım)
+    const [tournamentSlug, setTournamentSlug] = useState<string | null>(null);
+
+
     // "Başlat?" lightbox kontrolü
     const [showStartConfirm, setShowStartConfirm] = useState(false);
     const pendingMetaRef = useRef<null | { r: number; m: number; meta: Meta }>(null);
@@ -368,8 +377,19 @@ export default memo(function InteractiveBracket(){
     const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true)); // istersen backend’le bağlarız
     const [refreshKey, setRefreshKey] = useState(0);
 
+    const [parentSlug, setParentSlug] = useState<string | null>(null);
+    const [defaultCourtNo, setDefaultCourtNo] = useState<number | null>(null);
+
     // Turnuva başladı mı? (backend’den gelir; yoksa false)
-    type SubTournamentDetail = SubTournament & { started?: boolean; can_edit?: boolean };
+    type SubTournamentDetail = SubTournament & {
+        started?: boolean;
+        can_edit?: boolean;
+        court_no?: number | null;                // ⬅ fallback için
+        tournament_public_slug?: string | null;  // ⬅ backend böyle döndürebilir
+        tournament_slug?: string | null;         // ⬅ alternatif isim
+        tournament?: any;                        // ⬅ bazı backend’ler nested obj da döndürebilir
+    };
+
     const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
     const startedRef = useRef<boolean>(started);
     useEffect(() => { startedRef.current = started; }, [started]);
@@ -440,7 +460,21 @@ export default memo(function InteractiveBracket(){
                 const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
 
                 if (data?.id) setSubId(data.id);
+
+                // Ana turnuva slug'ını olabildiğince esnek biçimde yakala
+                const tSlug =
+                    (data as any)?.tournament_public_slug ??
+                    (data as any)?.tournament_slug ??
+                    (data as any)?.tournament?.public_slug ?? null;
+
+                if (typeof tSlug === 'string' && tSlug) setTournamentSlug(tSlug);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
+
+
+                // Varsayılan kort (sub seviyesinde varsa)
+                if (typeof (data as any)?.court_no === 'number') {
+                    setDefaultCourtNo((data as any).court_no);
+                }
 
                 // ✅ Öncelik: started; yoksa has_started
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) {
@@ -677,6 +711,42 @@ export default memo(function InteractiveBracket(){
             );
 
             await api.post('matches/bulk/', matchPayload);
+            // 🔢 Maç numarası üretimi – sadece henüz başlamamışsa
+            try {
+                if (!started) {
+                    // Bu alt turnuvada kullanılan kortları topla
+                    const courts = new Set<number>();
+                    for (const round of roundsForSave) {
+                        for (const m of round) {
+                            const raw = (m.meta?.court ?? '').toString().trim();
+                            const n = raw ? parseInt(raw, 10) : NaN;
+                            if (Number.isFinite(n)) courts.add(n);
+                        }
+                    }
+
+                    // Ana turnuva slug'ı ve kort varsa, her kort için endpoint'i çağır
+                    if (tournamentSlug && courts.size) {
+                        const hit = async (court: number) => {
+                            // Önce POST dene; 405/404 gibi durumlarda GET'e düş
+                            try {
+                                await api.post(
+                                    `tournaments/${encodeURIComponent(tournamentSlug)}/generate-match-numbers/`,
+                                    {},
+                                    { params: { court } }
+                                );
+                            } catch (err:any) {
+                                try {
+                                    await api.get(
+                                        `tournaments/${encodeURIComponent(tournamentSlug)}/generate-match-numbers/`,
+                                        { params: { court } }
+                                    );
+                                } catch {/* sessiz */}
+                            }
+                        };
+                        await Promise.all([...courts].map(c => hit(c)));
+                    }
+                }
+            } catch {/* sessiz */}
 
             setDirty(false);
             setSaveMsg('Kaydedildi.');
@@ -854,6 +924,22 @@ export default memo(function InteractiveBracket(){
                     .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${palette.glow2})}
                     .done {opacity:.55}
                     .tick {fill:#22c55e}
+                    /* Match No – parlak emerald rozet */
+                    .mno-bg {
+                      fill: rgba(34,197,94,.14);                 /* emerald-500 → şeffaf zemin */
+                      stroke: ${palette.win};                    /* temanın kazanan rengi */
+                      stroke-width: 1.6;
+                      rx: 7;
+                    }
+                    .mno-txt{
+                      font: 800 12px/1 Inter,ui-sans-serif;      /* biraz daha iri & kalın */
+                      fill: #eafff3;                              /* açık mint */
+                      letter-spacing: .35px;
+                      dominant-baseline: middle;
+                      paint-order: stroke fill;                   /* okunaklık için dış çizgi */
+                      stroke: rgba(0,0,0,.45);
+                      stroke-width: .6;
+                    }
                     .seed {font:600 12px/1 Inter,sans-serif;fill:#fff;opacity:.9}
                   `}</style>
                                     <linearGradient id="g" x1="0" x2="1">
@@ -883,20 +969,26 @@ export default memo(function InteractiveBracket(){
 
                                         return (
                                             <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
-                                                {/* seed numaraları (ayar ile yönetilir) */}
-                                                {settings.showSeeds && m.players.map((p, idx) => (
-                                                    (p.seed > 0 && p.name !== '—') ? (
-                                                        <text
-                                                            key={`seed-${idx}`}
-                                                            className="seed"
-                                                            x={x0 - 14}
-                                                            y={mid + (idx ? 22 : -22)}
-                                                            textAnchor="end"
-                                                        >
-                                                            {p.seed}
+                                                {/* Maç numarası – dikey rozet (parlak/emerald) */}
+                                                {typeof m.meta?.matchNo === 'number' && (
+                                                    <g transform={`translate(${x0 - 24}, ${mid}) rotate(-90)`}>
+                                                        <rect
+                                                            className="mno-bg"
+                                                            x={-18}
+                                                            y={-12}
+                                                            width={36}
+                                                            height={24}
+                                                            rx={7}
+                                                            filter="url(#mnoglow)"
+                                                        />
+                                                        <text className="mno-txt" x={0} y={0} textAnchor="middle">
+                                                            {m.meta!.matchNo}
                                                         </text>
-                                                    ) : null
-                                                ))}
+                                                        {/* erişilebilirlik/tooltip */}
+                                                        <title>{`Maç ${m.meta!.matchNo}`}</title>
+                                                    </g>
+                                                )}
+
 
                                                 <rect className="rect" x={x0} y={mid - BOX_H / 2} width={BOX_W} height={BOX_H} rx={CORNER}/>
                                                 <rect className="bar"  x={x0 - 8} y={mid - BOX_H / 2} width={8} height={BOX_H} rx={CORNER}/>
