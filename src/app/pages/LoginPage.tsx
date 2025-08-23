@@ -1,6 +1,6 @@
-import {type FormEvent, useState } from 'react';
-import {Link, useNavigate} from 'react-router-dom';
-import {useAuth} from "../context/useAuth.ts";
+import { type FormEvent, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/useAuth.ts';
 
 export default function LoginPage() {
     const navigate = useNavigate();
@@ -8,12 +8,14 @@ export default function LoginPage() {
 
     const [username, setU] = useState('');
     const [password, setP] = useState('');
-    const [error, setErr]  = useState<string | null>(null);
+    const [error, setErr] = useState<string | null>(null);
 
     async function handleSubmit(e: FormEvent) {
         e.preventDefault();
         try {
             await login(username, password);
+            localStorage.setItem('username', username);
+            sessionStorage.setItem('last_password', password);
             navigate('/', { replace: true });
         } catch {
             setErr('Geçersiz kullanıcı adı veya şifre');
@@ -22,15 +24,10 @@ export default function LoginPage() {
 
     return (
         <div className="flex items-center justify-center h-screen bg-[#1e1f23]">
-            <form
-                onSubmit={handleSubmit}
-                className="bg-[#2d3038] p-8 rounded shadow w-80 space-y-4"
-            >
+            <form onSubmit={handleSubmit} className="bg-[#2d3038] p-8 rounded shadow w-80 space-y-4">
                 <h1 className="text-center text-lg mb-2">Giriş Yap</h1>
 
-                {error && (
-                    <p className="text-sm text-red-400 text-center">{error}</p>
-                )}
+                {error && <p className="text-sm text-red-400 text-center">{error}</p>}
 
                 <input
                     className="w-full px-3 py-2 rounded bg-gray-700"
@@ -47,14 +44,10 @@ export default function LoginPage() {
                     onChange={e => setP(e.target.value)}
                 />
 
-                <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded"
-                >
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded">
                     Gönder
                 </button>
 
-                {/* İstediğiniz gibi: 'Giriş yap' bölümünün ALTINDA şifremi unuttum */}
                 <div className="text-center text-sm">
                     <Link to="/forgot" className="text-blue-400 hover:underline">
                         Şifremi Unuttum

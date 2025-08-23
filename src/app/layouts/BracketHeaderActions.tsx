@@ -22,9 +22,9 @@ export default function BracketHeaderActions() {
                 type="button"
                 onClick={() => send('bracket:enter-view')}
                 className="px-3 py-[6px] rounded-md text-sm border border-white/20 bg-white/10 hover:bg-white/15 text-white"
-                title="View moduna dön"
+                title="Görüntüle"
             >
-                View
+                Görüntüle
             </button>
 
             <button

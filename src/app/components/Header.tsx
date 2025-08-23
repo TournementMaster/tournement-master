@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import BracketHeaderActions from '../layouts/BracketHeaderActions';
@@ -11,6 +11,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const location = useLocation();
     const [menu, setMenu] = useState(false);
     const [sp] = useSearchParams();
+    const menuRef = useRef<HTMLDivElement>(null);
 
     const pathname = location.pathname;
     const isDashboard = pathname === '/';
@@ -21,10 +22,16 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const [headerText, setHeaderText] = useState<string>('');
 
     useEffect(() => {
-        if (!isBracket) { setHeaderText(''); return; }
+        if (!isBracket) {
+            setHeaderText('');
+            return;
+        }
 
         const slug = pathname.match(/^\/bracket\/(.+)/)?.[1];
-        if (!slug) { setHeaderText(''); return; }
+        if (!slug) {
+            setHeaderText('');
+            return;
+        }
 
         let cancelled = false;
 
@@ -50,7 +57,9 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             }
         })();
 
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
         // location.search değiştiğinde (örn. başlık güncellendiğinde) tazele
     }, [isBracket, pathname, sp]);
 
@@ -58,15 +67,38 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur';
 
     const onCreate = () => {
-        if (!isAuth) { navigate('/login'); return; }
+        if (!isAuth) {
+            navigate('/login');
+            return;
+        }
         if (isSubList) {
             const parentId = Number(new URLSearchParams(location.search).get('parent') || '0') || undefined;
-            if (!parentId) { alert('Ana turnuva ID bulunamadı.'); return; }
+            if (!parentId) {
+                alert('Ana turnuva ID bulunamadı.');
+                return;
+            }
             navigate(`/create?mode=sub&parent=${parentId}`);
         } else {
             navigate('/create?mode=main');
         }
     };
+
+    // dış tıklama + ESC ile menüyü kapat
+    useEffect(() => {
+        function onDocClick(e: MouseEvent) {
+            if (!menuRef.current) return;
+            if (!menuRef.current.contains(e.target as Node)) setMenu(false);
+        }
+        function onKey(e: KeyboardEvent) {
+            if (e.key === 'Escape') setMenu(false);
+        }
+        document.addEventListener('mousedown', onDocClick);
+        window.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDocClick);
+            window.removeEventListener('keydown', onKey);
+        };
+    }, []);
 
     return (
         <header
@@ -96,9 +128,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             {/* Bracket sayfasında orta başlık: Başlık · Cinsiyet · Kilo aralığı */}
             {isBracket && !!headerText && (
                 <div className="absolute inset-x-0 flex justify-center pointer-events-none">
-                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none">
-                        {headerText}
-                    </div>
+                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none">{headerText}</div>
                 </div>
             )}
 
@@ -122,17 +152,20 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                         Giriş Yap
                     </Link>
                 ) : (
-                    <div className="relative">
+                    <div className="relative" ref={menuRef}>
                         <img
                             src="https://placehold.co/40x40"
                             alt="avatar"
                             className="w-10 h-10 rounded-full border-2 border-white cursor-pointer"
-                            onClick={() => setMenu((m) => !m)}
+                            onClick={() => setMenu(m => !m)}
                         />
                         {menu && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]" onMouseLeave={() => setMenu(false)}>
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]">
                                 <Link to="/" onClick={() => setMenu(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">
-                                    Dashboard
+                                    Ana Sayfa
+                                </Link>
+                                <Link to="/profile" onClick={() => setMenu(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">
+                                    Profilim
                                 </Link>
                                 <button
                                     onClick={() => {

@@ -15,18 +15,21 @@ export default function RegisterPage() {
     const canSubmit =
         username.trim().length >= 3 &&
         /\S+@\S+\.\S+/.test(email) &&
-        password.length >= 6 &&
+        password.length >= 6 && // MIN 6
         password === password2;
 
     async function handleSubmit(e: FormEvent) {
         e.preventDefault();
         setErr(null);
         if (!canSubmit) {
-            setErr('Lütfen alanları doğru doldurun.');
+            setErr('Lütfen alanları doğru doldurun (şifre en az 6 karakter).');
             return;
         }
         try {
             await register(username, password, email);
+            // profil sayfasında göstermek için
+            localStorage.setItem('username', username);
+            sessionStorage.setItem('last_password', password);
             navigate('/', { replace: true });
         } catch (e) {
             setErr(e instanceof Error ? e.message : 'Kayıt başarısız, lütfen tekrar deneyin');
@@ -55,7 +58,7 @@ export default function RegisterPage() {
                 />
                 <input
                     className="w-full px-3 py-2 rounded bg-gray-700"
-                    placeholder="Şifre (min 6 karakter)"
+                    placeholder="Şifre (en az 6 karakter)"
                     type="password"
                     value={password}
                     onChange={e => setP(e.target.value)}
@@ -68,17 +71,14 @@ export default function RegisterPage() {
                     onChange={e => setP2(e.target.value)}
                 />
 
-                <button
-                    type="submit"
-                    disabled={!canSubmit}
-                    className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded disabled:opacity-50"
-                >
+                <button type="submit" disabled={!canSubmit} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded disabled:opacity-50">
                     Kaydol
                 </button>
 
-                {/* Şifremi Unuttum bağlantısı artık burada değil – Login sayfasına taşındı */}
                 <div className="flex items-center justify-between text-sm">
-                    <Link to="/login" className="text-blue-400 hover:underline">Giriş Yap</Link>
+                    <Link to="/login" className="text-blue-400 hover:underline">
+                        Giriş Yap
+                    </Link>
                 </div>
             </form>
         </div>
