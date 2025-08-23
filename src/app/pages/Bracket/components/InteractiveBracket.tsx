@@ -9,7 +9,7 @@ import { useBracketTheme, type BracketThemeKey } from '../../../context/BracketT
 import { PALETTES, type ThemeKey, type Palette } from '../../../context/themePalettes';
 import { usePlayers, type Participant } from '../../../hooks/usePlayers';
 import { useSettings } from '../../../context/BracketSettingsCtx';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { api } from '../../../lib/api';
 import type { Club } from '../../../models/Club';
 import type { SubTournament } from '../../../hooks/useSubTournaments';
@@ -23,8 +23,8 @@ export interface Player {
     /** Backend’ten geldiyse gerçek Athlete PK (lokalde yoksa undefined) */
     athleteId?: number | null;
 }
-export interface Meta { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string }
-export interface Match { players: Player[]; meta?: Meta }
+export interface Meta   { scores?: [number, number][]; manual?: 0 | 1; time?: string; court?: string }
+export interface Match  { players: Player[]; meta?: Meta }
 type Matrix = Match[][]
 
 type ApiAthlete = {
@@ -61,8 +61,8 @@ function seedOrder(size:number): number[] {
         const comp = prev.map(x => n + 1 - x);
         const next:number[] = [];
         for (let i=0;i<prev.length;i+=2){
-            const a = prev[i], b = prev[i+1];
-            const A = comp[i], B = comp[i+1];
+            const a = prev[i],   b = prev[i+1];
+            const A = comp[i],   B = comp[i+1];
             next.push(a, A, B, b);
         }
         prev = next;
@@ -70,6 +70,16 @@ function seedOrder(size:number): number[] {
     return prev;
 }
 function nextPowerOfTwo(n: number) { let s=1; while(s<n) s<<=1; return Math.max(4,s) }
+
+// Sadece ad+kulüp karşılaştır (seed edit’te değişebilir)
+function samePlayersList(a: Participant[], b: Participant[]) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if ((a[i]?.name || '') !== (b[i]?.name || '')) return false;
+        if ((a[i]?.club || '') !== (b[i]?.club || '')) return false;
+    }
+    return true;
+}
 
 /* Yerelden ilk turu kur */
 function buildMatrix(participants: Participant[], placementMap: Record<number,number>|null): Matrix {
@@ -104,7 +114,7 @@ function propagate(matrix: Matrix): Matrix {
         meta: m.meta ? { ...m.meta, scores: m.meta.scores ? [...m.meta.scores] as [number, number][] : undefined } : undefined,
     })));
 
-    // TÜM turları işle
+    // 🔁 TÜM turları işle (final dâhil). Son turda sadece winner flag set edilir, ileri taşınmaz.
     for (let r = 0; r < mat.length; r++) {
         mat[r].forEach((m, idx) => {
             const [p1, p2] = m.players;
@@ -118,28 +128,31 @@ function propagate(matrix: Matrix): Matrix {
                 else if (bBye && !aBye) winner = 0;
             }
 
-            // 2) Manuel seçim
+            // 2) Manuel seçim → her zaman skorlara üstün gelsin
             if (winner == null && m.meta?.manual != null) {
                 winner = m.meta.manual;
             }
 
-            // 3) Skordan çıkar
+            // 3) Skorlardan çıkar (manuel yoksa)
             if (winner == null && m.meta?.scores?.length) {
                 const [a, b] = m.meta.scores[0];
                 if (a !== b) winner = a > b ? 0 : 1;
             }
 
             if (winner != null) {
-                m.players[winner]      = { ...m.players[winner], winner: true };
-                m.players[1 - winner]  = { ...m.players[1 - winner], winner: false };
+                // mevcut maçta winner/loser flag’lerini ata
+                m.players[winner]   = { ...m.players[winner], winner: true };
+                m.players[1 - winner] = { ...m.players[1 - winner], winner: false };
 
+                // son tur değilse kazananı bir sonraki tura taşı
                 if (r < mat.length - 1) {
                     const next = mat[r + 1][Math.floor(idx / 2)];
                     const moved = { ...m.players[winner] };
-                    delete moved.winner;
+                    delete moved.winner; // üst tura flag’siz çıkar
                     next.players[idx % 2] = moved;
                 }
             } else {
+                // kararsızsa flag’leri temiz tut
                 m.players[0] = { ...m.players[0], winner: undefined };
                 m.players[1] = { ...m.players[1], winner: undefined };
             }
@@ -155,17 +168,17 @@ function resolveThemeKey(k: BracketThemeKey): ThemeKey {
         case 'classic-dark':
         case 'classic-light': return 'classic';
         case 'modern-dark':
-        case 'modern-light' : return 'purple';
+        case 'modern-light':  return 'purple';
         case 'purple-orange': return 'orange';
-        case 'black-white'  : return 'invert';
-        case 'ocean'  : return 'ocean';
-        case 'forest' : return 'forest';
-        case 'rose'   : return 'rose';
-        case 'gold'   : return 'gold';
+        case 'black-white':   return 'invert';
+        case 'ocean':   return 'ocean';
+        case 'forest':  return 'forest';
+        case 'rose':    return 'rose';
+        case 'gold':    return 'gold';
         case 'crimson': return 'crimson';
-        case 'teal'   : return 'teal';
-        case 'slate'  : return 'slate';
-        default       : return 'classic';
+        case 'teal':    return 'teal';
+        case 'slate':   return 'slate';
+        default:        return 'classic';
     }
 }
 
@@ -190,8 +203,7 @@ function buildFromBackend(
 
     const aMap = new Map<number, { name: string; club?: string }>();
     athletes.forEach(a => {
-        const full = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim();
-        const name = full || '—';
+        const name = (a.first_name || '').trim() || `${a.first_name} ${a.last_name}`.trim() || '—';
         const club = a.club != null ? clubMap.get(a.club) : undefined;
         aMap.set(a.id, { name, club });
     });
@@ -230,6 +242,7 @@ function buildFromBackend(
                 }
             }
 
+            // Winner geldiyse modal/propagate tutarlılığı için manual’ı da yaz
             if (m.winner != null) {
                 if (m.winner === m.athlete1) (meta as Meta).manual = 0;
                 else if (m.winner === m.athlete2) (meta as Meta).manual = 1;
@@ -260,58 +273,6 @@ function buildFromBackend(
 
     return { matrix, firstRound };
 }
-
-/* ---------------- Athletes bulk/tek-tek – fallback ile oluştur ------------- */
-/* ---------------- Athletes bulk/tek-tek – fallback ile oluştur ------------- */
-/* ---------------- Athletes bulk/tek-tek – fallback ile oluştur ------------- */
-/* ---------------- Athletes bulk/tek-tek – fallback ile oluştur ------------- */
-async function createAthletesOrdered(
-    sorted: Participant[],
-    clubIdByName: Map<string, number>,
-    subId: number | null,
-    slug: string
-): Promise<number[]> {
-    // DİKKAT: filtre yok; sıralama ve indeks korunacak
-    const payload = sorted.map(p => ({
-        first_name: p.name.trim(),
-        last_name : "",               // <-- 'Example' KULLANMA!
-        birth_year: 1453,
-        weight    : "-1.00",
-        gender    : "M",              // istersen sub turnuva cinsiyetini kullan
-        club      : p.club ? (clubIdByName.get(p.club.trim().toLowerCase()) ?? null) : null,
-        ...(subId ? { sub_tournament: subId } : {}),
-    }));
-
-    try {
-        const { data } = await api.post<Array<{ id: number }>>(
-            `subtournaments/${encodeURIComponent(slug)}/athletes/bulk/`,
-            payload
-        );
-        if (!Array.isArray(data) || data.length !== payload.length) throw new Error("PARTIAL_BULK_SUB");
-        return data.map(d => d.id);
-    } catch {}
-
-    try {
-        const { data } = await api.post<Array<{ id: number }>>("athletes/bulk/", payload);
-        if (!Array.isArray(data) || data.length !== payload.length) throw new Error("PARTIAL_BULK_GLOBAL");
-        return data.map(d => d.id);
-    } catch {}
-
-    const ids: number[] = [];
-    for (const item of payload) {
-        try {
-            const { data } = await api.post<{ id: number }>("athletes/", item);
-            ids.push(data?.id ?? 0);
-        } catch (err) {
-            console.warn("Athlete create failed:", item.first_name, err);
-            ids.push(0);
-        }
-    }
-    return ids;
-}
-
-
-
 
 /* --------------------------- Backend data loader -------------------------- */
 function BackendBracketLoader({
@@ -360,7 +321,7 @@ function BackendBracketLoader({
         };
     }, [slug, enabled, pollMs, refreshKey, onBuilt]);
 
-    // refreshKey değişince tek seferlik fetch
+    // refreshKey değişince tek seferlik fetch (poll kapalıyken de)
     useEffect(() => {
         if (!slug) return;
         let cancelled = false;
@@ -394,21 +355,20 @@ export default memo(function InteractiveBracket(){
     const palette:Palette = PALETTES[resolveThemeKey(themeKey)];
 
     const location = useLocation();
-    const nav = useNavigate();
     const slug = useMemo(() => location.pathname.match(/^\/bracket\/(.+)/)?.[1] ?? '', [location.pathname]);
     const stateItem = (location.state as (SubTournament & { can_edit?: boolean }) | undefined) || null;
     const [subId, setSubId] = useState<number | null>(stateItem?.id ?? null);
 
-    // “Başlat?” lightbox
+    // "Başlat?" lightbox kontrolü
     const [showStartConfirm, setShowStartConfirm] = useState(false);
     const pendingMetaRef = useRef<null | { r: number; m: number; meta: Meta }>(null);
 
     /* Mode & izin */
     const [mode, setMode] = useState<'view'|'edit'>('view');
-    const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true));
+    const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true)); // istersen backend’le bağlarız
     const [refreshKey, setRefreshKey] = useState(0);
 
-    // Turnuva başladı mı?
+    // Turnuva başladı mı? (backend’den gelir; yoksa false)
     type SubTournamentDetail = SubTournament & { started?: boolean; can_edit?: boolean };
     const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
     const startedRef = useRef<boolean>(started);
@@ -429,6 +389,9 @@ export default memo(function InteractiveBracket(){
     const [dirty, setDirty] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+    // Edit moduna girildiği andaki oyuncu listesinin “snapshot”u.
+    // Bu snapshot değişmedikçe bracket’i yeniden kurmuyoruz.
+    const editPlayersSnapshotRef = useRef<Participant[] | null>(null);
     const editBaselineRef = useRef<{ playersLen: number } | null>(null);
 
     const handleBuilt = useCallback(
@@ -436,7 +399,11 @@ export default memo(function InteractiveBracket(){
             backendMatrixRef.current = matrix;
             if (mode === 'view') setRounds(matrix);
             else if (!rounds.length) setRounds(matrix); // edit’e boş girildiyse bir defa doldur
-            if (firstRoundParticipants.length && !players.length) setPlayers(firstRoundParticipants);
+            if (firstRoundParticipants.length && !players.length) {
+                // backend boş slotları atladığı için seed’ler delikli gelebiliyor → 1..N yap
+                const reseeded = firstRoundParticipants.map((p, i) => ({ ...p, seed: i + 1 }));
+                setPlayers(reseeded);
+            }
         },
         [mode, rounds.length, players.length, setPlayers]
     );
@@ -444,88 +411,86 @@ export default memo(function InteractiveBracket(){
     // Zoom/pan
     const twRef = useRef<ReactZoomPanPinchRef | null>(null);
 
-    // URL başlık bilgisini (Header için) güncelle
-    const updateHeaderTitle = useCallback((detail?: Partial<SubTournament>) => {
-        if (!detail) return;
-        const g = (detail.gender || 'O') as string;
-        const glabel = g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : 'Karma';
-        const wmin = (detail.weight_min ?? '').toString() || '0.00';
-        const wmax = (detail.weight_max ?? '').toString() || '0.00';
-        const title = (detail.title || '').toString();
-        const combined = `${title} — ${glabel} · ${wmin}–${wmax} kg`;
-
-        const sp = new URLSearchParams(location.search);
-        sp.set('title', combined);
-        nav({ pathname: location.pathname, search: sp.toString() }, { replace: true });
-    }, [location.pathname, location.search, nav]);
-
-    // Slug → SubTournament id & izin al + Header başlığını oluştur
+    // Slug → SubTournament id & izin al
     useEffect(() => {
         window.dispatchEvent(
             new CustomEvent('bracket:view-only', { detail: { value: mode === 'view' } })
         );
+        // İstersen CSS’ten de kullan
         document.documentElement.setAttribute('data-bracket-mode', mode);
     }, [mode]);
 
     useEffect(() => {
+        // Sidebar panellerine duyuru: View modu mu? (readonly)
         window.dispatchEvent(new CustomEvent('bracket:view-only', {
-            detail: { value: (mode === 'view') || started }
-        }));
+            detail: { value: mode === 'view' }
+        }))
+
+        // Oyuncu ekleme/çıkarma kilidi (turnuva başladıysa true)
         window.dispatchEvent(new CustomEvent('bracket:players-locked', {
             detail: { value: started }
-        }));
-        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', {
-            detail: { mode }
-        }));
-    }, [mode, started]);
+        }))
+    }, [mode, started])
 
+    // Slug → SubTournament id & izin al
     useEffect(() => {
-        if (!slug || subId) {
-            // state ile geldiysek header metnini en azından state’ten kur
-            if (stateItem) updateHeaderTitle(stateItem);
-            return;
-        }
+        if (!slug || subId) return;
         (async () => {
             try {
                 const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
+
                 if (data?.id) setSubId(data.id);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
-                if (typeof data?.started === 'boolean') {
+
+                // ✅ Öncelik: started; yoksa has_started
+                if (Object.prototype.hasOwnProperty.call(data, 'started')) {
                     setStarted(Boolean(data.started));
                     setStartedKnown(true);
-                }
-                if (typeof (data as any)?.has_started === 'boolean') {
+                } else if (Object.prototype.hasOwnProperty.call(data as any, 'has_started')) {
                     setStarted(Boolean((data as any).has_started));
                     setStartedKnown(true);
                 }
-                updateHeaderTitle(data);
             } catch {
                 setSaveMsg('Alt turnuva bilgisi alınamadı (slug).');
             }
         })();
-    }, [slug, subId, stateItem, updateHeaderTitle]);
+    }, [slug, subId]);
 
-    /* Yerel katılımcılardan bracket kurma */
+
+    /* Bracket kaynağı seçimi (VIEW / EDIT + started) */
     useEffect(() => {
         const placement = settings.placementMap;
 
         if (mode === 'edit') {
-            if (backendMatrixRef.current.length) {
+            // Başlamışsa her zaman backend gerçek kaynaktır
+            if (startedRef.current) {
                 setRounds(backendMatrixRef.current);
-            } else if (players.length) {
-                setRounds(propagate(buildMatrix(players, placement)));
-            } else {
-                setRounds([]);
+                return;
             }
+
+            // Başlamamışsa: yalnızca oyuncu listesi snapshot'tan farklıysa yeniden kur
+            const snap = editPlayersSnapshotRef.current;
+            const now  = players.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
+
+            if (!snap || !samePlayersList(snap, now)) {
+                // oyuncu eklendi/silindi/değişti → bracket'i baştan oluştur
+                setRounds(players.length ? propagate(buildMatrix(players, placement)) : []);
+                // snapshot'ı güncelle ki bir dahaki render'da aynı yerde kalsın
+                editPlayersSnapshotRef.current = now;
+            }
+            // Değişiklik yoksa hiçbir şey yapma → backend düzeni korunur
             return;
         }
 
-        if ((backendMatrixRef.current?.length ?? 0) === 0 && players.length) {
+        // VIEW: varsa backend, yoksa yerel fallback
+        if (backendMatrixRef.current.length) {
+            setRounds(backendMatrixRef.current);
+        } else if (players.length) {
             setRounds(propagate(buildMatrix(players, placement)));
         } else {
-            setRounds(backendMatrixRef.current);
+            setRounds([]);
         }
-    }, [mode, players, settings.placementMap, settings.version]);
+    }, [mode, players, settings.placementMap, settings.version, started]); // started'ı izlemeye devam
 
     useEffect(() => {
         if (mode !== 'edit') return;
@@ -533,21 +498,27 @@ export default memo(function InteractiveBracket(){
         if (players.length !== base) setDirty(true);
     }, [players.length, mode]);
 
+    useEffect(() => {
+        if (mode === 'edit' && !startedRef.current) {
+            setDirty(true);
+        }
+    }, [players]);
+
     /* Header/Sidebar’dan gelecek kontrol olayları */
     useEffect(() => {
         const enterEdit = () => {
             if (!canEdit) return;
 
-            // baseline ve dirty
-            editBaselineRef.current = { playersLen: players.length };
-            setDirty(false);
+            // ① Edit snapshot'ını al (ad+kulüp sırayı koruyarak)
+            editPlayersSnapshotRef.current = players.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
 
             setMode('edit');
-            setRounds(prev => {
-                if (prev.length) return prev;
+
+            // ② İlk girişte dizilimi backend'den göster → yerler değişmesin
+            setRounds(() => {
                 if (backendMatrixRef.current.length) return backendMatrixRef.current;
-                if (players.length) return propagate(buildMatrix(players, settings.placementMap));
-                return [];
+                // Backend boşsa yerelden kur
+                return players.length ? propagate(buildMatrix(players, settings.placementMap)) : [];
             });
         };
 
@@ -556,6 +527,8 @@ export default memo(function InteractiveBracket(){
                 setShowExitConfirm(true);
             } else {
                 setMode('view');
+                // View'a dönerken snapshot'ı sıfırlamak opsiyonel (temiz)
+                editPlayersSnapshotRef.current = null;
             }
         };
 
@@ -564,15 +537,25 @@ export default memo(function InteractiveBracket(){
         window.addEventListener('bracket:enter-edit', enterEdit);
         window.addEventListener('bracket:enter-view', enterView);
         window.addEventListener('bracket:refresh', refresh);
-
         return () => {
             window.removeEventListener('bracket:enter-edit', enterEdit);
             window.removeEventListener('bracket:enter-view', enterView);
             window.removeEventListener('bracket:refresh', refresh);
         };
-    }, [canEdit, mode, dirty, players.length, settings.placementMap]);
+    }, [canEdit, mode, dirty, players, settings.placementMap]);
 
-    /* Kaydet (header’daki buton bracket:save olayı atıyor) */
+    useEffect(() => {
+        const participantsViewOnly = (mode === 'view') || startedRef.current;
+        window.dispatchEvent(new CustomEvent('bracket:view-only', {
+            detail: { value: participantsViewOnly }
+        }));
+
+        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', {
+            detail: { mode }  // 'view' | 'edit' -> Settings paneli buna göre disable/enable
+        }));
+    }, [mode, started]);
+
+    /* Kaydet (header’daki buton zaten bracket:save olayı atıyor) */
     const timeToISO = (t?: string): string | null => {
         if (!t) return null;
         const s = t.replace('.', ':');
@@ -587,93 +570,79 @@ export default memo(function InteractiveBracket(){
     const persistBracket = useCallback(async () => {
         if (!slug) { setSaveMsg('Slug okunamadı.'); return; }
         if (!subId) { setSaveMsg('Alt turnuva ID bulunamadı.'); return; }
-        if (!players.length) { setSaveMsg('Kaydedilecek katılımcı yok.'); return; }
-        setSaving(true); setSaveMsg(null);
+        // Turnuva başlamamışsa katılımcı şart; başlamışsa skor güncellemesi için boş olabilir
+        if (!players.length && !startedRef.current) { setSaveMsg('Kaydedilecek katılımcı yok.'); return; }
 
+        setSaving(true); setSaveMsg(null);
         try {
-            // 1) Kulüpler
+            // Kulüp ID eşlemesi (katılımcı oluştururken lazım)
             let clubs: Club[] = [];
             try {
                 const { data } = await api.get<Club[]>('clubs/');
                 if (Array.isArray(data)) clubs = data;
-            } catch {}
+            } catch { /* noop */ }
             const clubIdByName = new Map(clubs.map(c => [c.name.trim().toLowerCase(), c.id]));
-            const clubNameById = new Map(clubs.map(c => [c.id, c.name]));
 
-            // 2) Mevcut atletleri çek (idempotentlik için)
-            let existingAthletes: ApiAthlete[] = [];
-            try {
-                const { data } = await api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`);
-                existingAthletes = Array.isArray(data) ? data : [];
-            } catch {}
-
-            const keyOf = (name?: string, club?: string) =>
-                `${(name ?? '').trim().toLowerCase()}__${(club ?? '').trim().toLowerCase()}`;
-
-            const existingIdByKey = new Map<string, number>();
-            existingAthletes.forEach(a => {
-                const full = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim();
-                const clubName = a.club != null ? (clubNameById.get(a.club) ?? '') : '';
-                existingIdByKey.set(keyOf(full || a.first_name, clubName), a.id);
-            });
-
-            // 3) Seed sırasına göre diz
-            const sorted = [...players].sort((a, b) => a.seed - b.seed);
-
-            // 4) İSİM temizlik → sadece burada filtrele (fonksiyon içinde değil)
-            const cleanSorted = sorted.filter(p => p.name && p.name.trim() && p.name !== '—');
-
-            // 5) Var olanları eşle, eksikleri topla
-            const seedToAthlete: Record<number, number> = {};
-            const toCreate: Participant[] = [];
-            for (const p of cleanSorted) {
-                const k = keyOf(p.name, p.club);
-                const found = existingIdByKey.get(k);
-                if (found) {
-                    seedToAthlete[p.seed] = found;
-                } else {
-                    toCreate.push(p);
+            // ▼ Başlamamış turnuvada oyuncuları (seed -> athlete) oluştur/haritala
+            //   Başlamış turnuvada asla yeni athlete oluşturma.
+            let seedToAthlete: Record<number, number> = {};
+            if (!startedRef.current) {
+                const sorted = [...players].sort((a, b) => a.seed - b.seed);
+                const athletePayload = sorted.map(p => ({
+                    first_name: p.name,
+                    last_name : 'Example',
+                    birth_year: 1453,
+                    weight    : '-1.00',
+                    gender    : 'M',
+                    club      : clubIdByName.get((p.club || '').trim().toLowerCase()) ?? null,
+                }));
+                const { data: created } = await api.post<Array<{ id: number }>>('athletes/bulk/', athletePayload);
+                if (!Array.isArray(created) || created.length !== sorted.length) {
+                    throw new Error('Athlete bulk sonucu beklenen sayıda değil.');
                 }
+                created.forEach((a, idx) => { seedToAthlete[sorted[idx].seed] = a.id; });
             }
 
-            // 6) Sadece eksikleri yarat
-            if (toCreate.length) {
-                const newIds = await createAthletesOrdered(toCreate, clubIdByName, subId, slug);
-                toCreate.forEach((p, i) => {
-                    if (newIds[i]) seedToAthlete[p.seed] = newIds[i];
-                });
-                const failed = toCreate.filter((_, i) => !newIds[i]);
-                if (failed.length) {
-                    setSaveMsg(`${failed.length} sporcu kaydedilemedi. (Zaten kayıtlı olabilir)`);
-                }
-            }
-
-            // 7) Kaydedilecek matrisi hazırla
-            const roundsForSave: Matrix = (rounds.length
-                ? rounds
-                : propagate(buildMatrix(sorted as Participant[], settings.placementMap)));
-
-            // 8) ID’leri oyuncuların üstüne yaz (persist et)
-            const withIds: Matrix = roundsForSave.map((round) =>
-                round.map((m) => {
-                    const p0 = { ...m.players[0] };
-                    const p1 = { ...m.players[1] };
-                    if (!p0.athleteId && p0.seed) p0.athleteId = seedToAthlete[p0.seed] ?? null;
-                    if (!p1.athleteId && p1.seed) p1.athleteId = seedToAthlete[p1.seed] ?? null;
-                    return { ...m, players: [p0, p1] };
-                })
+            // Kaydedilecek matrix:
+            // - Elimizde rounds varsa onu kullan
+            // - Yoksa (örn. ilk kayıt) yerelden üret
+            const roundsForSave: Matrix = (
+                rounds.length
+                    ? rounds
+                    : propagate(
+                        buildMatrix(
+                            [...players].sort((a, b) => a.seed - b.seed) as Participant[],
+                            settings.placementMap
+                        )
+                    )
             );
 
-            // 9) Match payload – asla null ile overwrite etme (önceki id’ye düş)
-            const matchPayload = withIds.flatMap((round, rIdx) =>
+            // Player -> athlete id çözümleyici (başlamamışsa seed map; backend’ten geldiyse athleteId)
+            const getAthleteIdFor = (p?: Player): number | null => {
+                if (!p) return null;
+                if (p.athleteId != null) return p.athleteId;      // backend’ten gelmişse doğrudan kullan
+                const s = p.seed || 0;
+                return s > 0 ? (seedToAthlete[s] ?? null) : null;  // lokalse seed’ten eşle
+            };
+
+            // ▼ Başlamış turnuvada (r,position) bazında mevcut athlete’leri dondur
+            const existingByKey = new Map<string, { a1: number | null; a2: number | null }>();
+            if (startedRef.current) {
+                backendMatrixRef.current.forEach((round, rIdx) => {
+                    round.forEach((m, iIdx) => {
+                        existingByKey.set(`${rIdx + 1}:${iIdx + 1}`, {
+                            a1: m.players[0]?.athleteId ?? null,
+                            a2: m.players[1]?.athleteId ?? null,
+                        });
+                    });
+                });
+            }
+
+            const isStarted = startedRef.current;   // ✅
+            const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
-                    const prev = backendMatrixRef.current?.[rIdx]?.[iIdx];
-                    const prevId0 = prev?.players?.[0]?.athleteId ?? null;
-                    const prevId1 = prev?.players?.[1]?.athleteId ?? null;
-
-                    const a1 = m.players[0]?.athleteId ?? (m.players[0]?.seed ? (seedToAthlete[m.players[0].seed] ?? null) : null) ?? prevId0;
-                    const a2 = m.players[1]?.athleteId ?? (m.players[1]?.seed ? (seedToAthlete[m.players[1].seed] ?? null) : null) ?? prevId1;
-
+                    const a1 = getAthleteIdFor(m.players[0]);
+                    const a2 = getAthleteIdFor(m.players[1]);
                     const winner =
                         m.players[0]?.winner ? a1 :
                             m.players[1]?.winner ? a2 : null;
@@ -686,47 +655,28 @@ export default memo(function InteractiveBracket(){
 
                     const scheduled_at = timeToISO(m.meta?.time);
 
-                    return {
+                    // Temel alanlar
+                    const row: any = {
                         round_no      : rIdx + 1,
                         position      : iIdx + 1,
                         court_no,
-                        scheduled_at  : scheduled_at ?? undefined,
+                        scheduled_at,
                         extra_note    : '',
-                        sub_tournament: subId!,
-                        athlete1      : a1,   // ⬅️ null’a düşmüyor
-                        athlete2      : a2,   // ⬅️ null’a düşmuyor
+                        sub_tournament: subId,
                         winner        : winner ?? null,
                     };
+
+                    // ⛔ Başladıysa oyuncuları asla göndermeyin
+                    if (!isStarted) {
+                        row.athlete1 = a1;
+                        row.athlete2 = a2;
+                    }
+
+                    return row;
                 })
             );
 
-            // 10) MATCHES kaydet (bulk → fallback)
-            try {
-                await api.post(
-                    `subtournaments/${encodeURIComponent(slug)}/matches/bulk/`,
-                    matchPayload
-                );
-            } catch {
-                let matchesSaved = false;
-                try {
-                    await api.post('matches/bulk/', matchPayload);
-                    matchesSaved = true;
-                } catch {
-                    try {
-                        for (const m of matchPayload) {
-                            await api.post('matches/', m);
-                        }
-                        matchesSaved = true;
-                    } catch {
-                        matchesSaved = false;
-                    }
-                }
-                if (!matchesSaved) throw new Error('Maçlar kaydedilemedi.');
-            }
-
-            // 11) Ekranda şablonu id’leriyle tut
-            backendMatrixRef.current = withIds;
-            setRounds(withIds);
+            await api.post('matches/bulk/', matchPayload);
 
             setDirty(false);
             setSaveMsg('Kaydedildi.');
@@ -739,7 +689,6 @@ export default memo(function InteractiveBracket(){
             setTimeout(() => setSaveMsg(null), 2500);
         }
     }, [slug, subId, players, rounds, settings.placementMap]);
-
 
     useEffect(() => {
         const h = () => { if (!saving) void persistBracket(); };
@@ -797,6 +746,7 @@ export default memo(function InteractiveBracket(){
         applyMeta(selected.r, selected.m, meta);
     };
 
+
     const applyMeta = useCallback((r: number, m: number, meta: Meta) => {
         setRounds(prev => {
             const copy: Matrix = prev.map(rnd => rnd.map(match => ({
@@ -807,7 +757,7 @@ export default memo(function InteractiveBracket(){
             return propagate(copy);
         });
         setSelected(null);
-        setDirty(true); // skor/saat/kort değişikliği de kaydedilmemiş değişiklik sayılır
+        setDirty(true); // ⬅ skor/saat/kort değişikliği de “kaydedilmemiş değişiklik” sayılır
     }, []);
 
     const resetView = () => {
@@ -822,34 +772,25 @@ export default memo(function InteractiveBracket(){
 
     const confirmStart = async () => {
         try {
-            if (slug) {
-                await api.patch(`subtournaments/${slug}/`, { started: true });
-            }
+            if (slug) await api.patch(`subtournaments/${slug}/`, { started: true });
             setStarted(true);
+            setStartedKnown(true);   // ✅
         } catch {
-            /* ignore */
+            /* noop */
         } finally {
             setShowStartConfirm(false);
         }
-
-        const pending = pendingMetaRef.current;
-        pendingMetaRef.current = null;
-        if (pending) applyMeta(pending.r, pending.m, pending.meta);
+        const p = pendingMetaRef.current; pendingMetaRef.current = null;
+        if (p) applyMeta(p.r, p.m, p.meta);
     };
 
     const cancelStart = () => {
         setShowStartConfirm(false);
-        pendingMetaRef.current = null;
+        pendingMetaRef.current = null;   // değişikliği iptal
     };
 
-    // --- Ayar anahtarları (render’da uygulanır) ---
-    const SHOW_SCORES = settings.showScores;
-    const SHOW_TIME   = !SHOW_SCORES && settings.showTime;
-    const SHOW_COURT  = !SHOW_SCORES && settings.showCourt;
-    const SHOW_SEEDS  = settings.showSeeds;
-
     return (
-        <div className="relative">
+        <div className="relative h-[calc(100vh-64px)] overflow-hidden">
             {/* Backend verisini yükle (View modunda/poll açıkken) */}
             {isBackend && (
                 <BackendBracketLoader
@@ -861,12 +802,12 @@ export default memo(function InteractiveBracket(){
                 />
             )}
 
-            {/* SAĞ ÜSTTE MOD ETİKETİ */}
+            {/* SAĞ ÜSTTE SADECE MOD ETİKETİ (tıklanamaz) */}
             <div className="absolute right-3 top-3 z-[40] pointer-events-none select-none">
-        <span className="px-2 py-1 rounded text-xs bg-white/10 text-white/90">
-          Mode: <b>{mode.toUpperCase()}</b>
-            {started && <span className="ml-2 text-emerald-400">(Started)</span>}
-        </span>
+                <span className="px-2 py-1 rounded text-xs bg-white/10 text-white/90">
+                    Mode: <b>{mode.toUpperCase()}</b>
+                    {started && <span className="ml-2 text-emerald-400">(Started)</span>}
+                </span>
             </div>
 
             <TransformWrapper
@@ -881,7 +822,7 @@ export default memo(function InteractiveBracket(){
                 pinch={{ step: 10 }}
             >
                 <TransformComponent
-                    wrapperStyle={{ width: '100%', minHeight: '600px', height: '70vh', overflow: 'visible' }}
+                    wrapperStyle={{ width: '100%', height: '100%', minHeight: '100%', overflow: 'visible' }}
                     contentStyle={{ overflow: 'visible' }}
                 >
                     <div style={{ width: stageW, height: stageH, position: 'relative' }}>
@@ -931,6 +872,10 @@ export default memo(function InteractiveBracket(){
                                         const y2 = mid + span / 2;
 
                                         const sets = m.meta?.scores;
+                                        const showScores = settings.showScores && !!(sets && sets.length);
+                                        const showTime   = !settings.showScores && settings.showTime  && !!m.meta?.time;
+                                        const showCourt  = !settings.showScores && settings.showCourt && !!m.meta?.court;
+
                                         const scoreText = (idx: 0 | 1) =>
                                             (sets ?? []).map(s => String(s[idx] ?? 0)).join('·');
                                         const finished = m.players.some(p => p.winner != null);
@@ -938,8 +883,8 @@ export default memo(function InteractiveBracket(){
 
                                         return (
                                             <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
-                                                {/* seed numaraları */}
-                                                {SHOW_SEEDS && m.players.map((p, idx) => (
+                                                {/* seed numaraları (ayar ile yönetilir) */}
+                                                {settings.showSeeds && m.players.map((p, idx) => (
                                                     (p.seed > 0 && p.name !== '—') ? (
                                                         <text
                                                             key={`seed-${idx}`}
@@ -977,8 +922,8 @@ export default memo(function InteractiveBracket(){
                                                     );
                                                 })}
 
-                                                {/* Skorlar (ayar) */}
-                                                {SHOW_SCORES && sets?.length && (
+                                                {/* Skorlar (ayar: showScores) */}
+                                                {showScores && (
                                                     m.players.map((_, idx) => (
                                                         <text
                                                             key={`s-${idx}`}
@@ -993,15 +938,15 @@ export default memo(function InteractiveBracket(){
                                                     ))
                                                 )}
 
-                                                {/* Saat / Kort (skor kapalıysa ve ayarlar açıksa) */}
-                                                {SHOW_TIME && m.meta?.time && (
+                                                {/* Saat/Kort (Skor kapalıyken gösterilsin) */}
+                                                {showTime && (
                                                     <text className="sub" x={x0 + BOX_W - 10} y={mid - BOX_H / 2 + 14} textAnchor="end">
-                                                        {m.meta.time}
+                                                        {m.meta?.time}
                                                     </text>
                                                 )}
-                                                {SHOW_COURT && m.meta?.court && (
+                                                {showCourt && (
                                                     <text className="sub" x={x0 + BOX_W - 10} y={mid + BOX_H / 2 - 12} textAnchor="end">
-                                                        Court {m.meta.court}
+                                                        Court {m.meta?.court}
                                                     </text>
                                                 )}
 
@@ -1065,7 +1010,7 @@ export default memo(function InteractiveBracket(){
                 </svg>
             </button>
 
-            {/* Skor girişi (Edit) */}
+            {/* Skor girişi modalı (sadece Edit modunda) */}
             {mode === 'edit' && selected && (
                 <MatchModal
                     match={rounds[selected.r][selected.m]}
@@ -1092,6 +1037,7 @@ export default memo(function InteractiveBracket(){
                                 className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15"
                                 onClick={() => {
                                     setShowExitConfirm(false);
+                                    // Değişiklikleri at ve view’a dön
                                     setMode('view');
                                     setRounds(backendMatrixRef.current);
                                     setDirty(false);
@@ -1103,7 +1049,7 @@ export default memo(function InteractiveBracket(){
                                 className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
                                 onClick={() => {
                                     setShowExitConfirm(false);
-                                    void persistBracket();
+                                    void persistBracket(); // Kaydet ve view’a geç
                                 }}
                             >
                                 Kaydet
