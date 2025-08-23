@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useSubTournaments, type SubTournament } from '../../hooks/useSubTournaments';
 import SubFilterSidebar, { type SubFilters } from './components/SubFilterSidebar';
@@ -13,6 +13,19 @@ function parseNum(x: unknown, def = NaN) {
     const n = typeof x === 'string' ? parseFloat(x.replace(',', '.')) : Number(x);
     return Number.isFinite(n) ? n : def;
 }
+
+// Durum haritası
+type Phase = 'pending' | 'in_progress' | 'completed';
+
+// API’den dönebilecek muhtemel alanlara dayanarak faz çıkarımı
+function inferPhaseFromDetail(detail: any): Phase {
+    const started = Boolean(detail?.started ?? detail?.has_started ?? detail?.is_started);
+    const completed = Boolean(detail?.completed ?? detail?.is_completed);
+    if (completed) return 'completed';
+    if (started) return 'in_progress';
+    return 'pending';
+}
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    Single Row (local)
@@ -205,15 +218,67 @@ export default function TournamentSubListPage() {
         weightMin: '',
         weightMax: '',
     });
+
+    // slug -> phase cache (detay çağrıları için)
+    const [statusMap, setStatusMap] = useState<Record<string, Phase>>({});
+
     const [sort, setSort] = useState<SortKey>('alpha');
     const [q, setQ] = useState('');
+
+    // Status filtresi 'all' değilse ve listedeki maddelerde started/completed alanları yoksa
+// küçük bir detay prefetch'i yapıp cache'leyelim.
+    useEffect(() => {
+        if (filters.status === 'all' || !data?.length) return;
+
+        // started/completed alanı olmayan ve cache'te olmayanları topla
+        const candidates = (data as SubTournament[]).filter((s) => {
+            const hasInline =
+                ('started' in (s as any)) || ('has_started' in (s as any)) ||
+                ('completed' in (s as any)) || ('is_completed' in (s as any));
+            const cached = statusMap[s.public_slug];
+            return !hasInline && !cached;
+        });
+
+        if (!candidates.length) return;
+
+        // Aşırıya kaçmamak için ilk 12 taneyi çekelim
+        const pick = candidates.slice(0, 12);
+
+        Promise.all(
+            pick.map(async (s) => {
+                try {
+                    const { data: detail } = await api.get(`subtournaments/${encodeURIComponent(s.public_slug)}/`);
+                    return [s.public_slug, inferPhaseFromDetail(detail)] as const;
+                } catch {
+                    return [s.public_slug, 'pending'] as const;
+                }
+            })
+        ).then((entries) => {
+            setStatusMap((prev) => {
+                const next = { ...prev };
+                for (const [slug, phase] of entries) next[slug] = phase;
+                return next;
+            });
+        });
+    }, [filters.status, data]); // statusMap bağımlılığına gerek yok; setState merge ediyoruz
+
+    function getPhaseFromItemOrCache(s: SubTournament, cache: Record<string, Phase>): Phase {
+        const started = Boolean((s as any).started ?? (s as any).has_started ?? (s as any).is_started);
+        const completed = Boolean((s as any).completed ?? (s as any).is_completed);
+        if (completed) return 'completed';
+        if (started) return 'in_progress';
+        return cache[s.public_slug] ?? 'pending';
+    }
+
 
     const list = useMemo(() => {
         const base = (data ?? []).filter((s) =>
             !q ? true : s.title.toLowerCase().includes(q.toLowerCase())
         );
 
-        const byStatus = base; // (future) status filter
+        const byStatus = base.filter((s) =>
+             filters.status === 'all' ? true : getPhaseFromItemOrCache(s, statusMap) === filters.status
+        );
 
         const byGender = byStatus.filter((s) =>
             filters.gender === 'all' ? true : String(s.gender || '').toUpperCase() === filters.gender

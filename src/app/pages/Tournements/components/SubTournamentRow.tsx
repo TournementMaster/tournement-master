@@ -3,6 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import type { SubTournament } from '../../../hooks/useSubTournaments';
 import { api } from '../../../lib/api';
 
+
+type Phase = 'pending' | 'in_progress' | 'completed';
+function inlinePhase(s: any): Phase {
+    const started = Boolean(s?.started ?? s?.has_started ?? s?.is_started);
+    const completed = Boolean(s?.completed ?? s?.is_completed);
+    if (completed) return 'completed';
+    if (started) return 'in_progress';
+    return 'pending';
+}
+
 /* Premium menü – aynı stili Dashboard kartlarında da kullanıyoruz */
 const premiumItem =
     'flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10 font-premium';
@@ -96,10 +106,22 @@ export default function SubTournamentRow({
                     </div>
                 </div>
 
+
+
                 {/* Sağ: menü + progress dummy */}
                 <div className="flex items-center gap-4">
+                    {/* durum rozeti */}
+                    <span className={
+                            {
+                                completed: 'px-2 py-1 rounded text-xs bg-emerald-600/20 text-emerald-300',
+                                in_progress: 'px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-200',
+                                pending: 'px-2 py-1 rounded text-xs bg-gray-600/30 text-gray-200',
+                            }[inlinePhase(item)]}>
+                        {{ completed: 'Bitti', in_progress: 'Devam', pending: 'Başlamadı',}[inlinePhase(item)]}
+                    </span>
                     {/* üç nokta menüsü */}
                     <div className="relative z-10" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+
                         <button
                             onMouseDown={(e) => { e.preventDefault(); }}
                             onClick={() => setMenuOpen(v => !v)}

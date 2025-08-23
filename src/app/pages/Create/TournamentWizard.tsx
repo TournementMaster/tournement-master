@@ -19,9 +19,9 @@ export default function TournamentWizard({
     const [sp] = useSearchParams()
 
     const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main'
-    const editSlug = (sp.get('edit') || '').trim(); //  ← EDIT SLUG (main ve sub için)
+    const editSlug = (sp.get('edit') || '').trim()
 
-    // Ana turnuva alanları
+    // ───── ANA TURNUVA ALANLARI ─────
     const [title, setTitle] = useState('')
     const [seasonYear, setSeasonYear] = useState('')
     const [city, setCity] = useState('')
@@ -31,14 +31,18 @@ export default function TournamentWizard({
     const [description, setDescription] = useState('')
     const [isPublic, setIsPublic] = useState(true)
 
+    // Tartı günü (yeni sekme)
+    const [weighEnabled, setWeighEnabled] = useState(false)
+    const [weighDate, setWeighDate] = useState('')
+    const [weighStart, setWeighStart] = useState('') // "HH:MM"
+    const [weighEnd, setWeighEnd] = useState('')     // "HH:MM"
+
     // MAIN: Düzenleme modunda alanları doldur
     useEffect(() => {
-        if (mode !== 'main') return;
-        if (!editSlug) return;
-        (async () => {
+        if (mode !== 'main' || !editSlug) return
+            ;(async () => {
             try {
                 const { data } = await api.get(`tournaments/${encodeURIComponent(editSlug)}/`)
-                // alanları doldur
                 setTitle(data.title ?? '')
                 setSeasonYear(String(data.season_year ?? ''))
                 setCity(data.city ?? '')
@@ -47,13 +51,11 @@ export default function TournamentWizard({
                 setEndDate(data.end_date ?? '')
                 setDescription(data.description ?? '')
                 setIsPublic(!!data.public)
-                // Editörler opsiyonel – yalnızca id listesi geldiyse doldur
                 if (Array.isArray(data.editors)) {
                     setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })))
                 }
-            } catch {
-                // data alınamazsa sessiz geç (yeni oluşturma gibi davranır)
-            }
+                // Tartı gününü düzenleme kapsamına şimdilik almıyoruz (endpoint değişebilir)
+            } catch {}
         })()
     }, [mode, editSlug])
 
@@ -89,7 +91,7 @@ export default function TournamentWizard({
         }
     }
 
-    // Alt turnuva alanları
+    // ───── ALT TURNUVA ALANLARI ─────
     const [subTitle, setSubTitle] = useState('')
     const [subDesc, setSubDesc] = useState('')
     const [ageMin, setAgeMin] = useState('')
@@ -98,29 +100,32 @@ export default function TournamentWizard({
     const [weightMax, setWeightMax] = useState('')
     const [gender, setGender] = useState<'M' | 'F' | 'O'>('M')
     const [subPublic, setSubPublic] = useState(true)
+    const [defaultCourt, setDefaultCourt] = useState('')
 
     // SUB: Düzenleme modunda alanları doldur
     useEffect(() => {
-        if (mode !== 'sub') return;
-        if (!editSlug) return;
-        (async () => {
+        if (mode !== 'sub' || !editSlug) return
+            ;(async () => {
             try {
-                const { data } = await api.get(`subtournaments/${encodeURIComponent(editSlug)}/`);
-                setSubTitle(data.title ?? '');
-                setSubDesc(data.description ?? '');
-                setAgeMin(Number.isFinite(data.age_min as never) ? String(data.age_min) : '');
-                setAgeMax(Number.isFinite(data.age_max as never) ? String(data.age_max) : '');
-                setWeightMin((data.weight_min ?? '').toString());
-                setWeightMax((data.weight_max ?? '').toString());
-                setGender((data.gender as never) || 'M');
-                setSubPublic(!!data.public);
-            } catch {
-                // yoksa sessiz geç
-            }
-        })();
-    }, [mode, editSlug]);
+                const { data } = await api.get(`subtournaments/${encodeURIComponent(editSlug)}/`)
+                setSubTitle(data.title ?? '')
+                setSubDesc(data.description ?? '')
+                setAgeMin(Number.isFinite(data.age_min as never) ? String(data.age_min) : '')
+                setAgeMax(Number.isFinite(data.age_max as never) ? String(data.age_max) : '')
+                setWeightMin((data.weight_min ?? '').toString())
+                setWeightMax((data.weight_max ?? '').toString())
+                setGender((data.gender as never) || 'M')
+                setSubPublic(!!data.public)
+                // local default court
+                try {
+                    const cached = JSON.parse(localStorage.getItem('sub.defaultCourt') || '{}')
+                    if (cached?.[data.public_slug]) setDefaultCourt(String(cached[data.public_slug]))
+                } catch {}
+            } catch {}
+        })()
+    }, [mode, editSlug])
 
-    // Alt turnuva için parentId belirle
+    // Alt turnuva için parentId
     const subParentId = (() => {
         const p = Number(sp.get('parent') || '')
         if (!isNaN(p) && p > 0) return p
@@ -128,14 +133,17 @@ export default function TournamentWizard({
         return undefined
     })()
 
-    // Adımlar
+    // Adımlar (ANA için Tartı Günü eklendi)
     const steps = useMemo(
-        () => (mode === 'main' ? (['Genel Bilgiler', 'Organizasyon', 'Özet'] as const) : (['Genel Bilgiler', 'Özet'] as const)),
+        () =>
+            mode === 'main'
+                ? (['Genel Bilgiler', 'Tartı Günü', 'Organizasyon', 'Özet'] as const)
+                : (['Genel Bilgiler', 'Özet'] as const),
         [mode],
     )
     const [step, setStep] = useState(0)
 
-    // “İleri” butonu aktif mi?
+    // “İleri” aktif mi?
     const canNext = useMemo(() => {
         if (mode === 'main' && steps[step] === 'Genel Bilgiler') {
             const vTitle = title.trim().length >= 3
@@ -143,27 +151,33 @@ export default function TournamentWizard({
             const vDates = !!startDate && !!endDate && startDate <= endDate
             return vTitle && vYear && vDates
         }
+        if (mode === 'main' && steps[step] === 'Tartı Günü') {
+            if (!weighEnabled) return true
+            const datesOk = !!weighDate && !!weighStart && !!weighEnd
+            return datesOk
+        }
         if (mode === 'sub' && steps[step] === 'Genel Bilgiler') {
             const vTitle = subTitle.trim().length >= 3
             const m = Number(ageMin) || undefined
             const M = Number(ageMax) || undefined
             const ageOK = m == null || M == null || m <= M
-            // Düzenleme modunda parent zorunlu olmasın
             return vTitle && ageOK && (!!subParentId || !!editSlug)
         }
         return true
-    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageMin, ageMax, subParentId, editSlug])
+    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageMin, ageMax, subParentId, editSlug, weighEnabled, weighDate, weighStart, weighEnd])
 
     async function save() {
         if (mode === 'main') {
             // owner id'yi çöz
             async function resolveOwnerId(): Promise<number> {
-                const u = (localStorage.getItem('username') || '').trim();
-                if (!u) return 0;
+                const u = (localStorage.getItem('username') || '').trim()
+                if (!u) return 0
                 try {
-                    const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`);
-                    return typeof data?.id === 'number' ? data.id : 0;
-                } catch { return 0; }
+                    const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`)
+                    return typeof data?.id === 'number' ? data.id : 0
+                } catch {
+                    return 0
+                }
             }
 
             const basePayload = {
@@ -176,28 +190,40 @@ export default function TournamentWizard({
                 description: description.trim(),
                 public: isPublic,
                 editors: editors.map(e => e.id),
-            };
+            }
 
             try {
                 if (editSlug) {
-                    // DÜZENLEME → PATCH slug ile
-                    await api.patch(`tournaments/${encodeURIComponent(editSlug)}/`, basePayload);
+                    await api.patch(`tournaments/${encodeURIComponent(editSlug)}/`, basePayload)
+                    // (opsiyonel) tartı günü edit’i burada yapılabilir — gereksinim oluşturma idi.
                 } else {
-                    // OLUŞTURMA → POST + owner zorunlu
-                    const owner = await resolveOwnerId();
-                    await api.post('tournaments/', { ...basePayload, owner });
+                    // OLUŞTUR
+                    const owner = await resolveOwnerId()
+                    const { data: created } = await api.post('tournaments/', { ...basePayload, owner })
+                    // Tartı günü (isteğe bağlı) – endpoint yoksa hata yutulur, turnuva yine kaydolur.
+                    if (weighEnabled) {
+                        try {
+                            await api.post('weighins/', {
+                                tournament: created?.id ?? 0,
+                                date: weighDate,         // "YYYY-MM-DD"
+                                start_time: weighStart,  // "HH:MM"
+                                end_time: weighEnd,      // "HH:MM"
+                            })
+                        } catch {
+                            // sessiz — eski özellikleri bozma
+                        }
+                    }
                 }
                 await qc.invalidateQueries({ queryKey: ['tournaments'] })
-                navigate('/', { replace: true }) // Dashboard
+                navigate('/', { replace: true })
             } catch {
                 alert('İşlem başarısız.')
             }
             return
         }
 
-        // Alt turnuva
+        // ALT TURNUVA
         if (editSlug) {
-            // DÜZENLEME
             try {
                 await api.patch(`subtournaments/${encodeURIComponent(editSlug)}/`, {
                     title: subTitle,
@@ -208,13 +234,20 @@ export default function TournamentWizard({
                     weight_max: weightMax,
                     gender,
                     public: subPublic,
-                });
-                await qc.invalidateQueries({ queryKey: ['subtournaments'] });
-                navigate(-1);
+                    // court alanını backende YOLLAMADIK — uyumluluk için local saklıyoruz
+                })
+                // local court
+                try {
+                    const bag = JSON.parse(localStorage.getItem('sub.defaultCourt') || '{}')
+                    bag[editSlug] = defaultCourt || ''
+                    localStorage.setItem('sub.defaultCourt', JSON.stringify(bag))
+                } catch {}
+                await qc.invalidateQueries({ queryKey: ['subtournaments'] })
+                navigate(-1)
             } catch {
-                alert('Alt turnuva güncellenemedi.');
+                alert('Alt turnuva güncellenemedi.')
             }
-            return;
+            return
         }
 
         // OLUŞTURMA
@@ -223,7 +256,7 @@ export default function TournamentWizard({
             return
         }
         try {
-            await api.post('subtournaments/', {
+            const { data: created } = await api.post('subtournaments/', {
                 tournament: subParentId,
                 title: subTitle,
                 description: subDesc,
@@ -234,6 +267,12 @@ export default function TournamentWizard({
                 gender,
                 public: subPublic,
             })
+            // varsayılan court’u local sakla (API’yi bozmadan)
+            try {
+                const bag = JSON.parse(localStorage.getItem('sub.defaultCourt') || '{}')
+                if (created?.public_slug) bag[created.public_slug] = defaultCourt || ''
+                localStorage.setItem('sub.defaultCourt', JSON.stringify(bag))
+            } catch {}
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
             navigate(-1)
         } catch {
@@ -241,13 +280,9 @@ export default function TournamentWizard({
         }
     }
 
-    // İlk adımda Geri → Dashboard, diğer adımlarda bir önceki adıma
     const onBack = () => {
-        if (step === 0) {
-            navigate('/', { replace: true })
-        } else {
-            setStep(s => Math.max(0, s - 1))
-        }
+        if (step === 0) navigate('/', { replace: true })
+        else setStep(s => Math.max(0, s - 1))
     }
 
     return (
@@ -280,7 +315,7 @@ export default function TournamentWizard({
                 </div>
             </GradientFrame>
 
-            {/* İçerik Kartı */}
+            {/* İçerik */}
             <GradientFrame className="mt-6">
                 <div className="p-6 space-y-6">
                     {/* MAIN: Genel Bilgiler */}
@@ -300,6 +335,21 @@ export default function TournamentWizard({
                             </div>
                             <TextArea label="Açıklama" value={description} set={setDescription} />
                             <Toggle checked={isPublic} onChange={setIsPublic}>Public</Toggle>
+                        </>
+                    )}
+
+                    {/* MAIN: Tartı Günü (YENİ) */}
+                    {mode === 'main' && steps[step] === 'Tartı Günü' && (
+                        <>
+                            <Toggle checked={weighEnabled} onChange={setWeighEnabled}>Tartı Günü Aktif</Toggle>
+                            {weighEnabled && (
+                                <div className="grid gap-6 md:grid-cols-3">
+                                    <Labeled label="Tarih" type="date" value={weighDate} set={setWeighDate} />
+                                    <Labeled label="Başlangıç Saati" type="time" value={weighStart} set={setWeighStart} />
+                                    <Labeled label="Bitiş Saati" type="time" value={weighEnd} set={setWeighEnd} />
+                                </div>
+                            )}
+                            <p className="text-xs text-gray-400">Kaydederken bu bilgiler varsa turnuvayla birlikte tartı günü de oluşturulur.</p>
                         </>
                     )}
 
@@ -336,7 +386,7 @@ export default function TournamentWizard({
                         </>
                     )}
 
-                    {/* ALT: Genel Bilgiler */}
+                    {/* ALT: Genel Bilgiler (kilo integer + varsayılan kort no eklendi) */}
                     {mode === 'sub' && steps[step] === 'Genel Bilgiler' && (
                         <>
                             <Labeled label="Alt Turnuva Başlığı" value={subTitle} set={setSubTitle} />
@@ -347,10 +397,31 @@ export default function TournamentWizard({
                                 <Labeled label="Yaş Max" type="number" value={ageMax} set={setAgeMax} />
                             </div>
                             <div className="grid gap-6 md:grid-cols-2">
-                                <Labeled label="Kilo Min (kg)" value={weightMin} set={setWeightMin} />
-                                <Labeled label="Kilo Max (kg)" value={weightMax} set={setWeightMax} />
+                                <Labeled
+                                    label="Kilo Min (kg)"
+                                    value={weightMin}
+                                    set={(v) => setWeightMin(v.replace(/\D/g, '').slice(0, 3))}
+                                    type="text"
+                                />
+                                <Labeled
+                                    label="Kilo Max (kg)"
+                                    value={weightMax}
+                                    set={(v) => setWeightMax(v.replace(/\D/g, '').slice(0, 3))}
+                                    type="text"
+                                />
+                            </div>
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <Labeled
+                                    label="Varsayılan Kort No (ops.)"
+                                    value={defaultCourt}
+                                    set={(v) => setDefaultCourt(v.replace(/[^\w- ]/g, '').slice(0, 8))}
+                                    type="text"
+                                    placeholder="1"
+                                />
+                                <div />
                             </div>
                             <Toggle checked={subPublic} onChange={setSubPublic}>Public</Toggle>
+                            <p className="text-xs text-gray-400">Kort numarası backende gönderilmez, yerelde saklanır; böylece mevcut endpoint’ler etkilenmez.</p>
                         </>
                     )}
 
@@ -365,17 +436,13 @@ export default function TournamentWizard({
 
                     {/* Navigasyon */}
                     <div className="flex justify-between pt-4">
-                        <button onClick={onBack} className="rounded bg-[#3a3f49] px-3 py-2">
-                            Geri
-                        </button>
+                        <button onClick={onBack} className="rounded bg-[#3a3f49] px-3 py-2">Geri</button>
                         {step < steps.length - 1 ? (
                             <button onClick={() => setStep(s => s + 1)} disabled={!canNext} className="rounded bg-sky-600 px-3 py-2 disabled:opacity-40">
                                 İleri
                             </button>
                         ) : (
-                            <button onClick={save} className="rounded bg-emerald-600 px-3 py-2">
-                                Kaydet
-                            </button>
+                            <button onClick={save} className="rounded bg-emerald-600 px-3 py-2">Kaydet</button>
                         )}
                     </div>
                 </div>
@@ -385,7 +452,6 @@ export default function TournamentWizard({
 }
 
 /** Yardımcı bileşenler **/
-
 function GradientFrame({ children, className = '' }: { children: ReactNode; className?: string }) {
     return (
         <div className={`wizard-frame ${className}`}>
@@ -393,18 +459,11 @@ function GradientFrame({ children, className = '' }: { children: ReactNode; clas
         </div>
     )
 }
-
-function Labeled({
-                     label,
-                     value,
-                     set,
-                     type = 'text',
-                     placeholder = '',
-                 }: {
+function Labeled({ label, value, set, type = 'text', placeholder = '' }: {
     label: string
     value: string
     set: (v: string) => void
-    type?: 'text' | 'number' | 'date'
+    type?: 'text' | 'number' | 'date' | 'time'
     placeholder?: string
 }) {
     return (
@@ -420,13 +479,7 @@ function Labeled({
         </div>
     )
 }
-
-function LabeledSelect<T extends string>({
-                                             label,
-                                             value,
-                                             set,
-                                             options,
-                                         }: {
+function LabeledSelect<T extends string>({ label, value, set, options }: {
     label: string
     value: T
     set: (v: T) => void
@@ -437,15 +490,12 @@ function LabeledSelect<T extends string>({
             <label className="mb-1">{label}</label>
             <select value={value} onChange={e => set(e.target.value as T)} className="rounded bg-[#1f2229] px-3 py-2">
                 {(Object.keys(options) as T[]).map(k => (
-                    <option key={k} value={k}>
-                        {options[k]}
-                    </option>
+                    <option key={k} value={k}>{options[k]}</option>
                 ))}
             </select>
         </div>
     )
 }
-
 function TextArea({ label, value, set }: { label: string; value: string; set: (v: string) => void }) {
     return (
         <div>
@@ -454,18 +504,16 @@ function TextArea({ label, value, set }: { label: string; value: string; set: (v
         </div>
     )
 }
-
 function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
     return (
         <label className="inline-flex items-center gap-3 cursor-pointer select-none">
             <span>{children}</span>
             <span onClick={() => onChange(!checked)} className={`inline-block h-8 w-14 rounded-full p-1 transition ${checked ? 'bg-emerald-500' : 'bg-gray-600'}`}>
-                <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
-            </span>
+        <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
+      </span>
         </label>
     )
 }
-
 function SummaryCard({
                          mode,
                          propsMain,
@@ -473,28 +521,16 @@ function SummaryCard({
                      }: {
     mode: Mode
     propsMain: {
-        title: string
-        seasonYear: string
-        city: string
-        venue: string
-        startDate: string
-        endDate: string
-        isPublic: boolean
-        editors: Editor[]
+        title: string; seasonYear: string; city: string; venue: string;
+        startDate: string; endDate: string; isPublic: boolean; editors: Editor[]
     }
     propsSub: {
-        subTitle: string
-        gender: 'M' | 'F' | 'O'
-        ageMin: string
-        ageMax: string
-        weightMin: string
-        weightMax: string
-        subPublic: boolean
+        subTitle: string; gender: 'M'|'F'|'O'; ageMin: string; ageMax: string;
+        weightMin: string; weightMax: string; subPublic: boolean
     }
 }) {
     const { title, seasonYear, city, venue, startDate, endDate, isPublic, editors } = propsMain
     const { subTitle, gender, ageMin, ageMax, weightMin, weightMax, subPublic } = propsSub
-
     return (
         <div className="space-y-4 text-sm">
             {mode === 'main' ? (
