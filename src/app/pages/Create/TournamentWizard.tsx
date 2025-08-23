@@ -116,11 +116,7 @@ export default function TournamentWizard({
                 setWeightMax((data.weight_max ?? '').toString())
                 setGender((data.gender as never) || 'M')
                 setSubPublic(!!data.public)
-                // local default court
-                try {
-                    const cached = JSON.parse(localStorage.getItem('sub.defaultCourt') || '{}')
-                    if (cached?.[data.public_slug]) setDefaultCourt(String(cached[data.public_slug]))
-                } catch {}
+                setDefaultCourt(String(data.court_no ?? ''))
             } catch {}
         })()
     }, [mode, editSlug])
@@ -234,14 +230,8 @@ export default function TournamentWizard({
                     weight_max: weightMax,
                     gender,
                     public: subPublic,
-                    // court alanını backende YOLLAMADIK — uyumluluk için local saklıyoruz
+                    ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
                 })
-                // local court
-                try {
-                    const bag = JSON.parse(localStorage.getItem('sub.defaultCourt') || '{}')
-                    bag[editSlug] = defaultCourt || ''
-                    localStorage.setItem('sub.defaultCourt', JSON.stringify(bag))
-                } catch {}
                 await qc.invalidateQueries({ queryKey: ['subtournaments'] })
                 navigate(-1)
             } catch {
@@ -266,13 +256,8 @@ export default function TournamentWizard({
                 weight_max: weightMax,
                 gender,
                 public: subPublic,
+                ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
             })
-            // varsayılan court’u local sakla (API’yi bozmadan)
-            try {
-                const bag = JSON.parse(localStorage.getItem('sub.defaultCourt') || '{}')
-                if (created?.public_slug) bag[created.public_slug] = defaultCourt || ''
-                localStorage.setItem('sub.defaultCourt', JSON.stringify(bag))
-            } catch {}
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
             navigate(-1)
         } catch {
@@ -401,27 +386,26 @@ export default function TournamentWizard({
                                     label="Kilo Min (kg)"
                                     value={weightMin}
                                     set={(v) => setWeightMin(v.replace(/\D/g, '').slice(0, 3))}
-                                    type="text"
+                                    type="number"
                                 />
                                 <Labeled
                                     label="Kilo Max (kg)"
                                     value={weightMax}
                                     set={(v) => setWeightMax(v.replace(/\D/g, '').slice(0, 3))}
-                                    type="text"
+                                    type="number"
                                 />
                             </div>
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled
                                     label="Varsayılan Kort No (ops.)"
                                     value={defaultCourt}
-                                    set={(v) => setDefaultCourt(v.replace(/[^\w- ]/g, '').slice(0, 8))}
-                                    type="text"
+                                    set={(v) => setDefaultCourt(v.replace(/\D/g, '').slice(0, 3))}
+                                    type="number"
                                     placeholder="1"
                                 />
                                 <div />
                             </div>
                             <Toggle checked={subPublic} onChange={setSubPublic}>Public</Toggle>
-                            <p className="text-xs text-gray-400">Kort numarası backende gönderilmez, yerelde saklanır; böylece mevcut endpoint’ler etkilenmez.</p>
                         </>
                     )}
 
