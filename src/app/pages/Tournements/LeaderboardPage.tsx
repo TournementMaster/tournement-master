@@ -1,26 +1,25 @@
+// src/app/pages/Tournements/LeaderboardPage.tsx
 import { useParams, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 
-// API'den gelen ham kayıt
 type ApiLeaderboardItem = {
     sub_tournament: string;
     title: string;
     gender?: 'M' | 'F' | string;
     age_min?: number | null;
     age_max?: number | null;
-    weight_min?: string | null; // "23.00"
+    weight_min?: string | null;
     weight_max?: string | null;
     top8: { rank: number; first_name: string; club_name: string | null }[];
 };
 
-// Ekranda kullanacağımız normalize tip
 type Top8Row = {
     sub_slug: string;
     sub_title: string;
     gender?: 'M' | 'F' | 'O' | string;
-    age?: string;    // "14–16"
-    weight?: string; // "23–246 kg"
+    age?: string;
+    weight?: string;
     athletes: { name: string; club?: string; rank: number }[];
 };
 
@@ -48,8 +47,6 @@ const normalize = (it: ApiLeaderboardItem): Top8Row => ({
     })),
 });
 
-
-
 export default function LeaderboardPage() {
     const { public_slug } = useParams();
     const [items, setItems] = useState<Top8Row[]>([]);
@@ -61,19 +58,23 @@ export default function LeaderboardPage() {
         (async () => {
             setLoading(true); setErr(null);
             try {
-                // varsayılan endpoint
                 const res = await api.get<ApiLeaderboardItem[]>(`tournaments/${public_slug}/top8/`);
                 let data: ApiLeaderboardItem[] = Array.isArray(res.data) ? res.data : [];
-                // alternatif yol (opsiyonel)
                 if (!data.length) {
                     try {
                         const alt = await api.get<ApiLeaderboardItem[]>(`leaderboard/${public_slug}/top8/`);
                         data = Array.isArray(alt.data) ? alt.data : [];
-                    } catch { /* empty */ }
+                    } catch (e: any) {
+                        const code = e?.response?.status;
+                        if (!cancelled && code === 401) setErr('Yetki yok (401). Bu içeriği görüntülemek için giriş yapmalısınız.');
+                    }
                 }
                 if (!cancelled) setItems(data.map(normalize));
-            } catch {
-                if (!cancelled) setErr('Leaderboard verisi alınamadı.');
+            } catch (e: any) {
+                if (!cancelled) {
+                    const code = e?.response?.status;
+                    setErr(code === 401 ? 'Yetki yok (401). Bu içeriği görüntülemek için giriş yapmalısınız.' : 'Leaderboard verisi alınamadı.');
+                }
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -82,7 +83,17 @@ export default function LeaderboardPage() {
     }, [public_slug]);
 
     if (loading) return <div className="max-w-5xl mx-auto py-8 text-gray-200">Yükleniyor…</div>;
-    if (err)      return <div className="max-w-5xl mx-auto py-8 text-red-300">{err}</div>;
+    if (err)      return (
+        <div className="max-w-5xl mx-auto py-8">
+            <div className="rounded border border-red-400/30 bg-red-500/10 text-red-200 p-4">{err}</div>
+            <div className="mt-3">
+                <Link to={`/tournements/${public_slug}`} className="text-sm text-blue-300 hover:underline">← Alt Turnuvalar</Link>
+                {err.includes('Yetki yok') && (
+                    <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="ml-4 text-sm text-blue-300 hover:underline">Giriş Yap →</Link>
+                )}
+            </div>
+        </div>
+    );
 
     return (
         <div className="max-w-5xl mx-auto py-6 space-y-6">
@@ -113,18 +124,18 @@ export default function LeaderboardPage() {
                                     <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                                         {b.gender && (
                                             <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-400/20">
-                {gLabel(b.gender)}
-              </span>
+                        {gLabel(b.gender)}
+                      </span>
                                         )}
                                         {b.age && (
                                             <span className="px-2 py-1 rounded-full bg-violet-500/15 text-violet-200 border border-violet-400/20">
-                Yaş {b.age}
-              </span>
+                        Yaş {b.age}
+                      </span>
                                         )}
                                         {b.weight && (
                                             <span className="px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/20">
-                Kilo {b.weight}
-              </span>
+                        Kilo {b.weight}
+                      </span>
                                         )}
                                     </div>
                                 </div>

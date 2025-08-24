@@ -13,6 +13,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage.tsx';
 import WeighDetailPage from './pages/Weigh/WeighDetailPage.tsx';
 import WeighPublicBookPage from './pages/Weigh/WeighPublicBookPage.tsx';
 import LeaderboardPage from './pages/Tournements/LeaderboardPage.tsx';
+import ProfilePage from "./pages/ProfilePage.tsx";
 
 export const router = createBrowserRouter([
     {
@@ -41,7 +42,7 @@ export const router = createBrowserRouter([
             /* ------- Protected ------- */
             {
                 element: <ProtectedRoute />,
-                children: [{ path: 'create', element: <CreatePage /> }],
+                children: [ { path: 'profile', element: <ProfilePage /> },{ path: 'create', element: <CreatePage /> }],
             },
         ],
     },

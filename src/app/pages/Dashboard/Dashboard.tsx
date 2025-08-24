@@ -1,13 +1,15 @@
+// src/app/pages/Dashboard/Dashboard.tsx
 /* =========================================================================
    FILE: src/app/pages/Dashboard/Dashboard.tsx
    - Ana turnuvaları listeler
    - Sol üst köşedeki yıl rozeti yerine üç nokta menüsü (Düzenle/Sil)
    - TS daraltmalar: data için Array guard, byText/filtered için net tipler
    - Menü öğelerine premium yazı stili ve emoji uygulandı
+   - Giriş yapılmamışsa /login'e yönlendirir (next= mevcut sayfa)
    ========================================================================= */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTournaments, type Tournament } from '../../hooks/useTournaments';
 import { api } from '../../lib/api';
 
@@ -18,6 +20,24 @@ export default function Dashboard() {
 
     const [sort, setSort] = useState<SortKey>('recent');
     const [q, setQ] = useState('');
+
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // ➜ Giriş kontrolü
+    useEffect(() => {
+        try {
+            const token = localStorage.getItem('access');
+            if (!token) {
+                const next = encodeURIComponent(location.pathname + location.search);
+                navigate(`/login?next=${next}`, { replace: true });
+            }
+        } catch {
+            // storage yoksa yine login'e
+            const next = encodeURIComponent(location.pathname + location.search);
+            navigate(`/login?next=${next}`, { replace: true });
+        }
+    }, []); // yalnız ilk render’da kontrol
 
     // id↔slug haritalarını yaz
     useEffect(() => {
@@ -37,7 +57,6 @@ export default function Dashboard() {
     }, [data]);
 
     const filtered = useMemo<Tournament[]>(() => {
-        // ---- TYPE GUARD: data gerçekten dizi mi? ----
         const base: Tournament[] = Array.isArray(data) ? data : [];
 
         const term = q.trim().toLowerCase();
@@ -137,17 +156,10 @@ export default function Dashboard() {
 }
 
 /* =========================================================================
-   ALT BİLEŞENLER
+   ALT BİLEŞENLER (değişmedi)
    ========================================================================= */
 
-function HeaderBar({
-                       sort,
-                       setSort,
-                       q,
-                       setQ,
-                       total,
-                       subdued = false,
-                   }: {
+function HeaderBar({ sort, setSort, q, setQ, total, subdued = false }: {
     sort: SortKey;
     setSort: (s: SortKey) => void;
     q: string;
@@ -179,6 +191,7 @@ function HeaderBar({
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-200"
                             aria-label="Aramayı temizle"
                             title="Temizle"
+                            type="button"
                         >
                             ✕
                         </button>
@@ -219,11 +232,9 @@ function Card({
             ? formatDateRange(tournament.start_date, tournament.end_date)
             : null;
 
-    // Tüm kart tıklanınca alt turnuva listesine git
     const goToSubList = () =>
         navigate(`/tournements/${tournament.public_slug}?parent=${tournament.id}`);
 
-    // Menü dışına tıkla/ESC → kapat
     useEffect(() => {
         if (!menuOpen) return;
         const onDown = (ev: MouseEvent) => {
@@ -252,7 +263,6 @@ function Card({
         }
     }
 
-    /* Premium menü stilleri */
     const premiumItem =
         'flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10 font-premium';
     const premiumText = 'bg-gradient-to-r from-amber-200 via-emerald-200 to-violet-300 bg-clip-text text-transparent';
@@ -268,7 +278,6 @@ function Card({
             {/* ÜST BAR (3 nokta + şehir) */}
             <div className="absolute top-0 left-0 right-0 p-2 flex items-start justify-between text-[11px] pointer-events-none">
                 <div className="relative z-20 pointer-events-auto" ref={menuRef}>
-                    {/* 3 nokta – büyütüldü */}
                     <button
                         onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(v => !v); }}
@@ -278,11 +287,11 @@ function Card({
                         title="Seçenekler"
                         aria-haspopup="menu"
                         aria-expanded={menuOpen}
+                        type="button"
                     >
                         ⋯
                     </button>
 
-                    {/* Menü – premium görünüm */}
                     {menuOpen && (
                         <div
                             role="menu"
@@ -299,6 +308,7 @@ function Card({
                                     navigate(`/create?mode=main&edit=${encodeURIComponent(tournament.public_slug)}`);
                                 }}
                                 className={premiumItem}
+                                type="button"
                             >
                                 <span className="text-[18px]">✏️</span>
                                 <span className={premiumText}>Düzenle</span>
@@ -312,6 +322,7 @@ function Card({
                                     setConfirmOpen(true);
                                 }}
                                 className={`${premiumItem} text-red-300 hover:bg-red-500/10`}
+                                type="button"
                             >
                                 <span className="text-[18px]">🗑️</span>
                                 <span className={premiumText}>Sil</span>
@@ -322,8 +333,8 @@ function Card({
 
                 {tournament.city && (
                     <span className="px-2 py-0.5 rounded-full bg-gray-900/40 border border-white/10 text-gray-200 self-center pointer-events-auto">
-                        {tournament.city}
-                    </span>
+            {tournament.city}
+          </span>
                 )}
             </div>
 
@@ -356,7 +367,6 @@ function Card({
                 </div>
             </div>
 
-            {/* Hover vurgusu */}
             <div className="absolute inset-0 ring-0 group-hover:ring-2 ring-emerald-300/50 rounded-lg transition pointer-events-none" />
 
             {confirmOpen && (
@@ -377,12 +387,14 @@ function Card({
                             <button
                                 onClick={() => setConfirmOpen(false)}
                                 className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600"
+                                type="button"
                             >
                                 Vazgeç
                             </button>
                             <button
                                 onClick={doDelete}
                                 className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 font-semibold"
+                                type="button"
                             >
                                 Evet, sil
                             </button>

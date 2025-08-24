@@ -1,8 +1,9 @@
+// src/app/pages/Tournements/components/SubTournamentRow.tsx
+// (Bu dosyayı kullanıyorsan — örnek satır; kupa + durum noktası burada da var)
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SubTournament } from '../../../hooks/useSubTournaments';
 import { api } from '../../../lib/api';
-
 
 type Phase = 'pending' | 'in_progress' | 'completed';
 function inlinePhase(s: any): Phase {
@@ -13,7 +14,6 @@ function inlinePhase(s: any): Phase {
     return 'pending';
 }
 
-/* Premium menü – aynı stili Dashboard kartlarında da kullanıyoruz */
 const premiumItem =
     'flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10 font-premium';
 const premiumText = 'bg-gradient-to-r from-amber-200 via-emerald-200 to-violet-300 bg-clip-text text-transparent';
@@ -38,6 +38,12 @@ function buildSubtitle(s: SubTournament) {
     return pieces.join(' · ');
 }
 
+const DOT = {
+    pending: 'bg-amber-400',
+    in_progress: 'bg-emerald-400',
+    completed: 'bg-red-400',
+} as const;
+
 export default function SubTournamentRow({
                                              item,
                                              onChanged,
@@ -47,13 +53,12 @@ export default function SubTournamentRow({
 }) {
     const navigate = useNavigate();
     const subtitle = useMemo(() => buildSubtitle(item), [item]);
-
     const to = `/bracket/${item.public_slug}?title=${encodeURIComponent(item.title)}`;
-
-    // Menü durumu
     const [menuOpen, setMenuOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
+
+    const phase = inlinePhase(item);
 
     const goTo = () => navigate(to, { state: item });
 
@@ -95,33 +100,30 @@ export default function SubTournamentRow({
             title="Alt turnuvayı görüntüle"
         >
             <div className="flex items-center justify-between">
-                {/* Sol: ikon + başlık */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-4">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500/15 text-emerald-300 text-xl select-none">
                         🏆
                     </div>
                     <div>
                         <div className="font-semibold">{item.title}</div>
-                        <div className="text-gray-400 text-sm">{subtitle || '—'}</div>
+                        <div className="text-gray-400 text-sm flex items-center gap-2">
+                            <span>{subtitle || '—'}</span>
+                            <span className={`inline-block w-2.5 h-2.5 rounded-full ${DOT[phase]}`} />
+                        </div>
                     </div>
                 </div>
 
-
-
-                {/* Sağ: menü + progress dummy */}
                 <div className="flex items-center gap-4">
-                    {/* durum rozeti */}
-                    <span className={
-                            {
-                                completed: 'px-2 py-1 rounded text-xs bg-emerald-600/20 text-emerald-300',
-                                in_progress: 'px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-200',
-                                pending: 'px-2 py-1 rounded text-xs bg-gray-600/30 text-gray-200',
-                            }[inlinePhase(item)]}>
-                        {{ completed: 'Bitti', in_progress: 'Devam', pending: 'Başlamadı',}[inlinePhase(item)]}
-                    </span>
-                    {/* üç nokta menüsü */}
-                    <div className="relative z-10" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+          <span className={
+              {
+                  completed: 'px-2 py-1 rounded text-xs bg-emerald-600/20 text-emerald-300',
+                  in_progress: 'px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-200',
+                  pending: 'px-2 py-1 rounded text-xs bg-gray-600/30 text-gray-200',
+              }[phase]}>
+            {{ completed: 'Bitti', in_progress: 'Devam', pending: 'Başlamadı' }[phase]}
+          </span>
 
+                    <div className="relative z-10" ref={menuRef} onClick={(e) => e.stopPropagation()}>
                         <button
                             onMouseDown={(e) => { e.preventDefault(); }}
                             onClick={() => setMenuOpen(v => !v)}
@@ -129,6 +131,7 @@ export default function SubTournamentRow({
                             title="Seçenekler"
                             aria-haspopup="menu"
                             aria-expanded={menuOpen}
+                            type="button"
                         >
                             ⋯
                         </button>
@@ -145,6 +148,7 @@ export default function SubTournamentRow({
                                         navigate(to, { state: item }); // düzenleme için sayfaya git
                                     }}
                                     className={`${premiumItem}`}
+                                    type="button"
                                 >
                                     <span className="text-[18px]">✏️</span>
                                     <span className={`${premiumText}`}>Düzenle</span>
@@ -157,6 +161,7 @@ export default function SubTournamentRow({
                                         setConfirmOpen(true);
                                     }}
                                     className={`${premiumItem} text-red-300 hover:bg-red-500/10`}
+                                    type="button"
                                 >
                                     <span className="text-[18px]">🗑️</span>
                                     <span className={`${premiumText}`}>Sil</span>
@@ -185,12 +190,14 @@ export default function SubTournamentRow({
                             <button
                                 onClick={() => setConfirmOpen(false)}
                                 className="px-4 py-2 rounded bg-gray-700 hover:bg-gray-600"
+                                type="button"
                             >
                                 Vazgeç
                             </button>
                             <button
                                 onClick={doDelete}
                                 className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 font-semibold"
+                                type="button"
                             >
                                 Evet, sil
                             </button>

@@ -1,5 +1,6 @@
+// src/app/pages/Tournements/TournamentSubListPage.tsx
 import { useMemo, useState, useEffect } from 'react';
-import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useNavigate, } from 'react-router-dom';
 import { useSubTournaments, type SubTournament } from '../../hooks/useSubTournaments';
 import SubFilterSidebar, { type SubFilters } from './components/SubFilterSidebar';
 import { api } from '../../lib/api';
@@ -26,12 +27,23 @@ function inferPhaseFromDetail(detail: any): Phase {
     return 'pending';
 }
 
+// Satır içi durum (yalnızca item’dan)
+function inlinePhase(s: any): Phase {
+    const started = Boolean(s?.started ?? s?.has_started ?? s?.is_started);
+    const completed = Boolean(s?.completed ?? s?.is_completed);
+    if (completed) return 'completed';
+    if (started) return 'in_progress';
+    return 'pending';
+}
+
+const PHASE_BADGE = {
+    pending:     { text: 'Bekleyen',   chip: 'bg-amber-500/20 text-amber-200', dot: 'bg-amber-400' },
+    in_progress: { text: 'Başlayan',   chip: 'bg-emerald-600/20 text-emerald-300', dot: 'bg-emerald-400' },
+    completed:   { text: 'Biten',      chip: 'bg-red-600/20 text-red-200', dot: 'bg-red-400' },
+} as const;
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Single Row (local)
-   - Entire card is clickable → Bracket
-   - Hover glow: green→purple
-   - ⋯ menu: Edit (wizard), Delete (API) with custom lightbox
+   Single Row
    ────────────────────────────────────────────────────────────────────────── */
 function Row({
                  item,
@@ -71,6 +83,9 @@ function Row({
         }
     };
 
+    const phase = inlinePhase(item);
+    const badge = PHASE_BADGE[phase];
+
     return (
         <>
             <div
@@ -89,74 +104,104 @@ function Row({
           flex items-center justify-between
         "
             >
-                <div className="pr-3">
-                    <div className="font-semibold text-slate-100">{item.title}</div>
-                    <div className="text-sm text-white/60">
-                        {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight{' '}
-                        {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
+                {/* SOL: ikona + başlık + alt satır */}
+                <div className="pr-3 flex items-start gap-4">
+                    {/* Küçük kupa ikonu */}
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500/15 text-emerald-300 text-xl select-none">
+                        🏆
+                    </div>
+
+                    <div>
+                        <div className="font-semibold text-slate-100">{item.title}</div>
+
+                        {/* Alt satır: Cinsiyet/Yaş/Kilo + DURUM NOKTASI */}
+                        <div className="text-sm text-white/60 flex flex-wrap items-center gap-2">
+              <span>
+                {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight{' '}
+                  {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
+              </span>
+
+                            {/* durum göstergesi – küçük renkli nokta + metin */}
+                            <span className="inline-flex items-center gap-1 text-xs">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${badge.dot}`} />
+                <span className="text-white/80">{badge.text}</span>
+              </span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="relative">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation(); // prevent card navigation
-                            setOpen((v) => !v);
-                        }}
-                        className="
-              w-10 h-10 rounded-full
-              bg-[#0d1117] text-white/90
-              border border-white/10
-              ring-1 ring-white/5
-              shadow-inner
-              hover:border-emerald-400/40 hover:ring-emerald-400/30
-              flex items-center justify-center
-            "
-                        aria-haspopup="menu"
-                        aria-expanded={open}
-                        title="İşlemler"
-                    >
-                        {/* three-dot icon (clean, centered) */}
-                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="6"  cy="12" r="1.7" fill="currentColor" />
-                            <circle cx="12" cy="12" r="1.7" fill="currentColor" />
-                            <circle cx="18" cy="12" r="1.7" fill="currentColor" />
-                        </svg>
-                    </button>
+                {/* SAĞ: durum rozeti + menü */}
+                <div className="relative flex items-center gap-4">
+          <span
+              className={`px-2 py-1 rounded text-xs border border-white/10 ${badge.chip}`}
+              title={`Durum: ${badge.text}`}
+          >
+            {badge.text}
+          </span>
 
-                    {open && (
-                        <div
-                            role="menu"
-                            className="absolute right-0 mt-2 w-44 rounded-lg bg-[#1f232a] border border-white/10 shadow-xl z-20"
-                            onMouseLeave={() => setOpen(false)}
-                            onClick={(e) => e.stopPropagation()}
+                    <div className="relative">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation(); // prevent card navigation
+                                setOpen((v) => !v);
+                            }}
+                            className="
+                w-10 h-10 rounded-full
+                bg-[#0d1117] text-white/90
+                border border-white/10
+                ring-1 ring-white/5
+                shadow-inner
+                hover:border-emerald-400/40 hover:ring-emerald-400/30
+                flex items-center justify-center
+              "
+                            aria-haspopup="menu"
+                            aria-expanded={open}
+                            title="İşlemler"
+                            type="button"
                         >
-                            <button
-                                onClick={() => {
-                                    setOpen(false);
-                                    goEdit();
-                                }}
-                                className="w-full text-left px-3 py-2 hover:bg-white/10 text-emerald-300"
-                                role="menuitem"
+                            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="6" cy="12" r="1.7" fill="currentColor" />
+                                <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+                                <circle cx="18" cy="12" r="1.7" fill="currentColor" />
+                            </svg>
+                        </button>
+
+                        {open && (
+                            <div
+                                role="menu"
+                                className="absolute right-0 mt-2 w-44 rounded-lg bg-[#1f232a] border border-white/10 shadow-xl z-20"
+                                onMouseLeave={() => setOpen(false)}
+                                onClick={(e) => e.stopPropagation()}
                             >
-                                ✏️ Düzenle
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setOpen(false);
-                                    setConfirmOpen(true);
-                                }}
-                                className="w-full text-left px-3 py-2 hover:bg-white/10 text-red-300"
-                                role="menuitem"
-                            >
-                                🗑️ Sil
-                            </button>
-                        </div>
-                    )}
+                                <button
+                                    onClick={() => {
+                                        setOpen(false);
+                                        goEdit();
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-white/10 text-emerald-300"
+                                    role="menuitem"
+                                    type="button"
+                                >
+                                    ✏️ Düzenle
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setOpen(false);
+                                        setConfirmOpen(true);
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-white/10 text-red-300"
+                                    role="menuitem"
+                                    type="button"
+                                >
+                                    🗑️ Sil
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            {/* Custom Lightbox Confirm */}
+            {/* Confirm */}
             {confirmOpen && (
                 <div
                     className="fixed inset-0 z-[80] flex items-center justify-center"
@@ -173,13 +218,12 @@ function Row({
                             <div className="text-base font-semibold text-white mb-1">
                                 Silmek istediğinize emin misiniz?
                             </div>
-                            <p className="text-sm text-white/80 mb-4">
-                                “{item.title}” geri alınamaz şekilde silinecek.
-                            </p>
+                            <p className="text-sm text-white/80 mb-4">“{item.title}” geri alınamaz şekilde silinecek.</p>
                             <div className="flex justify-end gap-2">
                                 <button
                                     onClick={() => setConfirmOpen(false)}
                                     className="px-4 py-2 rounded bg-[#3b4252] hover:bg-[#454d62] text-white/90"
+                                    type="button"
                                 >
                                     Vazgeç
                                 </button>
@@ -187,6 +231,7 @@ function Row({
                                     onClick={confirmDelete}
                                     disabled={deleting}
                                     className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-60"
+                                    type="button"
                                 >
                                     {deleting ? 'Siliniyor…' : 'Evet, sil'}
                                 </button>
@@ -226,11 +271,10 @@ export default function TournamentSubListPage() {
     const [q, setQ] = useState('');
 
     // Status filtresi 'all' değilse ve listedeki maddelerde started/completed alanları yoksa
-// küçük bir detay prefetch'i yapıp cache'leyelim.
+    // küçük bir detay prefetch'i yapıp cache'leyelim.
     useEffect(() => {
         if (filters.status === 'all' || !data?.length) return;
 
-        // started/completed alanı olmayan ve cache'te olmayanları topla
         const candidates = (data as SubTournament[]).filter((s) => {
             const hasInline =
                 ('started' in (s as any)) || ('has_started' in (s as any)) ||
@@ -241,7 +285,6 @@ export default function TournamentSubListPage() {
 
         if (!candidates.length) return;
 
-        // Aşırıya kaçmamak için ilk 12 taneyi çekelim
         const pick = candidates.slice(0, 12);
 
         Promise.all(
@@ -260,7 +303,7 @@ export default function TournamentSubListPage() {
                 return next;
             });
         });
-    }, [filters.status, data]); // statusMap bağımlılığına gerek yok; setState merge ediyoruz
+    }, [filters.status, data]);
 
     function getPhaseFromItemOrCache(s: SubTournament, cache: Record<string, Phase>): Phase {
         const started = Boolean((s as any).started ?? (s as any).has_started ?? (s as any).is_started);
@@ -270,14 +313,13 @@ export default function TournamentSubListPage() {
         return cache[s.public_slug] ?? 'pending';
     }
 
-
     const list = useMemo(() => {
         const base = (data ?? []).filter((s) =>
             !q ? true : s.title.toLowerCase().includes(q.toLowerCase())
         );
 
         const byStatus = base.filter((s) =>
-             filters.status === 'all' ? true : getPhaseFromItemOrCache(s, statusMap) === filters.status
+            filters.status === 'all' ? true : getPhaseFromItemOrCache(s, statusMap) === filters.status
         );
 
         const byGender = byStatus.filter((s) =>
@@ -324,7 +366,10 @@ export default function TournamentSubListPage() {
         });
 
         return arr;
-    }, [data, q, filters, sort]);
+    }, [data, q, filters, sort, statusMap]);
+
+    // Hata status kodu
+    const errorStatus = (error as any)?.response?.status ?? (error as any)?.status;
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -354,6 +399,7 @@ export default function TournamentSubListPage() {
                                     <button
                                         onClick={() => setQ('')}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-200"
+                                        type="button"
                                     >
                                         ✕
                                     </button>
@@ -380,17 +426,32 @@ export default function TournamentSubListPage() {
                     {/* content states */}
                     {isLoading && <SkeletonList />}
                     {isError && (
-                        <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6">
-                            <p className="text-red-300 font-semibold mb-2">Veri alınamadı.</p>
-                            <p className="text-sm text-gray-300 mb-4">
-                                {error instanceof Error ? error.message : 'Bilinmeyen hata.'}
+                        <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6 space-y-2">
+                            <p className="text-red-300 font-semibold">Veri alınamadı.</p>
+                            <p className="text-sm text-gray-300">
+                                {errorStatus === 401
+                                    ? 'Yetki yok (401). Bu sayfayı görüntülemek için giriş yapmalısınız.'
+                                    : error instanceof Error
+                                        ? error.message
+                                        : 'Bilinmeyen hata.'}
                             </p>
-                            <button
-                                onClick={() => refetch()}
-                                className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
-                            >
-                                Tekrar Dene
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => refetch()}
+                                    className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
+                                    type="button"
+                                >
+                                    Tekrar Dene
+                                </button>
+                                {errorStatus === 401 && (
+                                    <Link
+                                        to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+                                        className="text-sm text-blue-300 hover:underline"
+                                    >
+                                        → Giriş Yap
+                                    </Link>
+                                )}
+                            </div>
                         </div>
                     )}
 
