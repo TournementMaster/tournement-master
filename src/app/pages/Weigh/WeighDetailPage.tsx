@@ -12,6 +12,7 @@ type WeighInDTO = {
     start_time: string;  // "HH:MM:SS"
     end_time: string;    // "HH:MM:SS"
     public_slug: string;
+    is_open: boolean;    // 🆕
 };
 
 type AppointmentDTO = {
@@ -23,6 +24,7 @@ type AppointmentDTO = {
     created_at: string;      // ISO
     cancelled_at: string | null;
     weigh_in: number;
+    seq_no?: number;         // 🆕
 };
 
 /* ────────────────────────────────────────────────────────────────
@@ -62,6 +64,8 @@ export default function WeighDetailPage() {
 
     const [weighIn, setWeighIn] = useState<WeighInDTO | null>(null);
     const [appointments, setAppointments] = useState<AppointmentDTO[]>([]);
+    const [isManager, setIsManager] = useState(false);          // 🆕 owner/editor mü?
+    const [toggling, setToggling] = useState(false);            // 🆕 toggle is_open
 
     // UI controls
     const [q, setQ] = useState('');                 // kulüp/bireysel filtre
@@ -75,6 +79,7 @@ export default function WeighDetailPage() {
             setLoading(true);
             setErr(null);
             setNotFound(false);
+            setIsManager(false);
             try {
                 // 1) Weigh-in detail (by tournament public_slug)
                 const wiRes = await api.get<WeighInDTO>(`tournaments/${tournament_slug}/weigh-in/`);
@@ -84,9 +89,15 @@ export default function WeighDetailPage() {
                 // 2) Appointments (yalnızca weigh-in varsa)
                 try {
                     const apRes = await api.get<AppointmentDTO[]>(`tournaments/${tournament_slug}/weigh-in/appointments/`);
-                    if (!cancelled) setAppointments(Array.isArray(apRes.data) ? apRes.data : []);
+                    if (!cancelled) {
+                        setAppointments(Array.isArray(apRes.data) ? apRes.data : []);
+                        setIsManager(true); // erişebildiyse manager’dir
+                    }
                 } catch {
-                    if (!cancelled) setAppointments([]);
+                    if (!cancelled) {
+                        setAppointments([]);
+                        setIsManager(false);
+                    }
                 }
             } catch (e: any) {
                 if (cancelled) return;
@@ -148,6 +159,20 @@ export default function WeighDetailPage() {
         const cancelledCount = appointments.length - active.length;
         return {totalHead, clubCount, individualCount, cancelledCount, activeCount: active.length};
     }, [appointments]);
+
+    async function toggleOpen() {
+        if (!weighIn || !isManager) return;
+        setToggling(true);
+        try {
+            const next = !weighIn.is_open;
+            const res = await api.patch<WeighInDTO>(`weighins/${encodeURIComponent(weighIn.public_slug)}/`, { is_open: next });
+            setWeighIn(res.data);
+        } catch {
+            // no-op; küçük bir uyarı göstermek isterseniz err state kullanabilirsiniz
+        } finally {
+            setToggling(false);
+        }
+    }
 
     /* ────────────────────────────────────────────────────────────── */
     if (loading) {
@@ -215,11 +240,47 @@ export default function WeighDetailPage() {
                         {weighIn
                             ? <>
                                 {fmtDate(weighIn.date)} · {hhmm(weighIn.start_time)} – {hhmm(weighIn.end_time)}
+                                {isManager && (
+                                    <span className={clsx(
+                                        'ml-3 inline-flex items-center rounded px-2 py-0.5 text-xs border',
+                                        weighIn.is_open
+                                            ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                                            : 'border-amber-400/30 bg-amber-500/10 text-amber-200'
+                                    )}>
+                                      {weighIn.is_open ? 'Randevu Alımı: Açık' : 'Randevu Alımı: Kapalı'}
+                                    </span>
+                                )}
                             </>
                             : 'Bu turnuva için tanımlı tartı günü bulunamadı'}
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {isManager && weighIn && (
+                        <button
+                            onClick={toggleOpen}
+                            disabled={toggling}
+                            role="switch"
+                            aria-checked={weighIn.is_open}
+                            className={clsx(
+                                'relative inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition',
+                                weighIn.is_open
+                                    ? 'bg-emerald-600/20 border-emerald-400/30 text-emerald-200 hover:bg-emerald-600/30'
+                                    : 'bg-[#1f2229] border-white/10 text-gray-200 hover:border-amber-400/40'
+                            )}
+                            title="Randevu alımını aç/kapat"
+                        >
+                            <span className="select-none">{weighIn.is_open ? 'Kapat' : 'Aç'}</span>
+                            <span className={clsx(
+                                'h-5 w-10 rounded-full p-0.5 transition border',
+                                weighIn.is_open ? 'bg-emerald-600/60 border-emerald-400/50' : 'bg-gray-600/40 border-white/20'
+                            )}>
+                                <span className={clsx(
+                                    'block h-4 w-4 rounded-full bg-white transition',
+                                    weighIn.is_open ? 'translate-x-5' : 'translate-x-0'
+                                )}/>
+                            </span>
+                        </button>
+                    )}
                     {weighIn && (
                         <Link
                             to={`/weigh/${tournament_slug}/book`}
@@ -293,7 +354,7 @@ export default function WeighDetailPage() {
                     </div>
                 ) : (
                     <ul className="space-y-2">
-                        {filtered.map((a, idx) => {
+                        {filtered.map((a) => {
                             const label = a.is_club ? (a.club_name || 'Kulüp') : 'Bireysel';
                             const cancelled = !!a.cancelled_at;
                             return (
@@ -313,7 +374,9 @@ export default function WeighDetailPage() {
                                         </div>
                                         <div>
                                             <div className="font-medium text-white">
-                                                {idx + 1}. {label}
+                                                {/* 🆕 stabil sıra no */}
+                                                {a.seq_no ? <span className="text-gray-300 mr-2">#{a.seq_no}</span> : null}
+                                                {label}
                                                 {cancelled && <span
                                                     className="ml-2 text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-200 align-middle">İptal</span>}
                                             </div>
@@ -324,12 +387,9 @@ export default function WeighDetailPage() {
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                    <span className={clsx(
-                        'inline-flex items-center px-2.5 py-1 rounded text-sm font-medium',
-                        'bg-white/10 text-white'
-                    )}>
-                      {a.headcount} sporcu
-                    </span>
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded text-sm font-medium bg-white/10 text-white">
+                                            {a.headcount} sporcu
+                                        </span>
                                     </div>
                                 </li>
                             );

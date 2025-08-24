@@ -8,21 +8,25 @@ import { api } from '../../lib/api';
 type WeighInDTO = {
     id: number;
     tournament: number;
-    date: string;         // "YYYY-MM-DD"
-    start_time: string;   // "HH:MM:SS"
-    end_time: string;     // "HH:MM:SS"
+    date: string;
+    start_time: string;
+    end_time: string;
     public_slug: string;
+    is_open: boolean; // mevcut
 };
 
 type AppointmentDTO = {
     id: number;
-    user: number;              // current user id değil, randevu sahibi (bilgi amaçlı)
+    user: number;
     is_club: boolean;
     club_name: string | null;
     headcount: number;
     created_at: string;
     cancelled_at: string | null;
     weigh_in: number;
+    seq_no?: number;
+    appointments_ahead?: number;
+    athletes_ahead?: number;
 };
 
 /* ────────────────────────────────────────────────────────────────
@@ -70,7 +74,6 @@ export default function WeighPublicBookPage() {
         setMsg({ tone: 'warn', text: msgText });
         setAuthRedirecting(true);
         const next = encodeURIComponent(loc.pathname + loc.search);
-        // kısa bir uyarı gösterip login'e at
         setTimeout(() => nav(`/login?next=${next}`), 1200);
     }
 
@@ -146,7 +149,6 @@ export default function WeighPublicBookPage() {
     }, [myAppointment?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const totalHeadcountActive = useMemo(() => {
-        // sadece görünür (user scope) kayıtlardan aktif olanları topla; owner/editor'de de bilgi göstermek için filtreleyelim
         return allMine.filter(a => !a.cancelled_at && (!weighIn || a.weigh_in === weighIn.id))
             .reduce((s, a) => s + (Number(a.headcount) || 0), 0);
     }, [allMine, weighIn]);
@@ -168,26 +170,31 @@ export default function WeighPublicBookPage() {
             const payload = {
                 is_club: isClub,
                 club_name: isClub ? (clubName.trim() || null) : null,
-                headcount: isClub ? hc : 1, // bireysel -> 1
+                headcount: isClub ? hc : 1,
                 weigh_in: weighIn.id,
             };
 
             if (myActive) {
-                // Güncelleme (PATCH /appointments/{id}/)
-                await api.patch<AppointmentDTO>(`appointments/${myAppointment!.id}/`, payload);
-                setMsg({ tone: 'ok', text: 'Randevunuz güncellendi.' });
+                const res = await api.patch<AppointmentDTO>(`appointments/${myAppointment!.id}/`, payload);
+                setMsg({
+                    tone: 'ok',
+                    text: `Randevunuz güncellendi. Sıra no: #${res.data.seq_no ?? myAppointment?.seq_no ?? '—'}. Önünüzde ${res.data.athletes_ahead ?? 0} sporcu var.`
+                });
             } else {
-                // Yalnızca 1 randevu kuralı — client tarafı kontrol
                 if (myAppointment && myAppointment.cancelled_at) {
-                    // iptal edilmişse yeniden alabilir
+                    // yeniden alabilir
                 } else if (myAppointment) {
                     setMsg({ tone: 'warn', text: 'Bu turnuva için zaten bir randevunuz var.' });
                     setBusy(false);
                     return;
                 }
-                // Oluşturma (POST /appointments/)
-                await api.post<AppointmentDTO>(`appointments/`, payload);
-                setMsg({ tone: 'ok', text: 'Randevunuz oluşturuldu.' });
+
+                // create
+                const res = await api.post<AppointmentDTO>(`appointments/`, payload);
+                setMsg({
+                    tone: 'ok',
+                    text: `Randevunuz oluşturuldu. Sıra no: #${res.data.seq_no ?? '—'}. Önünüzde ${res.data.athletes_ahead ?? 0} sporcu var.`
+                });
             }
             await refreshAppointments();
         } catch (e: any) {
@@ -211,7 +218,6 @@ export default function WeighPublicBookPage() {
         setBusy(true);
         setMsg(null);
         try {
-            // İptal (POST /appointments/{id}/cancel/)
             await api.post<AppointmentDTO>(`appointments/${myAppointment.id}/cancel/`, {});
             await refreshAppointments();
             setMsg({ tone: 'ok', text: 'Randevunuz iptal edildi. İsterseniz yeniden alabilirsiniz.' });
@@ -250,6 +256,8 @@ export default function WeighPublicBookPage() {
         );
     }
 
+    const bookingClosed = !!(weighIn && !weighIn.is_open && !isOwnerOrEditorView);
+
     return (
         <div className="max-w-2xl mx-auto py-6 space-y-6">
             {/* Header */}
@@ -260,6 +268,14 @@ export default function WeighPublicBookPage() {
                         {weighIn
                             ? <>
                                 {fmtDate(weighIn.date)} · {hhmm(weighIn.start_time)} – {hhmm(weighIn.end_time)}
+                                <span className={clsx(
+                                    'ml-3 inline-flex items-center rounded px-2 py-0.5 text-xs border',
+                                    bookingClosed
+                                        ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
+                                        : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                                )}>
+                                  {bookingClosed ? 'Randevu Alımı Kapalı' : 'Randevu Alımı Açık'}
+                                </span>
                             </>
                             : 'Bu turnuvada tartı günü tanımlı değil'}
                     </p>
@@ -274,12 +290,22 @@ export default function WeighPublicBookPage() {
 
             {/* Quick Stats */}
             <section className="grid grid-cols-2 gap-4">
-                <StatCard label="Toplam Sporcu (aktif)" value={totalHeadcountActive} />
-                <StatCard label="Durumunuz" value={
-                    isOwnerOrEditorView ? 'Organizatör' :
-                        myActive ? 'Aktif randevu' :
-                            (myAppointment && myAppointment.cancelled_at) ? 'İptal edildi' : 'Randevu yok'
-                } />
+                <StatCard
+                    label="Önünüzde Sporcu"
+                    value={
+                        myAppointment && myActive
+                            ? (myAppointment.athletes_ahead ?? 0)
+                            : '—'
+                    }
+                />
+                <StatCard
+                    label="Durumunuz"
+                    value={
+                        isOwnerOrEditorView ? 'Organizatör'
+                            : myActive ? `Aktif · Sıra No #${myAppointment?.seq_no ?? '—'}`
+                                : (myAppointment && myAppointment.cancelled_at) ? 'İptal edildi' : 'Randevu yok'
+                    }
+                />
             </section>
 
             {/* Owner/Editor uyarısı */}
@@ -287,6 +313,13 @@ export default function WeighPublicBookPage() {
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
                     <div className="text-amber-200 font-medium mb-1">Organizatör görünümü</div>
                     <div className="text-sm text-amber-100/90">Turnuvanın sahibi/düzenleyicisi, bu sayfadan randevu alamaz. Lütfen katılımcılar için bağlantıyı paylaşın.</div>
+                </div>
+            )}
+
+            {/* Kapalı uyarısı (normal kullanıcı) */}
+            {bookingClosed && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
+                    Bu turnuva için randevu alımı şu an kapalı. Lütfen daha sonra tekrar deneyin.
                 </div>
             )}
 
@@ -300,8 +333,8 @@ export default function WeighPublicBookPage() {
                             myActive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/20'
                                 : 'bg-white/10 text-gray-200 border border-white/10'
                         )}>
-              {myActive ? `#${myAppointment.id}` : 'İptal edildi'}
-            </span>
+                            {myActive ? `Sıranız: #${myAppointment.seq_no ?? '—'}` : 'İptal edildi'}
+                        </span>
                     )}
                 </div>
 
@@ -380,10 +413,10 @@ export default function WeighPublicBookPage() {
                     <div className="flex items-center gap-2">
                         <button
                             onClick={onSubmit}
-                            disabled={busy || !weighIn || isOwnerOrEditorView || (isClub && !clubName.trim()) || authRedirecting}
+                            disabled={busy || !weighIn || isOwnerOrEditorView || bookingClosed || (isClub && !clubName.trim()) || authRedirecting}
                             className={clsx(
                                 'px-4 py-2 rounded-lg font-medium shadow',
-                                busy || isOwnerOrEditorView
+                                busy || isOwnerOrEditorView || bookingClosed
                                     ? 'bg-gray-600 text-white/80 cursor-not-allowed'
                                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                             )}
