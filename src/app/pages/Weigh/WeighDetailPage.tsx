@@ -1,6 +1,6 @@
-import { Link, useParams } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../lib/api';
+import {Link, useParams} from 'react-router-dom';
+import {useEffect, useMemo, useState} from 'react';
+import {api} from '../../lib/api';
 
 /* ────────────────────────────────────────────────────────────────
    Types (API DTOs)
@@ -41,9 +41,11 @@ function fmtDate(dateISO: string) {
         return dateISO;
     }
 }
+
 function hhmm(t: string | null | undefined) {
     return (t || '').slice(0, 5);
 }
+
 function clsx(...xs: Array<string | false | null | undefined>) {
     return xs.filter(Boolean).join(' ');
 }
@@ -52,10 +54,11 @@ function clsx(...xs: Array<string | false | null | undefined>) {
    Page
    ──────────────────────────────────────────────────────────────── */
 export default function WeighDetailPage() {
-    const { tournament_slug } = useParams<{ tournament_slug: string }>();
+    const {tournament_slug} = useParams<{ tournament_slug: string }>();
 
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
+    const [notFound, setNotFound] = useState(false);
 
     const [weighIn, setWeighIn] = useState<WeighInDTO | null>(null);
     const [appointments, setAppointments] = useState<AppointmentDTO[]>([]);
@@ -67,19 +70,33 @@ export default function WeighDetailPage() {
 
     useEffect(() => {
         let cancelled = false;
+
         async function run() {
             setLoading(true);
             setErr(null);
+            setNotFound(false);
             try {
                 // 1) Weigh-in detail (by tournament public_slug)
                 const wiRes = await api.get<WeighInDTO>(`tournaments/${tournament_slug}/weigh-in/`);
-                if (!cancelled) setWeighIn(wiRes.data);
+                if (cancelled) return;
+                setWeighIn(wiRes.data);
 
-                // 2) Appointments
-                const apRes = await api.get<AppointmentDTO[]>(`tournaments/${tournament_slug}/weigh-in/appointments/`);
-                if (!cancelled) setAppointments(Array.isArray(apRes.data) ? apRes.data : []);
-            } catch (e) {
-                if (!cancelled) {
+                // 2) Appointments (yalnızca weigh-in varsa)
+                try {
+                    const apRes = await api.get<AppointmentDTO[]>(`tournaments/${tournament_slug}/weigh-in/appointments/`);
+                    if (!cancelled) setAppointments(Array.isArray(apRes.data) ? apRes.data : []);
+                } catch {
+                    if (!cancelled) setAppointments([]);
+                }
+            } catch (e: any) {
+                if (cancelled) return;
+                const status = e?.response?.status;
+                if (status === 404) {
+                    // Bu turnuva için tartı günü tanımlı değil → boş durum göster
+                    setNotFound(true);
+                    setWeighIn(null);
+                    setAppointments([]);
+                } else {
                     setErr('Tartı bilgileri alınamadı.');
                     setWeighIn(null);
                     setAppointments([]);
@@ -88,8 +105,11 @@ export default function WeighDetailPage() {
                 if (!cancelled) setLoading(false);
             }
         }
+
         run();
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     }, [tournament_slug]);
 
     // Derived
@@ -126,28 +146,52 @@ export default function WeighDetailPage() {
         const clubCount = active.filter(a => a.is_club).length;
         const individualCount = active.length - clubCount;
         const cancelledCount = appointments.length - active.length;
-        return { totalHead, clubCount, individualCount, cancelledCount, activeCount: active.length };
+        return {totalHead, clubCount, individualCount, cancelledCount, activeCount: active.length};
     }, [appointments]);
 
     /* ────────────────────────────────────────────────────────────── */
     if (loading) {
         return (
             <div className="max-w-6xl mx-auto py-8">
-                <div className="h-10 w-52 rounded bg-white/10 animate-pulse mb-6" />
+                <div className="h-10 w-52 rounded bg-white/10 animate-pulse mb-6"/>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                        <div key={i} className="h-24 rounded-xl bg-white/5 border border-white/10 animate-pulse" />
+                    {Array.from({length: 4}).map((_, i) => (
+                        <div key={i} className="h-24 rounded-xl bg-white/5 border border-white/10 animate-pulse"/>
                     ))}
                 </div>
                 <div className="rounded-xl border border-white/10 bg-[#252a32] p-4">
-                    <div className="h-8 w-64 bg-white/10 rounded mb-4 animate-pulse" />
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="h-12 bg-white/5 rounded mb-2 animate-pulse" />
+                    <div className="h-8 w-64 bg-white/10 rounded mb-4 animate-pulse"/>
+                    {Array.from({length: 6}).map((_, i) => (
+                        <div key={i} className="h-12 bg-white/5 rounded mb-2 animate-pulse"/>
                     ))}
                 </div>
             </div>
         );
     }
+
+    // 404 → Şık boş-durum kartı
+    if (notFound) {
+        return (
+            <div className="max-w-3xl mx-auto py-12">
+                <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-[#1b1f27] to-[#141821] p-8 text-center">
+                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center text-2xl">
+                        ⚖️
+                    </div>
+                    <h1 className="text-xl font-semibold text-white mb-1">Tartı günü bulunmuyor</h1>
+                    <p className="text-sm text-gray-400">Bu turnuva için henüz bir tartı günü tanımlanmamış.</p>
+                    <div className="mt-5 flex items-center justify-center gap-3">
+                        <Link
+                            to="/"
+                            className="px-3 py-2 rounded-lg bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm"
+                        >
+                            ← Geri Dön
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
 
     if (err) {
         return (
@@ -176,12 +220,14 @@ export default function WeighDetailPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <Link
-                        to={`/weigh/${tournament_slug}/book`}
-                        className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
-                    >
-                        Randevu Al (Paylaşılabilir)
-                    </Link>
+                    {weighIn && (
+                        <Link
+                            to={`/weigh/${tournament_slug}/book`}
+                            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
+                        >
+                            Randevu Al (Paylaşılabilir)
+                        </Link>
+                    )}
                     <Link to="/" className="text-sm text-blue-300 hover:underline">← Dashboard</Link>
                 </div>
             </div>
@@ -193,9 +239,9 @@ export default function WeighDetailPage() {
                     value={stats.activeCount}
                     hint={stats.cancelledCount ? `${stats.cancelledCount} iptal` : undefined}
                 />
-                <StatCard label="Tahmini Sporcu" value={stats.totalHead} />
-                <StatCard label="Kulüp Randevusu" value={stats.clubCount} />
-                <StatCard label="Bireysel Randevu" value={stats.individualCount} />
+                <StatCard label="Tahmini Sporcu" value={stats.totalHead}/>
+                <StatCard label="Kulüp Randevusu" value={stats.clubCount}/>
+                <StatCard label="Bireysel Randevu" value={stats.individualCount}/>
             </section>
 
             {/* Appointments */}
@@ -268,7 +314,8 @@ export default function WeighDetailPage() {
                                         <div>
                                             <div className="font-medium text-white">
                                                 {idx + 1}. {label}
-                                                {cancelled && <span className="ml-2 text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-200 align-middle">İptal</span>}
+                                                {cancelled && <span
+                                                    className="ml-2 text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-200 align-middle">İptal</span>}
                                             </div>
                                             <div className="text-xs text-gray-400">
                                                 Kayıt: {new Date(a.created_at).toLocaleString('tr-TR')}
@@ -297,7 +344,7 @@ export default function WeighDetailPage() {
 /* ────────────────────────────────────────────────────────────────
    Small components
    ──────────────────────────────────────────────────────────────── */
-function StatCard({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
+function StatCard({label, value, hint}: { label: string; value: number | string; hint?: string }) {
     return (
         <div className="rounded-xl border border-white/10 bg-[#252a32] p-4">
             <div className="text-sm text-gray-400">{label}</div>

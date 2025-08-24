@@ -329,7 +329,7 @@ export default function TournamentSubListPage() {
     return (
         <div className="max-w-6xl mx-auto">
             <div className="flex gap-6">
-                <SubFilterSidebar filters={filters} setFilters={setFilters} />
+                <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug} />
 
                 <div className="flex-1">
                     {/* top bar */}

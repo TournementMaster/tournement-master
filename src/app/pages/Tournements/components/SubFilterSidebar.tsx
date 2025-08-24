@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 export type SubFilters = {
     status: 'all' | 'pending' | 'in_progress' | 'completed';
     gender: 'all' | 'M' | 'F';
@@ -19,9 +21,12 @@ const DEFAULTS: SubFilters = {
 export default function SubFilterSidebar({
                                              filters,
                                              setFilters,
+                                             slug,
                                          }: {
     filters: SubFilters;
     setFilters: (f: SubFilters) => void;
+    /** Turnuva slug’ı: buton linkleri için opsiyonel */
+    slug?: string;
 }) {
     const set = (patch: Partial<SubFilters>) => setFilters({ ...filters, ...patch });
     const clear = () => setFilters({ ...DEFAULTS });
@@ -116,6 +121,35 @@ export default function SubFilterSidebar({
                     >
                         Filtreyi Temizle
                     </button>
+                </div>
+
+                {/* ───────── Yeni: Hızlı Erişim Butonları ───────── */}
+                <div className="pt-4 space-y-3">
+                    <Link
+                        to={slug ? `/tournements/${encodeURIComponent(slug)}/leaderboard` : '#'}
+                        className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
+                        bg-gradient-to-r from-amber-500/20 via-amber-400/15 to-yellow-500/20
+                        border border-amber-300/30 text-amber-200
+                        hover:shadow-[0_0_0_2px_rgba(251,191,36,.35),0_0_18px_6px_rgba(251,191,36,.18)]
+                        hover:border-amber-300/50 transition ${slug ? '' : 'pointer-events-none opacity-50'}`}
+                        aria-label="Leaderboard"
+                    >
+                        <span className="text-lg">🏆</span>
+                        <span className="font-medium">Leaderboard</span>
+                    </Link>
+
+                    <Link
+                        to={slug ? `/weigh/${encodeURIComponent(slug)}` : '#'}
+                        className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
+                        bg-gradient-to-r from-violet-600/20 via-indigo-500/15 to-blue-600/20
+                        border border-violet-300/30 text-violet-200
+                        hover:shadow-[0_0_0_2px_rgba(167,139,250,.35),0_0_18px_6px_rgba(99,102,241,.18)]
+                        hover:border-violet-300/50 transition ${slug ? '' : 'pointer-events-none opacity-50'}`}
+                        aria-label="Tartı Günü"
+                    >
+                        <span className="text-lg">⚖️</span>
+                        <span className="font-medium">Tartı Günü</span>
+                    </Link>
                 </div>
             </nav>
         </aside>
