@@ -77,11 +77,12 @@ export default function WeighPublicBookPage() {
         setTimeout(() => nav(`/login?next=${next}`), 1200);
     }
 
-    // Durum: owner/editor tespiti (yaklaşık) — owner/editor ise aynı weigh_in için *birden fazla* randevu görülebilir
+    // Durum: owner/editor tespiti
     const isOwnerOrEditorView = useMemo(() => {
         if (!weighIn) return false;
         const forThis = allMine.filter(a => a.weigh_in === weighIn.id);
-        return forThis.length > 1; // owner/editor list görebilir
+        const distinctUsers = new Set(forThis.map(a => a.user)).size;
+        return distinctUsers > 1;
     }, [allMine, weighIn]);
 
     // Bu weigh-in için mevcut randevum (normal kullanıcıda 0 veya 1 olur)
@@ -107,7 +108,9 @@ export default function WeighPublicBookPage() {
 
                 // 2) Randevular (auth ister)
                 try {
-                    const apRes = await api.get<AppointmentDTO[]>(`appointments/`);
+                    // DİKKAT: weigh_in filtresi ile çek → owner/editor isek tüm kullanıcıları görürüz,
+                    // normal kullanıcı isek yalnızca kendimizinkini görürüz.
+                    const apRes = await api.get<AppointmentDTO[]>(`appointments/?weigh_in=${wiRes.data.id}`);
                     if (cancelled) return;
                     setAllMine(Array.isArray(apRes.data) ? apRes.data : []);
                 } catch (e: any) {
@@ -155,7 +158,10 @@ export default function WeighPublicBookPage() {
 
     async function refreshAppointments() {
         try {
-            const apRes = await api.get<AppointmentDTO[]>(`appointments/`);
+            if (!weighIn) return;
+            const apRes = await api.get<AppointmentDTO[]>(
+                `appointments/?weigh_in=${weighIn.id}`
+            );
             setAllMine(Array.isArray(apRes.data) ? apRes.data : []);
         } catch { /* yoksay */ }
     }
