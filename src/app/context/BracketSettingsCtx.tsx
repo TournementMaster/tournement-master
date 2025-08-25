@@ -1,37 +1,60 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 
-export interface BracketSettings {
-    showScores: boolean;                 // skor açıkken time/court görünmez
-    showTime:   boolean;                 // skor kapalı + açık ise time yaz
-    showCourt:  boolean;                 // skor kapalı + açık ise court yaz
-    showSeeds:  boolean;                 // seed numarasını kutu dışında göster
-    placementMap: Record<number,number>|null; // seed → slotSeed yerleştirme
-    version:    number;                  // yeniden çizim tetikleyici
-}
+export type PlacementMap = Record<number, number> | null;
 
-const Ctx = createContext<{
-    settings: BracketSettings;
-    set:      (p: Partial<BracketSettings>) => void;
-} | null>(null);
+export type BracketSettings = {
+    placementMap: PlacementMap;
+    version: number;
 
-export function BracketSettingsProvider({ children }: { children: ReactNode }) {
-    const [settings, setSettings] = useState<BracketSettings>({
-        showScores: true,
-        showTime:   true,
-        showCourt:  true,
-        showSeeds:  true,
-        placementMap: null,
-        version:    0,
-    });
-    return (
-        <Ctx.Provider value={{ settings, set: p => setSettings(s => ({ ...s, ...p })) }}>
-            {children}
-        </Ctx.Provider>
-    );
-}
+    // eski alanlar kalsın (render tarafından kullanılabilir):
+    showScores: boolean;
+    showTime: boolean;
+    showCourt: boolean;
+    showSeeds: boolean;
 
-export const useSettings = () => {
-    const c = useContext(Ctx);
-    if (!c) throw new Error('useSettings dışarıda');
-    return c;
+    // ✅ yeni
+    showMatchNo: boolean;
 };
+
+const defaultSettings: BracketSettings = {
+    placementMap: null,
+    version: 1,
+
+    showScores: false,
+    showTime: true,
+    showCourt: true,
+    showSeeds: true,
+
+    showMatchNo: true,
+};
+
+type CtxValue = {
+    settings: BracketSettings;
+    set: (patch: Partial<BracketSettings>) => void;
+};
+
+const Ctx = createContext<CtxValue | undefined>(undefined);
+
+export function BracketSettingsProvider({ children }: { children: React.ReactNode }) {
+    const [settings, setSettings] = useState<BracketSettings>(defaultSettings);
+
+    const value = useMemo<CtxValue>(
+        () => ({
+            settings,
+            set: (patch) =>
+                setSettings((prev) => ({
+                    ...prev,
+                    ...patch,
+                })),
+        }),
+        [settings]
+    );
+
+    return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useSettings(): CtxValue {
+    const ctx = useContext(Ctx);
+    if (!ctx) throw new Error('useSettings must be used within BracketSettingsProvider');
+    return ctx;
+}

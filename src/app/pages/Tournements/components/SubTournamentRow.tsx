@@ -1,22 +1,12 @@
-// src/app/pages/Tournements/components/SubTournamentRow.tsx
-// (Bu dosyayı kullanıyorsan — örnek satır; kupa + durum noktası burada da var)
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SubTournament } from '../../../hooks/useSubTournaments';
 import { api } from '../../../lib/api';
 
-type Phase = 'pending' | 'in_progress' | 'completed';
-function inlinePhase(s: any): Phase {
-    const started = Boolean(s?.started ?? s?.has_started ?? s?.is_started);
-    const completed = Boolean(s?.completed ?? s?.is_completed);
-    if (completed) return 'completed';
-    if (started) return 'in_progress';
-    return 'pending';
-}
-
 const premiumItem =
     'flex w-full items-center gap-3 px-4 py-2.5 text-[15px] hover:bg-white/10 font-premium';
-const premiumText = 'bg-gradient-to-r from-amber-200 via-emerald-200 to-violet-300 bg-clip-text text-transparent';
+const premiumText =
+    'bg-gradient-to-r from-amber-200 via-emerald-200 to-violet-300 bg-clip-text text-transparent';
 
 function genderLabel(g: string) {
     if (g === 'M') return 'Male';
@@ -38,12 +28,6 @@ function buildSubtitle(s: SubTournament) {
     return pieces.join(' · ');
 }
 
-const DOT = {
-    pending: 'bg-amber-400',
-    in_progress: 'bg-emerald-400',
-    completed: 'bg-red-400',
-} as const;
-
 export default function SubTournamentRow({
                                              item,
                                              onChanged,
@@ -57,8 +41,6 @@ export default function SubTournamentRow({
     const [menuOpen, setMenuOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
-
-    const phase = inlinePhase(item);
 
     const goTo = () => navigate(to, { state: item });
 
@@ -106,27 +88,26 @@ export default function SubTournamentRow({
                     </div>
                     <div>
                         <div className="font-semibold">{item.title}</div>
-                        <div className="text-gray-400 text-sm flex items-center gap-2">
+
+                        {/* ✅ Yalnızca alt başlık. Sarı nokta + 'Bekleyen/Devam/Bitti' tamamen kaldırıldı */}
+                        <div className="text-gray-400 text-sm">
                             <span>{subtitle || '—'}</span>
-                            <span className={`inline-block w-2.5 h-2.5 rounded-full ${DOT[phase]}`} />
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-4">
-          <span className={
-              {
-                  completed: 'px-2 py-1 rounded text-xs bg-emerald-600/20 text-emerald-300',
-                  in_progress: 'px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-200',
-                  pending: 'px-2 py-1 rounded text-xs bg-gray-600/30 text-gray-200',
-              }[phase]}>
-            {{ completed: 'Bitti', in_progress: 'Devam', pending: 'Başlamadı' }[phase]}
-          </span>
-
-                    <div className="relative z-10" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+                    {/* ✅ Sağdaki faz rozeti de kaldırıldı. Sadece menü bırakıldı. */}
+                    <div
+                        className="relative z-10"
+                        ref={menuRef}
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <button
-                            onMouseDown={(e) => { e.preventDefault(); }}
-                            onClick={() => setMenuOpen(v => !v)}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                            }}
+                            onClick={() => setMenuOpen((v) => !v)}
                             className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-900/70 border border-white/15 text-gray-100 text-[20px] font-semibold hover:bg-gray-900/90 shadow"
                             title="Seçenekler"
                             aria-haspopup="menu"
@@ -145,7 +126,7 @@ export default function SubTournamentRow({
                                     role="menuitem"
                                     onClick={() => {
                                         setMenuOpen(false);
-                                        navigate(to, { state: item }); // düzenleme için sayfaya git
+                                        navigate(to, { state: item });
                                     }}
                                     className={`${premiumItem}`}
                                     type="button"
@@ -175,7 +156,10 @@ export default function SubTournamentRow({
             {confirmOpen && (
                 <div
                     className="fixed inset-0 z-[1000] flex items-center justify-center"
-                    onClick={(e) => { e.stopPropagation(); setConfirmOpen(false); }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmOpen(false);
+                    }}
                 >
                     <div className="absolute inset-0 bg-black/70" />
                     <div
@@ -183,9 +167,7 @@ export default function SubTournamentRow({
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h4 className="text-lg font-semibold mb-2">Silmek istediğinize emin misiniz?</h4>
-                        <p className="text-sm text-gray-300">
-                            “{item.title}” geri alınamaz şekilde silinecek.
-                        </p>
+                        <p className="text-sm text-gray-300">“{item.title}” kalıcı olarak silinecek.</p>
                         <div className="mt-5 flex gap-3 justify-end">
                             <button
                                 onClick={() => setConfirmOpen(false)}

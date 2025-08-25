@@ -1,3 +1,6 @@
+// =============================
+// FILE: InteractiveBracket.tsx
+// =============================
 import { memo, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
     TransformWrapper,
@@ -13,6 +16,7 @@ import { useLocation } from 'react-router-dom';
 import { api } from '../../../lib/api';
 import type { Club } from '../../../models/Club';
 import type { SubTournament } from '../../../hooks/useSubTournaments';
+import { useAuth } from '../../../context/useAuth'; // ⬅️ NEW: auth durumunu al
 
 /* --------------------------------- Types --------------------------------- */
 export interface Player {
@@ -359,6 +363,8 @@ export default memo(function InteractiveBracket(){
     const themeKey     = useBracketTheme();
     const palette:Palette = PALETTES[resolveThemeKey(themeKey)];
 
+    const { isAuth } = useAuth(); // ⬅️ NEW
+
     const location = useLocation();
     const slug = useMemo(() => location.pathname.match(/^\/bracket\/(.+)/)?.[1] ?? '', [location.pathname]);
     const stateItem = (location.state as (SubTournament & { can_edit?: boolean }) | undefined) || null;
@@ -400,6 +406,14 @@ export default memo(function InteractiveBracket(){
 
     /* Çizim matrisi */
     const [rounds, setRounds] = useState<Matrix>([]);
+    // Final maçı kazanandıysa tüm alt turnuva bitti say
+    const isFinished = useMemo(() => {
+        if (!rounds?.length) return false;
+        const lastRound = rounds[rounds.length - 1];
+        if (!lastRound?.length) return false;
+        const finalMatch = lastRound[0]; // 1. pozisyondaki final maçı
+        return finalMatch?.players?.some(p => p?.winner != null) ?? false;
+    }, [rounds]);
     const backendMatrixRef = useRef<Matrix>([]);
 
     const [selected, setSelected] = useState<{r:number;m:number}|null>(null);
@@ -431,26 +445,50 @@ export default memo(function InteractiveBracket(){
     // Zoom/pan
     const twRef = useRef<ReactZoomPanPinchRef | null>(null);
 
-    // Slug → SubTournament id & izin al
+    // UI mod etiketi (CSS & event)
     useEffect(() => {
         window.dispatchEvent(
             new CustomEvent('bracket:view-only', { detail: { value: mode === 'view' } })
         );
-        // İstersen CSS’ten de kullan
         document.documentElement.setAttribute('data-bracket-mode', mode);
     }, [mode]);
 
+    // ✅ NEW: Otomatik Edit modu — kullanıcı girişliyse ve canEdit true ise
+    const autoModeAppliedRef = useRef(false);
     useEffect(() => {
-        // Sidebar panellerine duyuru: View modu mu? (readonly)
-        window.dispatchEvent(new CustomEvent('bracket:view-only', {
-            detail: { value: mode === 'view' }
-        }))
+        if (autoModeAppliedRef.current) return;
+        // İlk kez geldiğimizde auth/izin durumuna göre modu belirle
+        if (isAuth && canEdit) {
+            setMode('edit');
+        } else {
+            setMode('view');
+        }
+        autoModeAppliedRef.current = true;
+    }, [isAuth, canEdit]);
 
-        // Oyuncu ekleme/çıkarma kilidi (turnuva başladıysa true)
+    // Auth kapanırsa (logout) güvenli şekilde View'a dön
+    useEffect(() => {
+        if (!isAuth && mode === 'edit') {
+            setMode('view');
+            editPlayersSnapshotRef.current = null;
+        }
+    }, [isAuth, mode]);
+
+    // Sidebar panellerine durum yay
+    useEffect(() => {
+        const participantsViewOnly = (mode === 'view') || startedRef.current; // maç başladıysa sporcu kilidi
+        window.dispatchEvent(new CustomEvent('bracket:view-only', {
+            detail: { value: participantsViewOnly }
+        }));
+
         window.dispatchEvent(new CustomEvent('bracket:players-locked', {
-            detail: { value: started }
-        }))
-    }, [mode, started])
+            detail: { value: startedRef.current }
+        }));
+
+        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', {
+            detail: { mode }  // 'view' | 'edit'
+        }));
+    }, [mode, started]);
 
     // Slug → SubTournament id & izin al
     useEffect(() => {
@@ -461,7 +499,6 @@ export default memo(function InteractiveBracket(){
 
                 if (data?.id) setSubId(data.id);
 
-                // Ana turnuva slug'ını olabildiğince esnek biçimde yakala
                 const tSlug =
                     (data as any)?.tournament_public_slug ??
                     (data as any)?.tournament_slug ??
@@ -470,13 +507,10 @@ export default memo(function InteractiveBracket(){
                 if (typeof tSlug === 'string' && tSlug) setTournamentSlug(tSlug);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
 
-
-                // Varsayılan kort (sub seviyesinde varsa)
                 if (typeof (data as any)?.court_no === 'number') {
                     setDefaultCourtNo((data as any).court_no);
                 }
 
-                // ✅ Öncelik: started; yoksa has_started
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) {
                     setStarted(Boolean(data.started));
                     setStartedKnown(true);
@@ -496,27 +530,28 @@ export default memo(function InteractiveBracket(){
         const placement = settings.placementMap;
 
         if (mode === 'edit') {
-            // Başlamışsa her zaman backend gerçek kaynaktır
+            // Başlamışsa backend sabit
             if (startedRef.current) {
                 setRounds(backendMatrixRef.current);
                 return;
             }
 
-            // Başlamamışsa: yalnızca oyuncu listesi snapshot'tan farklıysa yeniden kur
+            // oyuncu listesi karşılaştırması
             const snap = editPlayersSnapshotRef.current;
             const now  = players.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
 
-            if (!snap || !samePlayersList(snap, now)) {
-                // oyuncu eklendi/silindi/değişti → bracket'i baştan oluştur
+            // ⬇️ YENİ: placement değişti mi?
+            const placementChanged = lastPlacementRef.current !== placement;
+
+            if (!snap || !samePlayersList(snap, now) || placementChanged) {
                 setRounds(players.length ? propagate(buildMatrix(players, placement)) : []);
-                // snapshot'ı güncelle ki bir dahaki render'da aynı yerde kalsın
                 editPlayersSnapshotRef.current = now;
+                lastPlacementRef.current = placement;  // ⬅️ placement snapshot’ını güncelle
             }
-            // Değişiklik yoksa hiçbir şey yapma → backend düzeni korunur
             return;
         }
 
-        // VIEW: varsa backend, yoksa yerel fallback
+        // VIEW modu
         if (backendMatrixRef.current.length) {
             setRounds(backendMatrixRef.current);
         } else if (players.length) {
@@ -524,7 +559,8 @@ export default memo(function InteractiveBracket(){
         } else {
             setRounds([]);
         }
-    }, [mode, players, settings.placementMap, settings.version, started]); // started'ı izlemeye devam
+    }, [mode, players, settings.placementMap, settings.version, started]);
+
 
     useEffect(() => {
         if (mode !== 'edit') return;
@@ -537,21 +573,20 @@ export default memo(function InteractiveBracket(){
             setDirty(true);
         }
     }, [players]);
+    const lastPlacementRef = useRef<Record<number, number> | null>(null);
 
-    /* Header/Sidebar’dan gelecek kontrol olayları */
+
+
+
+
+    /* Header/Sidebar’dan gelecek kontrol olayları (eski Edit/View tuşları kalktı ama kalsın) */
     useEffect(() => {
         const enterEdit = () => {
             if (!canEdit) return;
-
-            // ① Edit snapshot'ını al (ad+kulüp sırayı koruyarak)
             editPlayersSnapshotRef.current = players.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
-
             setMode('edit');
-
-            // ② İlk girişte dizilimi backend'den göster → yerler değişmesin
             setRounds(() => {
                 if (backendMatrixRef.current.length) return backendMatrixRef.current;
-                // Backend boşsa yerelden kur
                 return players.length ? propagate(buildMatrix(players, settings.placementMap)) : [];
             });
         };
@@ -561,7 +596,6 @@ export default memo(function InteractiveBracket(){
                 setShowExitConfirm(true);
             } else {
                 setMode('view');
-                // View'a dönerken snapshot'ı sıfırlamak opsiyonel (temiz)
                 editPlayersSnapshotRef.current = null;
             }
         };
@@ -578,18 +612,7 @@ export default memo(function InteractiveBracket(){
         };
     }, [canEdit, mode, dirty, players, settings.placementMap]);
 
-    useEffect(() => {
-        const participantsViewOnly = (mode === 'view') || startedRef.current;
-        window.dispatchEvent(new CustomEvent('bracket:view-only', {
-            detail: { value: participantsViewOnly }
-        }));
-
-        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', {
-            detail: { mode }  // 'view' | 'edit' -> Settings paneli buna göre disable/enable
-        }));
-    }, [mode, started]);
-
-    /* Kaydet (header’daki buton zaten bracket:save olayı atıyor) */
+    /* Kaydet (header’daki buton 'bracket:save' olayı atıyor) */
     const timeToISO = (t?: string): string | null => {
         if (!t) return null;
         const s = t.replace('.', ':');
@@ -604,7 +627,6 @@ export default memo(function InteractiveBracket(){
     const persistBracket = useCallback(async () => {
         if (!slug) { setSaveMsg('Slug okunamadı.'); return; }
         if (!subId) { setSaveMsg('Alt turnuva ID bulunamadı.'); return; }
-        // Turnuva başlamamışsa katılımcı şart; başlamışsa skor güncellemesi için boş olabilir
         if (!players.length && !startedRef.current) { setSaveMsg('Kaydedilecek katılımcı yok.'); return; }
 
         setSaving(true); setSaveMsg(null);
@@ -618,7 +640,6 @@ export default memo(function InteractiveBracket(){
             const clubIdByName = new Map(clubs.map(c => [c.name.trim().toLowerCase(), c.id]));
 
             // ▼ Başlamamış turnuvada oyuncuları (seed -> athlete) oluştur/haritala
-            //   Başlamış turnuvada asla yeni athlete oluşturma.
             let seedToAthlete: Record<number, number> = {};
             if (!startedRef.current) {
                 const sorted = [...players].sort((a, b) => a.seed - b.seed);
@@ -637,9 +658,6 @@ export default memo(function InteractiveBracket(){
                 created.forEach((a, idx) => { seedToAthlete[sorted[idx].seed] = a.id; });
             }
 
-            // Kaydedilecek matrix:
-            // - Elimizde rounds varsa onu kullan
-            // - Yoksa (örn. ilk kayıt) yerelden üret
             const roundsForSave: Matrix = (
                 rounds.length
                     ? rounds
@@ -651,26 +669,12 @@ export default memo(function InteractiveBracket(){
                     )
             );
 
-            // Player -> athlete id çözümleyici (başlamamışsa seed map; backend’ten geldiyse athleteId)
             const getAthleteIdFor = (p?: Player): number | null => {
                 if (!p) return null;
-                if (p.athleteId != null) return p.athleteId;      // backend’ten gelmişse doğrudan kullan
+                if (p.athleteId != null) return p.athleteId;
                 const s = p.seed || 0;
-                return s > 0 ? (seedToAthlete[s] ?? null) : null;  // lokalse seed’ten eşle
+                return s > 0 ? (seedToAthlete[s] ?? null) : null;
             };
-
-            // ▼ Başlamış turnuvada (r,position) bazında mevcut athlete’leri dondur
-            const existingByKey = new Map<string, { a1: number | null; a2: number | null }>();
-            if (startedRef.current) {
-                backendMatrixRef.current.forEach((round, rIdx) => {
-                    round.forEach((m, iIdx) => {
-                        existingByKey.set(`${rIdx + 1}:${iIdx + 1}`, {
-                            a1: m.players[0]?.athleteId ?? null,
-                            a2: m.players[1]?.athleteId ?? null,
-                        });
-                    });
-                });
-            }
 
             const isStarted = startedRef.current;   // ✅
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
@@ -689,7 +693,6 @@ export default memo(function InteractiveBracket(){
 
                     const scheduled_at = timeToISO(m.meta?.time);
 
-                    // Temel alanlar
                     const row: any = {
                         round_no      : rIdx + 1,
                         position      : iIdx + 1,
@@ -714,7 +717,6 @@ export default memo(function InteractiveBracket(){
             // 🔢 Maç numarası üretimi – sadece henüz başlamamışsa
             try {
                 if (!started) {
-                    // Bu alt turnuvada kullanılan kortları topla
                     const courts = new Set<number>();
                     for (const round of roundsForSave) {
                         for (const m of round) {
@@ -724,17 +726,15 @@ export default memo(function InteractiveBracket(){
                         }
                     }
 
-                    // Ana turnuva slug'ı ve kort varsa, her kort için endpoint'i çağır
                     if (tournamentSlug && courts.size) {
                         const hit = async (court: number) => {
-                            // Önce POST dene; 405/404 gibi durumlarda GET'e düş
                             try {
                                 await api.post(
                                     `tournaments/${encodeURIComponent(tournamentSlug)}/generate-match-numbers/`,
                                     {},
                                     { params: { court } }
                                 );
-                            } catch (err:any) {
+                            } catch {
                                 try {
                                     await api.get(
                                         `tournaments/${encodeURIComponent(tournamentSlug)}/generate-match-numbers/`,
@@ -844,12 +844,9 @@ export default memo(function InteractiveBracket(){
         try {
             if (slug) await api.patch(`subtournaments/${slug}/`, { started: true });
             setStarted(true);
-            setStartedKnown(true);   // ✅
-        } catch {
-            /* noop */
-        } finally {
-            setShowStartConfirm(false);
-        }
+            setStartedKnown(true);
+        } catch { /* noop */ }
+        finally { setShowStartConfirm(false); }
         const p = pendingMetaRef.current; pendingMetaRef.current = null;
         if (p) applyMeta(p.r, p.m, p.meta);
     };
@@ -872,12 +869,21 @@ export default memo(function InteractiveBracket(){
                 />
             )}
 
-            {/* SAĞ ÜSTTE SADECE MOD ETİKETİ (tıklanamaz) */}
-            <div className="absolute right-3 top-3 z-[40] pointer-events-none select-none">
-                <span className="px-2 py-1 rounded text-xs bg-white/10 text-white/90">
-                    Mode: <b>{mode.toUpperCase()}</b>
-                    {started && <span className="ml-2 text-emerald-400">(Started)</span>}
-                </span>
+            {/* Sağ üst durum rozeti */}
+            <div className="absolute right-3 top-3 z-[40] select-none pointer-events-none">
+                {isFinished ? (
+                    <span className="px-2 py-1 rounded text-xs border border-red-600/40 bg-red-600/20 text-red-300">
+      Maç bitti
+    </span>
+                ) : started ? (
+                    <span className="px-2 py-1 rounded text-xs border border-emerald-600/40 bg-emerald-600/20 text-emerald-300">
+      Maç başladı
+    </span>
+                ) : (
+                    <span className="px-2 py-1 rounded text-xs border border-yellow-500/40 bg-yellow-500/20 text-yellow-300">
+      Maç düzenleniyor
+    </span>
+                )}
             </div>
 
             <TransformWrapper
@@ -901,9 +907,8 @@ export default memo(function InteractiveBracket(){
                                 style={{ position:'absolute', left: STAGE_PAD, top: STAGE_PAD }}
                                 className="text-white/70 text-sm"
                             >
-                                Henüz gösterilecek maç bulunamadı. {mode === 'edit'
-                                ? 'Sol panelden sporcu ekleyin; bracket otomatik oluşacak.'
-                                : 'Veri gelene kadar bekleyin veya Edit moduna geçip sporcu ekleyin.'}
+                                {mode === 'edit'
+                                }
                             </div>
                         ) : (
                             <svg
@@ -970,7 +975,7 @@ export default memo(function InteractiveBracket(){
                                         return (
                                             <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
                                                 {/* Maç numarası – dikey rozet (parlak/emerald) */}
-                                                {typeof m.meta?.matchNo === 'number' && (
+                                                {settings.showMatchNo && typeof m.meta?.matchNo === 'number' && (
                                                     <g transform={`translate(${x0 - 24}, ${mid}) rotate(-90)`}>
                                                         <rect
                                                             className="mno-bg"
@@ -984,7 +989,6 @@ export default memo(function InteractiveBracket(){
                                                         <text className="mno-txt" x={0} y={0} textAnchor="middle">
                                                             {m.meta!.matchNo}
                                                         </text>
-                                                        {/* erişilebilirlik/tooltip */}
                                                         <title>{`Maç ${m.meta!.matchNo}`}</title>
                                                     </g>
                                                 )}
@@ -1014,7 +1018,7 @@ export default memo(function InteractiveBracket(){
                                                     );
                                                 })}
 
-                                                {/* Skorlar (ayar: showScores) */}
+                                                {/* Skorlar */}
                                                 {showScores && (
                                                     m.players.map((_, idx) => (
                                                         <text
@@ -1048,7 +1052,8 @@ export default memo(function InteractiveBracket(){
                                                     <line className="ln" x1={x0 + BOX_W + 8} y1={mid} x2={x1 - 8} y2={mid}/>
                                                 )}
 
-                                                {/* Tıklanabilir alan (sadece Edit modunda) */}
+                                                {/* Tıklanabilir alan → Edit modunda skor/saat/kort için HER ZAMAN açık.
+                                                    (Maç başlamış olsa da sporcu ekleme/çıkarma sidebar’dan kilitli.) */}
                                                 {mode === 'edit' && (
                                                     <rect
                                                         className="hit"
@@ -1129,7 +1134,6 @@ export default memo(function InteractiveBracket(){
                                 className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15"
                                 onClick={() => {
                                     setShowExitConfirm(false);
-                                    // Değişiklikleri at ve view’a dön
                                     setMode('view');
                                     setRounds(backendMatrixRef.current);
                                     setDirty(false);
@@ -1141,7 +1145,7 @@ export default memo(function InteractiveBracket(){
                                 className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
                                 onClick={() => {
                                     setShowExitConfirm(false);
-                                    void persistBracket(); // Kaydet ve view’a geç
+                                    void persistBracket();
                                 }}
                             >
                                 Kaydet
