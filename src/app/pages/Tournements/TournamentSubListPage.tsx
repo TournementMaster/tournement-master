@@ -37,9 +37,9 @@ function inlinePhase(s: any): Phase {
 }
 
 const PHASE_BADGE = {
-    pending:     { text: 'Bekleyen',   chip: 'bg-amber-500/20 text-amber-200', dot: 'bg-amber-400' },
-    in_progress: { text: 'Başlayan',   chip: 'bg-emerald-600/20 text-emerald-300', dot: 'bg-emerald-400' },
-    completed:   { text: 'Biten',      chip: 'bg-red-600/20 text-red-200', dot: 'bg-red-400' },
+    pending:     { text: 'Bekleyen',   chip: 'bg-amber-500/20 text-amber-200' },
+    in_progress: { text: 'Başlayan',   chip: 'bg-emerald-600/20 text-emerald-300' },
+    completed:   { text: 'Biten',      chip: 'bg-red-600/20 text-red-200' },
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -119,12 +119,7 @@ function Row({
               <span>
                 {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight{' '}
                   {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
-              </span>
 
-                            {/* durum göstergesi – küçük renkli nokta + metin */}
-                            <span className="inline-flex items-center gap-1 text-xs">
-                <span className={`inline-block w-2.5 h-2.5 rounded-full ${badge.dot}`} />
-                <span className="text-white/80">{badge.text}</span>
               </span>
                         </div>
                     </div>
@@ -426,34 +421,34 @@ export default function TournamentSubListPage() {
                     {/* content states */}
                     {isLoading && <SkeletonList />}
                     {isError && (
-                        <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6 space-y-2">
-                            <p className="text-red-300 font-semibold">Veri alınamadı.</p>
-                            <p className="text-sm text-gray-300">
-                                {errorStatus === 401
-                                    ? 'Yetki yok (401). Bu sayfayı görüntülemek için giriş yapmalısınız.'
-                                    : error instanceof Error
-                                        ? error.message
-                                        : 'Bilinmeyen hata.'}
-                            </p>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    onClick={() => refetch()}
-                                    className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
-                                    type="button"
-                                >
-                                    Tekrar Dene
-                                </button>
-                                {errorStatus === 401 && (
-                                    <Link
-                                        to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
-                                        className="text-sm text-blue-300 hover:underline"
-                                    >
-                                        → Giriş Yap
-                                    </Link>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                                                errorStatus === 401 ? (
+                                                        <div className="mt-2 rounded-2xl border border-white/10 bg-[#1b1f27] p-8 text-center">
+                                                                <div className="text-amber-200 font-semibold mb-1">Yetki yok (401)</div>
+                                                                <div className="text-sm text-gray-300 mb-4">Bu içeriği görüntülemek için oturum açmalısınız.</div>
+                                                                <div className="text-xl font-bold mb-2">Bu Sayfa Bulunamadı</div>
+                                                                <div className="flex items-center justify-center gap-3">
+                                                                    <Link to="/" className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">← Dashboard</Link>
+                                                                    <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm">Giriş Yap →</Link>
+                                                                </div>
+                                                            </div>
+                                                    ) : (
+                                                        <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6 space-y-2">
+                                                                <p className="text-red-300 font-semibold">Veri alınamadı.</p>
+                                                                <p className="text-sm text-gray-300">
+                                                                    {error instanceof Error ? error.message : 'Bilinmeyen hata.'}
+                                                                </p>
+                                                                <div className="flex items-center gap-3">
+                                                                    <button
+                                                                        onClick={() => refetch()}
+                                                                        className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
+                                                                        type="button"
+                                                                    >
+                                                                        Tekrar Dene
+                                                                    </button>
+                                                                </div>
+                                                        </div>
+                                                )
+                                            )}
 
                     {!isLoading && !isError && (
                         <>

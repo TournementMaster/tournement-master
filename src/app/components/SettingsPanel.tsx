@@ -146,10 +146,18 @@ export default function SettingsPanel() {
     };
 
     const doReset = () => {
-        setPlayers([]);
+        // Braket bileşenine “sert sıfırla” de
+        window.dispatchEvent(new CustomEvent('bracket:hard-reset'));
+
+        // placement ve versiyonu da sıfırla (slot hesapları yeniden kurulsun)
         set({ placementMap: null, version: settings.version + 1 });
+
+        // güvenlik için players'ı burada da temizliyoruz (idempotent)
+        setPlayers([]);
+
         setConfirmOpen(false);
     };
+
 
     return (
         <div className="space-y-6">
