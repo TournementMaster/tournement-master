@@ -7,8 +7,6 @@ import {
     TransformComponent,
     type ReactZoomPanPinchRef,
 } from 'react-zoom-pan-pinch'
-// ❌ eski MatchModal kullanılmıyor (puanlama bitti)
-// import MatchModal from './MatchModal';
 import { useBracketTheme, type BracketThemeKey } from '../../../context/BracketThemeContext'
 import { PALETTES, type ThemeKey, type Palette } from '../../../context/themePalettes'
 import { usePlayers, type Participant } from '../../../hooks/usePlayers'
@@ -166,6 +164,27 @@ function samePlayersList(a: Participant[], b: Participant[]) {
     return true
 }
 
+/* Küçük yardımcı: renk açıklığı */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const m = hex.trim().match(/^#?([a-f\d]{3}|[a-f\d]{6})$/i)
+    if (!m) return null
+    let h = m[1]
+    if (h.length === 3) h = h.split('').map(c => c + c).join('')
+    const num = parseInt(h, 16)
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 }
+}
+function isLightColor(c: string): boolean {
+    const rgb = hexToRgb(c)
+    if (!rgb) return false
+    // WCAG relative luminance approx
+    const sRGB = [rgb.r, rgb.g, rgb.b].map(v => {
+        const x = v / 255
+        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
+    })
+    const L = 0.2126 * sRGB[0] + 0.7152 * sRGB[1] + 0.0722 * sRGB[2]
+    return L > 0.6
+}
+
 /* Yerelden ilk turu kur */
 function buildMatrix(participants: Participant[], placementMap: Record<number,number>|null): Matrix {
     const n = participants.length
@@ -194,7 +213,7 @@ function buildMatrix(participants: Participant[], placementMap: Record<number,nu
 /* Kazananları sonraki tura taşı — ⚠ reset sonrası otomatik atama kalıntısı kalmasın */
 function propagate(matrix: Matrix): Matrix {
     // 1) Derin kopya + üst turların oyuncularını temizle
-    const mat: Matrix = matrix.map((r, ri) =>
+    const mat: Matrix = matrix.map((r) =>
         r.map(m => ({
             players: m.players.map(p => ({ ...p })),
             meta: m.meta ? { ...m.meta, scores: m.meta.scores ? [...m.meta.scores] as [number, number][] : undefined } : undefined,
@@ -202,7 +221,7 @@ function propagate(matrix: Matrix): Matrix {
     )
     for (let r = 1; r < mat.length; r++) {
         for (let i = 0; i < mat[r].length; i++) {
-            mat[r][i].players = [{ seed:0, name:'—' }, { seed:0, name:'—' }] // ← temizle
+            mat[r][i].players = [{ seed:0, name:'—' }, { seed:0, name:'—' }]
             mat[r][i].players[0].winner = undefined
             mat[r][i].players[1].winner = undefined
         }
@@ -230,7 +249,6 @@ function propagate(matrix: Matrix): Matrix {
             if (winner != null) {
                 m.players[winner] = { ...m.players[winner], winner: true }
                 m.players[1 - winner] = { ...m.players[1 - winner], winner: false }
-
                 if (r < mat.length - 1) {
                     const next = mat[r + 1][Math.floor(idx / 2)]
                     const moved = { ...m.players[winner] }; delete (moved as any).winner
@@ -336,7 +354,6 @@ function buildFromBackend(
         });
     }
 
-
     const firstRound: Participant[] = (matrix[0] ?? []).flatMap((m, idx) => {
         const out: Participant[] = []
         if (m.players[0]?.name && m.players[0].name !== '—') out.push({ name: m.players[0].name, club: m.players[0].club, seed: idx * 2 + 1 })
@@ -359,13 +376,14 @@ function buildFromBackend(
 
 /* --------------------------- Backend data loader -------------------------- */
 function BackendBracketLoader({
-                                  slug, enabled, refreshKey, onBuilt, pollMs = 30_000,
+                                  slug, enabled, refreshKey, onBuilt, pollMs = 30_000, onAuthError,
                               }: {
     slug: string
     enabled: boolean
     refreshKey: number
     onBuilt: (m: Matrix, p: Participant[]) => void
     pollMs?: number
+    onAuthError?: (status:number)=>void
 }) {
     useEffect(() => {
         if (!slug || !enabled) return
@@ -386,13 +404,16 @@ function BackendBracketLoader({
                     Array.isArray(clubsRes.data) ? clubsRes.data : []
                 )
                 onBuilt(propagate(built.matrix), built.firstRound)
-            } catch { /* sessiz */ }
+            } catch (e:any) {
+                const code = e?.response?.status
+                if (code === 401 && onAuthError) onAuthError(401)
+            }
         }
 
         void fetchAll()
         timer = window.setInterval(fetchAll, pollMs)
         return () => { mounted = false; if (timer) window.clearInterval(timer) }
-    }, [slug, enabled, pollMs, refreshKey, onBuilt])
+    }, [slug, enabled, pollMs, refreshKey, onBuilt, onAuthError])
 
     useEffect(() => {
         if (!slug) return
@@ -411,11 +432,14 @@ function BackendBracketLoader({
                     Array.isArray(clubsRes.data) ? clubsRes.data : []
                 )
                 onBuilt(propagate(built.matrix), built.firstRound)
-            } catch { /* noop */ }
+            } catch (e:any) {
+                const code = e?.response?.status
+                if (code === 401 && onAuthError) onAuthError(401)
+            }
         }
         void once()
         return () => { cancelled = true }
-    }, [slug, refreshKey, onBuilt])
+    }, [slug, refreshKey, onBuilt, onAuthError])
 
     return null
 }
@@ -435,7 +459,6 @@ export default memo(function InteractiveBracket(){
 
     const [tournamentSlug, setTournamentSlug] = useState<string | null>(null)
 
-    const [showStartConfirm, setShowStartConfirm] = useState(false)
     const pendingMetaRef = useRef<null | { r: number; m: number; meta: Meta }>(null)
 
     const [mode, setMode] = useState<'view'|'edit'>('view')
@@ -474,6 +497,9 @@ export default memo(function InteractiveBracket(){
     const editBaselineRef = useRef<{ playersLen: number } | null>(null)
     const lastPlacementRef = useRef<Record<number, number> | null>(null)
 
+    // 🔐 401 durumunu tut
+    const [authErr, setAuthErr] = useState<number | null>(null)
+
     // 🔎 highlight (sidebar arama)
     const [highlight, setHighlight] = useState<string>('')
     useEffect(() => {
@@ -497,31 +523,32 @@ export default memo(function InteractiveBracket(){
 
     const twRef = useRef<ReactZoomPanPinchRef | null>(null)
 
-// ⬇️ Şablonu Sıfırla butonundan gelecek sert sıfırlama
+    // ⬇️ Şablonu Sıfırla butonundan gelecek sert sıfırlama (backend + local)
     useEffect(() => {
-        const hardReset = () => {
-            // backend’den gelen eski kayıtları tekrar basmamak için lokal kaynakları temizle
-            backendMatrixRef.current = [];
-            setRounds([]);            // ekrandaki braket boşalsın
-            setSelected(null);
-            setDirty(false);
+        const hardReset = async () => {
+            if (!slug) return
+            setSaveMsg('Şablon temizleniyor…')
+            try {
+                await api.delete(`subtournaments/${slug}/matches/`)
+            } catch {
+                try { await api.delete('matches/bulk/', { params: { sub_tournament: subId } }) } catch {}
+            }
+            // Lokal state'i de temizle
+            backendMatrixRef.current = []
+            setRounds([])
+            setSelected(null)
+            setDirty(false)
+            setPlayers([])
+            setStarted(false)
+            editPlayersSnapshotRef.current = null
+            lastPlacementRef.current = null
 
-            // katılımcı listesini de temizle (sidebar ile ortak context)
-            setPlayers([]);
-
-            // “başladı” rozeti/lock ihtimali varsa güvenli tarafta kalalım
-            setStarted(false);
-            // snapshot’ları sıfırla ki bir sonraki build doğru çalışsın
-            editPlayersSnapshotRef.current = null;
-            lastPlacementRef.current = null;
-
-            setSaveMsg('Şablon sıfırlandı');
-            setTimeout(() => setSaveMsg(null), 1200);
-        };
-
-        window.addEventListener('bracket:hard-reset', hardReset);
-        return () => window.removeEventListener('bracket:hard-reset', hardReset);
-    }, [setPlayers]);
+            setSaveMsg('Şablon sıfırlandı')
+            setTimeout(() => setSaveMsg(null), 1500)
+        }
+        window.addEventListener('bracket:hard-reset', hardReset)
+        return () => window.removeEventListener('bracket:hard-reset', hardReset)
+    }, [slug, subId, setPlayers])
 
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('bracket:view-only', { detail: { value: mode === 'view' } }))
@@ -559,10 +586,14 @@ export default memo(function InteractiveBracket(){
                 const tSlug = (data as any)?.tournament_public_slug ?? (data as any)?.tournament_slug ?? (data as any)?.tournament?.public_slug ?? null
                 if (typeof tSlug === 'string' && tSlug) setTournamentSlug(tSlug)
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit))
-                if (typeof (data as any)?.court_no === 'number') setDefaultCourtNo((data as any).court_no)
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) { setStarted(Boolean(data.started)); setStartedKnown(true) }
                 else if (Object.prototype.hasOwnProperty.call(data as any, 'has_started')) { setStarted(Boolean((data as any).has_started)); setStartedKnown(true) }
-            } catch { setSaveMsg('Alt turnuva bilgisi alınamadı (slug).') }
+                if (Object.prototype.hasOwnProperty.call(data as any, 'court_no')) { setDefaultCourtNo((data as any).court_no ?? null) }
+            } catch (e:any) {
+                const code = e?.response?.status
+                if (code === 401) setAuthErr(401)
+                else setSaveMsg('Alt turnuva bilgisi alınamadı (slug).')
+            }
         })()
     }, [slug, subId])
 
@@ -637,7 +668,7 @@ export default memo(function InteractiveBracket(){
         setSaving(true); setSaveMsg(null)
         try {
             let clubs: Club[] = []
-            try { const { data } = await api.get<Club[]>('clubs/'); if (Array.isArray(data)) clubs = data } catch {}
+            try { const { data } = await api.get<Club[]>('clubs/'); if (Array.isArray(data)) clubs = data } catch (e:any) { if (e?.response?.status === 401) setAuthErr(401) }
             const clubIdByName = new Map(clubs.map(c => [c.name.trim().toLowerCase(), c.id]))
 
             let seedToAthlete: Record<number, number> = {}
@@ -677,7 +708,6 @@ export default memo(function InteractiveBracket(){
                 })
             )
 
-
             await api.post('matches/bulk/', matchPayload)
 
             try {
@@ -699,15 +729,15 @@ export default memo(function InteractiveBracket(){
 
             setDirty(false)
             setSaveMsg('Kaydedildi.')
-            // ❗ Edit modda kal — view moda düşürme
             setRefreshKey(k => k + 1) // her seferinde en son kayıt gelsin
-        } catch (e) {
+        } catch (e:any) {
+            if (e?.response?.status === 401) setAuthErr(401)
             setSaveMsg(e instanceof Error ? e.message : 'Kaydetme sırasında hata oluştu.')
         } finally {
             setSaving(false)
             setTimeout(() => setSaveMsg(null), 2500)
         }
-    }, [slug, subId, players, rounds, settings.placementMap])
+    }, [slug, subId, players, rounds, settings.placementMap, started, tournamentSlug])
 
     useEffect(() => {
         const h = () => { if (!saving) void persistBracket() }
@@ -740,6 +770,11 @@ export default memo(function InteractiveBracket(){
         twRef.current.setTransform(x, y, INITIAL_POS.scale, 0)
         applied.current = true
     }, [stageW, stageH])
+
+    // Tema arka planı açık mı?
+    const isLightBg = useMemo(() => isLightColor(palette.bg), [palette.bg])
+    const txtFill   = isLightBg ? '#0f172a' : '#eaf2ff'
+    const txtStroke = isLightBg ? 'rgba(255,255,255,.65)' : 'rgba(0,0,0,.55)'
 
     // ✓ seçimi: manual ayarla ve propagate et
     const setManualWinner = (r:number, m:number, idx:0|1) => {
@@ -780,26 +815,26 @@ export default memo(function InteractiveBracket(){
 
     const isBackend = !!slug
     const pollingEnabled = isBackend && mode === 'view'
-    useEffect(() => {
-        const hardReset = async () => {
-            if (!slug) return
-            setSaveMsg('Şablon temizleniyor…')
-            try {
-                await api.delete(`subtournaments/${slug}/matches/`)
-            } catch {
-                try { await api.delete('matches/bulk/', { params: { sub_tournament: subId } }) } catch {}
-            }
-            // Lokal state'i de temizle
-            setPlayers([])
-            backendMatrixRef.current = []
-            setRounds([])
-            setDirty(false)
-            setSaveMsg('Şablon sıfırlandı')
-            setTimeout(() => setSaveMsg(null), 1500)
-        }
-        window.addEventListener('bracket:hard-reset', hardReset)
-        return () => window.removeEventListener('bracket:hard-reset', hardReset)
-    }, [slug, subId, setPlayers])
+
+    // 401 geldiyse erken çık
+    if (authErr === 401) {
+        return (
+            <div className="relative h-[calc(100vh-64px)] overflow-hidden">
+                <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/50">
+                    <div className="rounded-2xl border border-white/10 bg-[#1b1f27] p-8 text-center w-[min(92vw,560px)]">
+                        <div className="text-amber-200 font-semibold mb-1">Yetki yok (401)</div>
+                        <div className="text-sm text-gray-300 mb-4">Bu içeriği görüntülemek için oturum açmalısınız.</div>
+                        <div className="text-xl font-bold mb-2">Bu Sayfa Bulunamadı</div>
+                        <div className="flex items-center justify-center gap-3">
+                            <a href="/" className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">← Dashboard</a>
+                            <a href={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm">Giriş Yap →</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="relative h-[calc(100vh-64px)] overflow-hidden">
             {isBackend && (
@@ -809,6 +844,7 @@ export default memo(function InteractiveBracket(){
                     refreshKey={refreshKey}
                     onBuilt={handleBuilt}
                     pollMs={30_000}
+                    onAuthError={(s)=> s===401 && setAuthErr(401)}
                 />
             )}
 
@@ -851,18 +887,17 @@ export default memo(function InteractiveBracket(){
                     .ln  {stroke:white;stroke-width:1.4;vector-effect:non-scaling-stroke}
                     .txt {
                       font: 700 17px/1 Inter, ui-sans-serif;
-                      fill: #e8edf5;                       /* görünürlük artışı */
+                      fill: ${txtFill};
                       dominant-baseline: middle;
                       paint-order: stroke fill;
-                      stroke: rgba(0,0,0,.55);             /* outline */
+                      stroke: ${txtStroke};
                       stroke-width: .8;
                       letter-spacing: .15px;
                     }
-                    .sub {font:600 12px/1 Inter,sans-serif;fill:#9aa4b2;dominant-baseline:middle}
                     .win {fill:${palette.win}}
                     .outline{stroke:url(#g);fill:none;stroke-width:0}
                     .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${palette.glow2})}
-                    .done {opacity:.55}
+                    .done {opacity:.96}
                     .tick {fill:#22c55e}
                     .hl { fill:#fff; stroke:#22d3ee; stroke-width:1.2; paint-order:stroke fill }
                     .mno-bg { fill: rgba(34,197,94,.14); stroke: ${palette.win}; stroke-width:1.6; rx:7 }
@@ -906,17 +941,14 @@ export default memo(function InteractiveBracket(){
                                                 {m.players.map((p, idx) => {
                                                     const y = mid + (idx ? 22 : -22)
                                                     const isHL = highlight && p?.name?.toLowerCase()?.includes(highlight)
+                                                    const clubShort = p.club && p.club.length > 18 ? `${p.club.slice(0, 17)}…` : p.club
+                                                    const line = clubShort ? `${p.name} (${clubShort})` : p.name  // ← parantez içinde yanına
                                                     return (
                                                         <g key={idx}>
                                                             <text className={`txt ${isHL ? 'hl' : ''}`} x={x0 + 18} y={y}>
-                                                                <tspan>{p.name}</tspan>
+                                                                <tspan>{line}</tspan>
                                                                 {p.winner && <tspan className="tick" dx="8">✓</tspan>}
                                                             </text>
-                                                            {!!p.club && (
-                                                                <text className="sub" x={x0 + 18} y={y + 16}>
-                                                                    {p.club.length > 16 ? `${p.club.slice(0, 15)}…` : p.club}
-                                                                </text>
-                                                            )}
                                                         </g>
                                                     )
                                                 })}
@@ -1001,11 +1033,14 @@ export default memo(function InteractiveBracket(){
                 </div>
             )}
 
-            {saveMsg && (
-                <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[50] px-4 py-2 rounded bg-black/70 text-white text-sm">
-                    {saveMsg}
+            {/* Kaydet bildirimi: büyük/yeşil */}
+            {saveMsg ? (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90]">
+                    <div className="px-5 py-3 rounded-2xl border border-emerald-400/30 bg-emerald-600/25 text-emerald-100 text-lg font-semibold shadow-[0_0_0_2px_rgba(16,185,129,.25),0_8px_22px_rgba(16,185,129,.15)]">
+                        {saveMsg}
+                    </div>
                 </div>
-            )}
+            ) : null}
         </div>
     )
 })
