@@ -98,13 +98,17 @@ export default function ParticipantsPanel() {
                 )}
             </form>
 
-            {/* ✅ LİSTE — sadece bu alan scroll olur */}
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 mt-3">
+            {/* ✅ LİSTE — sadece bu alan scroll olur (max 8 satır görünür) */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 mt-3 max-h-[calc(8*2.5rem+7*0.25rem)]">
                 {shown.map((p, i) => (
-                    <div key={`${p.name}-${p.seed}`} className="flex justify-between bg-[#14161c] px-3 py-1.5 rounded">
-            <span className="team-text">
-              #{p.seed} — {p.name}{p.club ? <em className="text-gray-400"> · {p.club}</em> : null}
-            </span>
+                    <div
+                        key={`${p.name}-${p.seed}`}
+                        className="flex h-10 items-center justify-between bg-[#14161c] px-3 rounded"
+                    >
+      <span className="team-text">
+        #{p.seed} — {p.name}
+          {p.club ? <em className="text-gray-400"> · {p.club}</em> : null}
+      </span>
                         {!readOnly && (
                             <button
                                 onClick={() => removeAt(i)}
@@ -115,6 +119,7 @@ export default function ParticipantsPanel() {
                             </button>
                         )}
                     </div>
+
                 ))}
                 {players.length === 0 && <p className="text-sm text-gray-500">Henüz sporcu eklenmedi.</p>}
                 {players.length > 0 && shown.length === 0 && <p className="text-sm text-gray-500">Eşleşen sporcu yok.</p>}

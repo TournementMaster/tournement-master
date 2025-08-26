@@ -65,10 +65,8 @@ export function seedOrder(size: number): number[] {
         const comp = prev.map((x) => n + 1 - x);
         const next: number[] = [];
         for (let i = 0; i < prev.length; i += 2) {
-            const a = prev[i],
-                b = prev[i + 1];
-            const A = comp[i],
-                B = comp[i + 1];
+            const a = prev[i], b = prev[i + 1];
+            const A = comp[i], B = comp[i + 1];
             next.push(a, A, B, b);
         }
         prev = next;
@@ -122,7 +120,9 @@ export function buildMatrix(
 }
 
 /* Kazananları sonraki tura taşı */
-export function propagate(matrix: Matrix): Matrix {
+export function propagate(matrix: Matrix, opts?: { autoByes?: boolean }): Matrix {
+    const autoByes = opts?.autoByes ?? true;
+
     // 1) Derin kopya + üst turların oyuncularını temizle
     const mat: Matrix = matrix.map((r) =>
         r.map((m) => ({
@@ -146,7 +146,8 @@ export function propagate(matrix: Matrix): Matrix {
             const [p1, p2] = m.players;
             let winner: 0 | 1 | undefined;
 
-            if (r === 0) {
+            // Bye terfisi yalnızca autoByes açıkken
+            if (autoByes && r === 0) {
                 const aBye = p1.seed === 0 || p1.name === '—';
                 const bBye = p2.seed === 0 || p2.name === '—';
                 if (aBye && !bBye) winner = 1;
@@ -166,7 +167,7 @@ export function propagate(matrix: Matrix): Matrix {
                 if (r < mat.length - 1) {
                     const next = mat[r + 1][Math.floor(idx / 2)];
                     const moved = { ...m.players[winner] };
-                    delete (moved as any).winner;
+                    delete (moved ).winner;
                     next.players[idx % 2] = moved;
                 }
             } else {
@@ -353,7 +354,7 @@ export function BackendBracketLoader({
                     Array.isArray(matchRes.data) ? matchRes.data : [],
                     Array.isArray(clubsRes.data) ? clubsRes.data : []
                 );
-                onBuilt(propagate(built.matrix), built.firstRound);
+                onBuilt(propagate(built.matrix, { autoByes: true }), built.firstRound);
             } catch (e: any) {
                 const code = e?.response?.status;
                 if (code && onAuthError) onAuthError(code);
@@ -385,7 +386,7 @@ export function BackendBracketLoader({
                     Array.isArray(matchRes.data) ? matchRes.data : [],
                     Array.isArray(clubsRes.data) ? clubsRes.data : []
                 );
-                onBuilt(propagate(built.matrix), built.firstRound);
+                onBuilt(propagate(built.matrix, { autoByes: true }), built.firstRound);
             } catch (e: any) {
                 const code = e?.response?.status;
                 if (code && onAuthError) onAuthError(code);
@@ -395,7 +396,7 @@ export function BackendBracketLoader({
         return () => {
             cancelled = true;
         };
-    }, [slug, refreshKey, onBuilt, onAuthError]);
+    }, [slug, refreshKey, onAuthError, onBuilt]);
 
     return null;
 }

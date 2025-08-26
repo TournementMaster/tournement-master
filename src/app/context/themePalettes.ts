@@ -1,4 +1,3 @@
-// themePalettes.ts – sabit paletler
 export type ThemeKey =
     | 'orange'
     | 'purple'
@@ -26,7 +25,7 @@ export const PALETTES: Record<ThemeKey, Palette> = {
     invert : { bg:'#ffffff', bar:'#999999', win:'#000000', txt:'#000000',
         glow1:'#7d7d7d', glow2:'#000000' },
 
-    // Yeni paletler
+    // Yeni paletler (daha canlı, kontrastlı)
     ocean  : { bg:'#e6f7ff', bar:'#0e7490', win:'#06b6d4', txt:'#083344',
         glow1:'#a5f3fc', glow2:'#06b6d4' },
     forest : { bg:'#ecfdf5', bar:'#065f46', win:'#10b981', txt:'#052e2b',

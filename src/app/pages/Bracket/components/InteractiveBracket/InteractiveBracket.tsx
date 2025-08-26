@@ -7,7 +7,7 @@ import {
 } from 'react-zoom-pan-pinch';
 
 import { useBracketTheme, type BracketThemeKey } from '../../../../context/BracketThemeContext';
-import { PALETTES, type ThemeKey, type Palette } from '../../../../context/themePalettes';
+import { PALETTES, type Palette } from '../../../../context/themePalettes';
 import { usePlayers, type Participant } from '../../../../hooks/usePlayers';
 import { useSettings } from '../../../../context/BracketSettingsCtx';
 import { useAuth } from '../../../../context/useAuth';
@@ -15,18 +15,16 @@ import { useLocation } from 'react-router-dom';
 import { api } from '../../../../lib/api';
 import type { Club } from '../../../../models/Club';
 import type { SubTournament } from '../../../../hooks/useSubTournaments';
-import { samePlayersList } from './BracketData';
 
 import BracketCanvas from './BracketCanvas';
 import {
+    samePlayersList,
     propagate,
     buildMatrix,
-    buildFromBackend,
     resolveThemeKey,
     BackendBracketLoader,
     type Matrix,
     type Match,
-    type Meta,
     type Player,
 } from './bracketData.ts';
 
@@ -78,7 +76,7 @@ function WinnerModal({
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center">
             <div className="w-[560px] max-w-[92vw] rounded-xl bg-[#2b2f36] border border-white/10 shadow-2xl">
                 <div className="px-5 py-3 border-b border-white/10 text-white font-semibold tracking-wide">
-                    Report Scores
+                    Kazananı Seç
                 </div>
 
                 <div className="p-5 space-y-4">
@@ -111,15 +109,45 @@ function WinnerModal({
                             >
                                 Kapat
                             </button>
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="px-4 h-10 rounded-md bg-sky-600 text-white hover:bg-sky-500"
-                            >
-                                Submit
-                            </button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* -------------------------- Start Confirm Modal -------------------------- */
+function StartConfirmModal({
+                               open,
+                               onConfirm,
+                               onCancel,
+                           }: {
+    open: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+}) {
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center">
+            <div className="bg-[#0f1217] text-white rounded-xl p-5 w-[min(92vw,520px)] shadow-2xl border border-white/10">
+                <div className="text-lg font-semibold mb-2">Maçı Başlat</div>
+                <div className="text-sm text-white/80 mb-4">
+                    Maçı başlatmak istediğinize emin misiniz? <b>Bundan sonra sporcu ekleme/çıkarma yapamazsınız.</b>
+                </div>
+                <div className="flex justify-end gap-2">
+                    <button
+                        onClick={onCancel}
+                        className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15"
+                    >
+                        Vazgeç
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
+                    >
+                        Maçı Başlat
+                    </button>
                 </div>
             </div>
         </div>
@@ -131,7 +159,13 @@ export default memo(function InteractiveBracket() {
     const { players, setPlayers } = usePlayers();
     const { settings } = useSettings();
     const themeKey = useBracketTheme();
-    const palette: Palette = PALETTES[resolveThemeKey(themeKey as BracketThemeKey as ThemeKey)];
+
+    // TS7053 fix: PALETTES indeksini güvenli anahtar ile yap
+    const palette = useMemo<Palette>(() => {
+        const key = resolveThemeKey(themeKey as BracketThemeKey) as keyof typeof PALETTES;
+        return PALETTES[key];
+    }, [themeKey]);
+
     const { isAuth } = useAuth();
 
     const location = useLocation();
@@ -149,8 +183,6 @@ export default memo(function InteractiveBracket() {
     const [refreshKey, setRefreshKey] = useState(0);
     const [authErr, setAuthErr] = useState<number | null>(null);
 
-    const [defaultCourtNo, setDefaultCourtNo] = useState<number | null>(null);
-
     type SubTournamentDetail = SubTournament & {
         started?: boolean;
         can_edit?: boolean;
@@ -165,9 +197,6 @@ export default memo(function InteractiveBracket() {
     useEffect(() => {
         startedRef.current = started;
     }, [started]);
-    const [startedKnown, setStartedKnown] = useState<boolean>(
-        typeof (stateItem as any)?.started === 'boolean'
-    );
 
     const [rounds, setRounds] = useState<Matrix>([]);
     const isFinished = useMemo(() => {
@@ -185,11 +214,14 @@ export default memo(function InteractiveBracket() {
     const [dirty, setDirty] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+    const [startConfirmOpen, setStartConfirmOpen] = useState(false);
+    const pendingPickRef = useRef<{ r: number; m: number } | null>(null);
+
     const editPlayersSnapshotRef = useRef<Participant[] | null>(null);
     const editBaselineRef = useRef<{ playersLen: number } | null>(null);
     const lastPlacementRef = useRef<Record<number, number> | null>(null);
 
-    // 🔎 highlight (sidebar arama)
+    // highlight (sidebar arama)
     const [highlight, setHighlight] = useState<string>('');
     useEffect(() => {
         const h = (e: any) => setHighlight((e.detail?.name || '').toString().toLowerCase());
@@ -213,7 +245,7 @@ export default memo(function InteractiveBracket() {
 
     const twRef = useRef<ReactZoomPanPinchRef | null>(null);
 
-    // Hard reset (dış butondan gelen)
+    // Hard reset (sadece istemci tarafı güvenli temizleme)
     useEffect(() => {
         const hardReset = () => {
             backendMatrixRef.current = [];
@@ -264,7 +296,7 @@ export default memo(function InteractiveBracket() {
         window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', { detail: { mode } }));
     }, [mode, started]);
 
-    // slug'tan detay
+    // slug → detay çek
     useEffect(() => {
         if (!slug || subId) return;
         (async () => {
@@ -278,13 +310,10 @@ export default memo(function InteractiveBracket() {
                     null;
                 if (typeof tSlug === 'string' && tSlug) setTournamentSlug(tSlug);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
-                if (typeof (data as any)?.court_no === 'number') setDefaultCourtNo((data as any).court_no);
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) {
                     setStarted(Boolean(data.started));
-                    setStartedKnown(true);
                 } else if (Object.prototype.hasOwnProperty.call(data as any, 'has_started')) {
                     setStarted(Boolean((data as any).has_started));
-                    setStartedKnown(true);
                 }
             } catch (e: any) {
                 const code = e?.response?.status;
@@ -299,19 +328,22 @@ export default memo(function InteractiveBracket() {
         const placement = settings.placementMap;
         if (mode === 'edit') {
             if (startedRef.current) {
+                // Başladıysa artık server kaynağına göre göster
                 setRounds(backendMatrixRef.current);
                 return;
             }
+            // Başlamadan önce: BYE auto-advance YAPMA (propagate yok)
             const snap = editPlayersSnapshotRef.current;
             const now = players.map((p) => ({ name: p.name, club: p.club, seed: p.seed }));
             const placementChanged = lastPlacementRef.current !== placement;
             if (!snap || !samePlayersList(snap, now) || placementChanged) {
-                setRounds(players.length ? propagate(buildMatrix(players, placement)) : []);
+                setRounds(players.length ? buildMatrix(players, placement) : []);
                 editPlayersSnapshotRef.current = now;
                 lastPlacementRef.current = placement;
             }
             return;
         }
+        // VIEW: varsa backend, yoksa local propagate
         if (backendMatrixRef.current.length) setRounds(backendMatrixRef.current);
         else if (players.length) setRounds(propagate(buildMatrix(players, placement)));
         else setRounds([]);
@@ -340,7 +372,7 @@ export default memo(function InteractiveBracket() {
                 backendMatrixRef.current.length
                     ? backendMatrixRef.current
                     : players.length
-                        ? propagate(buildMatrix(players, settings.placementMap))
+                        ? buildMatrix(players, settings.placementMap) // başlamadan propagate yok
                         : []
             );
         };
@@ -361,6 +393,21 @@ export default memo(function InteractiveBracket() {
             window.removeEventListener('bracket:refresh', refresh);
         };
     }, [canEdit, mode, dirty, players, settings.placementMap]);
+
+    /* Yardımcı: üst turlardaki manuel/scores bayraklarını zincir halinde temizle */
+    const clearUpstream = (mat: Matrix, r: number, m: number) => {
+        let pos = m;
+        for (let rr = r + 1; rr < mat.length; rr++) {
+            const parentIdx = Math.floor(pos / 2);
+            const parent = mat[rr]?.[parentIdx];
+            if (parent) {
+                parent.meta ??= {};
+                delete parent.meta.manual;
+                delete parent.meta.scores;
+            }
+            pos = parentIdx;
+        }
+    };
 
     /* Kaydet */
     const timeToISO = (t?: string): string | null => {
@@ -392,6 +439,7 @@ export default memo(function InteractiveBracket() {
             return;
         }
         if (!players.length && !startedRef.current) {
+            // boş oyuncu listesiyle server reset’i yalnız FE ile mümkün; erken çık
             setSaveMsg('Kaydedilecek katılımcı yok.');
             return;
         }
@@ -424,18 +472,18 @@ export default memo(function InteractiveBracket() {
                 if (!Array.isArray(created) || created.length !== sorted.length)
                     throw new Error('Athlete bulk sonucu beklenen sayıda değil.');
                 created.forEach((a, idx) => {
-                    seedToAthlete[sorted[idx].seed] = a.id;
+                    seedToAthlete[sorted[idx].seed] = (a as any).id;
                 });
             }
 
             const roundsForSave: Matrix =
                 rounds.length
                     ? rounds
-                    : propagate(buildMatrix([...players].sort((a, b) => a.seed - b.seed) as Participant[], settings.placementMap));
+                    : buildMatrix([...players].sort((a, b) => a.seed - b.seed) as Participant[], settings.placementMap);
 
             const getAthleteIdFor = (p?: Player): number | null => {
                 if (!p) return null;
-                if (p.athleteId != null) return p.athleteId;
+                if ((p as any).athleteId != null) return (p as any).athleteId as number;
                 const s = p.seed || 0;
                 return s > 0 ? seedToAthlete[s] ?? null : null;
             };
@@ -503,7 +551,6 @@ export default memo(function InteractiveBracket() {
 
             setDirty(false);
             setSaveMsg('Kaydedildi.');
-            // edit modda kal; ancak taze backend verisini izlemek için refresh tetikle
             setRefreshKey((k) => k + 1);
         } catch (e: any) {
             const code = e?.response?.status;
@@ -553,7 +600,18 @@ export default memo(function InteractiveBracket() {
         applied.current = true;
     }, [stageW, stageH]);
 
-    // ✓ seçimi
+    // ✓ seçimi – başlatılmadıysa confirm çıkar
+    const onSelectMatch = (r: number, m: number) => {
+        if (mode !== 'edit') return;
+        if (!startedRef.current) {
+            pendingPickRef.current = { r, m };
+            setStartConfirmOpen(true);
+        } else {
+            setSelected({ r, m });
+        }
+    };
+
+    // ✓ belirleme
     const setManualWinner = (r: number, m: number, idx: 0 | 1) => {
         setRounds((prev) => {
             const copy: Matrix = prev.map((rnd) =>
@@ -563,12 +621,14 @@ export default memo(function InteractiveBracket() {
                 }))
             );
             copy[r][m].meta = { ...(copy[r][m].meta ?? {}), manual: idx };
-            if (copy[r][m].meta?.scores) delete copy[r][m].meta!.scores;
+            // üst turlardaki eski manuel sonuçları temizle
+            clearUpstream(copy, r, m);
             return propagate(copy);
         });
         setDirty(true);
     };
 
+    // Reset – bağlı üst turları da temizle
     const resetMatch = (r: number, m: number) => {
         setRounds((prev) => {
             const copy: Matrix = prev.map((rnd) =>
@@ -580,6 +640,7 @@ export default memo(function InteractiveBracket() {
             (copy[r][m].meta ??= {});
             delete copy[r][m].meta!.manual;
             delete copy[r][m].meta!.scores;
+            clearUpstream(copy, r, m);
             return propagate(copy);
         });
         setDirty(true);
@@ -595,7 +656,7 @@ export default memo(function InteractiveBracket() {
     const isBackend = !!slug;
     const pollingEnabled = isBackend && mode === 'view';
 
-    // “Şablonu Sıfırla” API temizlik
+    // “Şablonu Sıfırla” – backend’de silme uç noktası yok; UI’yi temizliyoruz
     useEffect(() => {
         const hardReset = async () => {
             if (!slug) return;
@@ -617,6 +678,23 @@ export default memo(function InteractiveBracket() {
         window.addEventListener('bracket:hard-reset', hardReset);
         return () => window.removeEventListener('bracket:hard-reset', hardReset);
     }, [slug, subId, setPlayers]);
+
+    // Başlatma akışı
+    const startTournament = useCallback(async () => {
+        if (!slug) return;
+        try {
+            await api.patch(`subtournaments/${slug}/`, { started: true });
+            setStarted(true);
+            // BYE’ları başlatma anında üst tura taşı
+            setRounds((prev) => (prev.length ? propagate(prev) : prev));
+            window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: true } }));
+            setSaveMsg('Maç başlatıldı.');
+            setTimeout(() => setSaveMsg(null), 1500);
+        } catch {
+            setSaveMsg('Maç başlatılamadı.');
+            setTimeout(() => setSaveMsg(null), 1800);
+        }
+    }, [slug]);
 
     return (
         <div className="relative h-[calc(100vh-64px)] overflow-hidden">
@@ -647,7 +725,7 @@ export default memo(function InteractiveBracket() {
                 </div>
             ) : null}
 
-            {/* Sağ üst durum rozeti */}
+            {/* Sağ üst durum rozeti (HER ZAMAN görünür) */}
             <div className="absolute right-3 top-3 z-[40] select-none pointer-events-none">
                 {isFinished ? (
                     <span className="px-2 py-1 rounded text-xs border border-red-600/40 bg-red-600/20 text-red-300">
@@ -690,7 +768,7 @@ export default memo(function InteractiveBracket() {
                     wrapperStyle={{ width: '100%', height: '100%', minHeight: '100%', overflow: 'visible' }}
                     contentStyle={{ overflow: 'visible' }}
                 >
-                    <div style={{ width: stageW, height: stageH, position: 'relative' }}>
+                    <div style={{ width: svgWidth + 800, height: svgHeight + 800, position: 'relative' }}>
                         {!!rounds?.length && (
                             <BracketCanvas
                                 rounds={rounds}
@@ -698,9 +776,9 @@ export default memo(function InteractiveBracket() {
                                 showMatchNo={settings.showMatchNo}
                                 highlight={highlight}
                                 mode={mode}
-                                onSelect={(r, m) => setSelected({ r, m })}
+                                onSelect={onSelectMatch}
                                 sizes={{ BOX_W, BOX_H, GAP, BASE, CORNER }}
-                                svgDims={{ width: svgWidth, height: svgHeight, left: 400, top: 400 }}
+                                svgDims={{ width: Math.max(56 + rounds.length * (BOX_W + GAP) + 200, 820), height: Math.max((layout[0]?.at(-1)?.mid ?? 0) + BASE, 420), left: 400, top: 400 }}
                             />
                         )}
                     </div>
@@ -742,6 +820,22 @@ export default memo(function InteractiveBracket() {
                 />
             )}
 
+            {/* Maçı başlat onayı */}
+            <StartConfirmModal
+                open={startConfirmOpen}
+                onCancel={() => {
+                    pendingPickRef.current = null;
+                    setStartConfirmOpen(false);
+                }}
+                onConfirm={async () => {
+                    setStartConfirmOpen(false);
+                    await startTournament();
+                    const pick = pendingPickRef.current;
+                    pendingPickRef.current = null;
+                    if (pick) setSelected(pick);
+                }}
+            />
+
             {/* Edit'ten çıkış onayı */}
             {showExitConfirm && (
                 <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center">
@@ -782,7 +876,7 @@ export default memo(function InteractiveBracket() {
                 </div>
             )}
 
-            {/* Kaydedildi tostu (yeşil/büyük) */}
+            {/* Kaydedildi / durum tostu */}
             {saveMsg ? (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[50]">
                     <div className="px-5 py-3 rounded-xl border border-emerald-500/40 bg-emerald-600/20 text-emerald-100 text-base font-semibold shadow-lg">
