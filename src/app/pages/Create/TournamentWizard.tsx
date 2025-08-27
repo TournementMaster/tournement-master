@@ -37,27 +37,52 @@ export default function TournamentWizard({
     const [weighStart, setWeighStart] = useState('') // "HH:MM"
     const [weighEnd, setWeighEnd] = useState('')     // "HH:MM"
 
+    const [weighInSlug, setWeighInSlug] = useState<string | null>(null);
+    const [weighOpen, setWeighOpen] = useState(true);
+    const [editingTournamentId, setEditingTournamentId] = useState<number | null>(null);
+
     // MAIN: Düzenleme modunda alanları doldur
     useEffect(() => {
-        if (mode !== 'main' || !editSlug) return
-            ;(async () => {
+        if (mode !== 'main' || !editSlug) return;
+        (async () => {
             try {
-                const { data } = await api.get(`tournaments/${encodeURIComponent(editSlug)}/`)
-                setTitle(data.title ?? '')
-                setSeasonYear(String(data.season_year ?? ''))
-                setCity(data.city ?? '')
-                setVenue(data.venue ?? '')
-                setStartDate(data.start_date ?? '')
-                setEndDate(data.end_date ?? '')
-                setDescription(data.description ?? '')
-                setIsPublic(!!data.public)
+                const { data } = await api.get(`tournaments/${encodeURIComponent(editSlug)}/`);
+                setTitle(data.title ?? '');
+                setSeasonYear(String(data.season_year ?? ''));
+                setCity(data.city ?? '');
+                setVenue(data.venue ?? '');
+                setStartDate(data.start_date ?? '');
+                setEndDate(data.end_date ?? '');
+                setDescription(data.description ?? '');
+                setIsPublic(!!data.public);
+                setEditingTournamentId(typeof data.id === 'number' ? data.id : null);
+
                 if (Array.isArray(data.editors)) {
-                    setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })))
+                    setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })));
                 }
-                // Tartı gününü düzenleme kapsamına şimdilik almıyoruz (endpoint değişebilir)
-            } catch {}
-        })()
-    }, [mode, editSlug])
+            } catch { /* yut */ }
+
+            // Weigh-in oku (varsa)
+            try {
+                const wi = await api.get(`tournaments/${encodeURIComponent(editSlug)}/weigh-in/`);
+                const w = wi?.data;
+                if (w && typeof w.public_slug === 'string') {
+                    setWeighInSlug(w.public_slug);     // ← SLUG!
+                    setWeighEnabled(true);
+                    setWeighDate(w.date || '');
+                    setWeighStart((w.start_time || '').slice(0, 5));
+                    setWeighEnd((w.end_time || '').slice(0, 5));
+                    setWeighOpen(!!w.is_open);
+                } else {
+                    setWeighInSlug(null);
+                    setWeighEnabled(false);
+                }
+            } catch {
+                setWeighInSlug(null);
+                setWeighEnabled(false);
+            }
+        })();
+    }, [mode, editSlug]);
 
     // Editör ekleme
     const [editorInput, setEditorInput] = useState('')
@@ -186,36 +211,63 @@ export default function TournamentWizard({
                 description: description.trim(),
                 public: isPublic,
                 editors: editors.map(e => e.id),
-            }
+            };
 
             try {
                 if (editSlug) {
-                    await api.patch(`tournaments/${encodeURIComponent(editSlug)}/`, basePayload)
-                    // (opsiyonel) tartı günü edit’i burada yapılabilir — gereksinim oluşturma idi.
-                } else {
-                    // OLUŞTUR
-                    const owner = await resolveOwnerId()
-                    const { data: created } = await api.post('tournaments/', { ...basePayload, owner })
-                    // Tartı günü (isteğe bağlı) – endpoint yoksa hata yutulur, turnuva yine kaydolur.
+                    // 1) Ana turnuva PATCH (aynı)
+                    const { data: patched } = await api.patch(
+                        `tournaments/${encodeURIComponent(editSlug)}/`,
+                        basePayload
+                    );
+                    const tid = editingTournamentId ?? patched?.id ?? null;
+
+                    // 2) Weigh-in create/update
                     if (weighEnabled) {
-                        try {
-                            await api.post('weighins/', {
-                                tournament: created?.id ?? 0,
-                                date: weighDate,         // "YYYY-MM-DD"
-                                start_time: weighStart,  // "HH:MM"
-                                end_time: weighEnd,      // "HH:MM"
-                            })
-                        } catch {
-                            // sessiz — eski özellikleri bozma
+                        const wiPayload = {
+                            tournament: tid ?? 0,
+                            date: weighDate,
+                            start_time: weighStart,  // "HH:MM"
+                            end_time:   weighEnd,    // "HH:MM"
+                            is_open:    weighOpen,
+                        };
+
+                        if (weighInSlug) {
+                            // ← public-slug ile PATCH
+                            await api.patch(`weighins/${encodeURIComponent(weighInSlug)}/`, wiPayload);
+                        } else {
+                            // yoksa oluştur
+                            const { data: createdWI } = await api.post('weighins/', wiPayload);
+                            // (opsiyonel) sonradan tekrar düzenlemede işinize yarar:
+                            if (createdWI?.public_slug) setWeighInSlug(createdWI.public_slug);
                         }
+                    } else if (weighInSlug) {
+                        // Tartı devre dışıysa aç-kapa bilgisi için PATCH (veya isteğe göre DELETE)
+                        await api.patch(`weighins/${encodeURIComponent(weighInSlug)}/`, { is_open: false });
+                    }
+                } else {
+                    // CREATE (aynı)
+                    const owner = await resolveOwnerId();
+                    const { data: created } = await api.post('tournaments/', { ...basePayload, owner });
+
+                    if (weighEnabled) {
+                        const { data: createdWI } = await api.post('weighins/', {
+                            tournament: created?.id ?? 0,
+                            date: weighDate,
+                            start_time: weighStart,
+                            end_time: weighEnd,
+                            is_open: weighOpen,
+                        });
+                        if (createdWI?.public_slug) setWeighInSlug(createdWI.public_slug);
                     }
                 }
-                await qc.invalidateQueries({ queryKey: ['tournaments'] })
-                navigate('/', { replace: true })
+
+                await qc.invalidateQueries({ queryKey: ['tournaments'] });
+                navigate('/', { replace: true });
             } catch {
-                alert('İşlem başarısız.')
+                alert('İşlem başarısız.');
             }
-            return
+            return;
         }
 
         // ALT TURNUVA
@@ -327,14 +379,27 @@ export default function TournamentWizard({
                     {mode === 'main' && steps[step] === 'Tartı Günü' && (
                         <>
                             <Toggle checked={weighEnabled} onChange={setWeighEnabled}>Tartı Günü Aktif</Toggle>
+
                             {weighEnabled && (
-                                <div className="grid gap-6 md:grid-cols-3">
-                                    <Labeled label="Tarih" type="date" value={weighDate} set={setWeighDate} />
-                                    <Labeled label="Başlangıç Saati" type="time" value={weighStart} set={setWeighStart} />
-                                    <Labeled label="Bitiş Saati" type="time" value={weighEnd} set={setWeighEnd} />
-                                </div>
+                                <>
+                                    <div className="grid gap-6 md:grid-cols-3">
+                                        <Labeled label="Tarih" type="date" value={weighDate} set={setWeighDate} />
+                                        <Labeled label="Başlangıç Saati" type="time" value={weighStart} set={setWeighStart} />
+                                        <Labeled label="Bitiş Saati" type="time" value={weighEnd} set={setWeighEnd} />
+                                    </div>
+
+                                    {/* YENİ: Randevu Alımı Açık/Kapalı */}
+                                    <div className="pt-2">
+                                        <Toggle checked={weighOpen} onChange={setWeighOpen}>
+                                            Randevu Alımı Açık
+                                        </Toggle>
+                                    </div>
+                                </>
                             )}
-                            <p className="text-xs text-gray-400">Kaydederken bu bilgiler varsa turnuvayla birlikte tartı günü de oluşturulur.</p>
+
+                            <p className="text-xs text-gray-400">
+                                Kaydederken bu bilgiler varsa turnuvayla birlikte tartı günü de oluşturulur/güncellenir.
+                            </p>
                         </>
                     )}
 
