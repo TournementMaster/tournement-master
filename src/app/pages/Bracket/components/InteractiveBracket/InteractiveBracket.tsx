@@ -696,6 +696,122 @@ export default memo(function InteractiveBracket() {
         }
     }, [slug]);
 
+    /* ------------------- PRINT: yalnizca başlık + şablon ------------------- */
+    const cut = (s = '', n = 28) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+    useEffect(() => {
+        const onPrint = (ev: any) => {
+            const title = (ev?.detail?.title || '').toString();
+
+            // 1) rounds → düz liste (round 0'dan başlayarak)
+            const flat = [] as Array<{
+                a: string;
+                b: string;
+                winner?: 0 | 1 | undefined;
+                matchNo?: number;
+                round: number;
+            }>;
+
+            for (let r = 0; r < rounds.length; r++) {
+                const round = rounds[r];
+                for (let i = 0; i < round.length; i++) {
+                    const m = round[i];
+                    const p1 = m.players[0];
+                    const p2 = m.players[1];
+                    const aClub = (p1?.club || '').trim();
+                    const bClub = (p2?.club || '').trim();
+                    const a = (p1?.name || '—') + (aClub ? ` (${cut(aClub, 20)})` : '');
+                    const b = (p2?.name || '—') + (bClub ? ` (${cut(bClub, 20)})` : '');
+                    let win: 0 | 1 | undefined = undefined;
+                    if (p1?.winner === true) win = 0;
+                    else if (p2?.winner === true) win = 1;
+                    else if (typeof m.meta?.manual === 'number') win = m.meta!.manual as 0 | 1;
+
+                    flat.push({ a, b, winner: win, matchNo: m.meta?.matchNo, round: r + 1 });
+                }
+            }
+
+            // 2) 6'şarlı sayfalara böl
+            const chunkSize = 6;
+            const pages: typeof flat[] = [];
+            for (let i = 0; i < flat.length; i += chunkSize) {
+                pages.push(flat.slice(i, i + chunkSize));
+            }
+            if (!pages.length) pages.push([]);
+
+            // 3) print-only root oluştur
+            const old = document.getElementById('print-root');
+            if (old && old.parentElement) old.parentElement.removeChild(old);
+
+            const root = document.createElement('div');
+            root.id = 'print-root';
+            // Ekranda göstermiyoruz (print CSS gösterecek)
+            root.style.display = 'none';
+
+            // 4) sayfaları doldur
+            const mk = (html: string) => {
+                const d = document.createElement('div');
+                d.innerHTML = html.trim();
+                return d.firstElementChild as HTMLElement;
+            };
+
+            const titleHtml = (t: string) => `
+                <div class="pr-title">${t || ''}</div>
+            `;
+
+            pages.forEach((page, pi) => {
+                const pageEl = mk(`<section class="print-page"></section>`);
+                pageEl.appendChild(mk(titleHtml(title)));
+
+                const list = mk(`<div class="print-matches"></div>`);
+                page.forEach((m, idx) => {
+                    const num = m.matchNo != null ? String(m.matchNo) : `R${m.round}-${idx + 1 + pi*chunkSize}`;
+                    const box = mk(`
+                        <div class="pmatch">
+                          <div class="mno">${num}</div>
+                          <div class="prow">
+                            <span class="pidx">1</span>
+                            <span class="pname">${m.a.replace(/</g,'&lt;')}</span>
+                            ${m.winner === 0 ? '<span class="ptick">✓</span>' : ''}
+                          </div>
+                          <div class="prow">
+                            <span class="pidx">2</span>
+                            <span class="pname">${m.b.replace(/</g,'&lt;')}</span>
+                            ${m.winner === 1 ? '<span class="ptick">✓</span>' : ''}
+                          </div>
+                        </div>
+                    `);
+                    list.appendChild(box);
+                });
+
+                pageEl.appendChild(list);
+                root.appendChild(pageEl);
+            });
+
+            document.body.appendChild(root);
+
+            // 5) Yazdır ve temizlik
+            const cleanup = () => {
+                const r = document.getElementById('print-root');
+                if (r && r.parentElement) r.parentElement.removeChild(r);
+                window.removeEventListener('afterprint', cleanup);
+            };
+            window.addEventListener('afterprint', cleanup);
+
+            // Layout'un DOM'a yazılmasını bekletip yazdır
+            setTimeout(() => window.print(), 30);
+
+            // Güvenlik için 5 sn sonra da temizle
+            setTimeout(() => {
+                const r = document.getElementById('print-root');
+                if (r && r.parentElement) r.parentElement.removeChild(r);
+            }, 5000);
+        };
+
+        window.addEventListener('bracket:print', onPrint);
+        return () => window.removeEventListener('bracket:print', onPrint);
+    }, [rounds]);
+
     return (
         <div className="relative h-[calc(100vh-64px)] overflow-hidden">
             {/* 401 overlay */}
@@ -729,16 +845,16 @@ export default memo(function InteractiveBracket() {
             <div className="absolute right-3 top-3 z-[40] select-none pointer-events-none">
                 {isFinished ? (
                     <span className="px-2 py-1 rounded text-xs border border-red-600/40 bg-red-600/20 text-red-300">
-            Maç bitti
-          </span>
+                        Maç bitti
+                    </span>
                 ) : started ? (
                     <span className="px-2 py-1 rounded text-xs border border-emerald-600/40 bg-emerald-600/20 text-emerald-300">
-            Maç başladı
-          </span>
+                        Maç başladı
+                    </span>
                 ) : (
                     <span className="px-2 py-1 rounded text-xs border border-yellow-500/40 bg-yellow-500/20 text-yellow-300">
-            Maç düzenleniyor
-          </span>
+                        Maç düzenleniyor
+                    </span>
                 )}
             </div>
 

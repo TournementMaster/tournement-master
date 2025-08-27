@@ -29,6 +29,18 @@ function luminance(c: string): number {
     return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
 }
 
+/** Maç no rozeti için ölçüleri, yazı boyuna göre basitçe tahmin et */
+function badgeDims(matchNo: number, fontPx: number) {
+    const digits = String(matchNo ?? '').length || 1;
+    const padX = Math.round(fontPx * 0.90);
+    const padY = Math.round(fontPx * 0.55);
+    const textW = Math.round(digits * fontPx * 0.70);
+    const w = Math.max(36, textW + padX * 2);
+    const h = Math.max(24, Math.round(fontPx * 1.8));
+    const rx = Math.max(7, Math.round(h * 0.35));
+    return { w, h, rx };
+}
+
 export default memo(function BracketCanvas({
                                                rounds,
                                                palette,
@@ -48,6 +60,16 @@ export default memo(function BracketCanvas({
         return L > 160 ? '#0b1220' : '#f1f5f9';
     }, [palette]);
 
+    // Dinamik fontlar (kutunun yüksekliğine göre akıllı ölçek)
+    const MAIN_FONT = useMemo(
+        () => Math.max(14, Math.min(20, Math.round(BOX_H * 0.30))),
+        [BOX_H]
+    );
+    const MNO_FONT = useMemo(
+        () => Math.max(13, Math.min(22, Math.round(BOX_H * 0.36))),
+        [BOX_H]
+    );
+
     return (
         <svg
             width={svgDims.width}
@@ -58,26 +80,48 @@ export default memo(function BracketCanvas({
                 <style>{`
           .rect{fill:${(palette as any).bg}}
           .bar {fill:${(palette as any).bar}}
-          .mid {stroke:${(palette as any).bar};stroke-width:1.4}
+          .mid {stroke:${(palette as any).bar};stroke-width:1.4;vector-effect:non-scaling-stroke}
           .ln  {stroke:white;stroke-width:1.4;vector-effect:non-scaling-stroke}
           .txt {
-            font: 700 17px/1 Inter, ui-sans-serif;
+            font-weight: 700;
+            font-size: ${MAIN_FONT}px;
+            line-height: 1.15;
+            font-family: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
             fill: ${textFill};
             dominant-baseline: middle;
             paint-order: stroke fill;
             stroke: rgba(0,0,0,.55);
-            stroke-width: .8;
-            letter-spacing: .15px;
+            stroke-width: .9;
+            letter-spacing: .2px;
+            text-rendering: geometricPrecision;
           }
           .win {fill:${(palette as any).win}}
           .outline{stroke:url(#g);fill:none;stroke-width:0}
           .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${(palette as any).glow2})}
-          .done {opacity:.88}
+          .done {opacity:.92}
           .tick {fill:#22c55e}
           .hl { fill:#fff; stroke:#22d3ee; stroke-width:1.2; paint-order:stroke fill }
-          .mno-bg { fill: rgba(34,197,94,.14); stroke: ${(palette as any).win}; stroke-width:1.6; rx:7 }
-          .mno-txt{ font: 800 12px/1 Inter,ui-sans-serif; fill:#eafff3; letter-spacing:.35px; dominant-baseline:middle;
-                    paint-order: stroke fill; stroke: rgba(0,0,0,.45); stroke-width:.6; }
+
+          /* Maç no rozetleri: daha büyük, kontrastı yüksek */
+          .mno-bg {
+            fill: rgba(34,197,94,.14);
+            stroke: ${(palette as any).win};
+            stroke-width: 1.8;
+            vector-effect: non-scaling-stroke;
+          }
+          .mno-txt{
+            font-weight: 800;
+            font-size: ${MNO_FONT}px;
+            line-height: 1;
+            font-family: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+            fill:#eafff3;
+            letter-spacing:.35px;
+            dominant-baseline:middle;
+            paint-order: stroke fill;
+            stroke: rgba(0,0,0,.45);
+            stroke-width:.7;
+            text-rendering: geometricPrecision;
+          }
         `}</style>
                 <linearGradient id="g" x1="0" x2="1">
                     <stop offset="0%" stopColor={(palette as any).glow1} />
@@ -96,15 +140,26 @@ export default memo(function BracketCanvas({
                     const finished = m.players.some((p) => p.winner != null);
                     const x0 = x0base;
 
+                    // Maç no rozeti ölçüleri
+                    const mnoVal = (m as any)?.meta?.matchNo as number | undefined;
+                    const dims = (typeof mnoVal === 'number') ? badgeDims(mnoVal, MNO_FONT) : null;
+
                     return (
                         <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
-                            {showMatchNo && typeof m.meta?.matchNo === 'number' && (
-                                <g transform={`translate(${x0 - 24}, ${mid}) rotate(-90)`}>
-                                    <rect className="mno-bg" x={-18} y={-12} width={36} height={24} rx={7} />
+                            {showMatchNo && typeof mnoVal === 'number' && dims && (
+                                <g transform={`translate(${x0 - 34}, ${mid}) rotate(-90)`}>
+                                    <rect
+                                        className="mno-bg"
+                                        x={-dims.w / 2}
+                                        y={-dims.h / 2}
+                                        width={dims.w}
+                                        height={dims.h}
+                                        rx={dims.rx}
+                                    />
                                     <text className="mno-txt" x={0} y={0} textAnchor="middle">
-                                        {m.meta!.matchNo}
+                                        {mnoVal}
                                     </text>
-                                    <title>{`Maç ${m.meta!.matchNo}`}</title>
+                                    <title>{`Maç ${mnoVal}`}</title>
                                 </g>
                             )}
 
@@ -121,9 +176,9 @@ export default memo(function BracketCanvas({
                                 const clubShort = club ? ` (${cut(club, 18)})` : '';
                                 const label = (p?.name || '—') + clubShort;
                                 const isHL =
-                                    highlight &&
-                                    (p?.name?.toLowerCase()?.includes(highlight) ||
-                                        club?.toLowerCase()?.includes(highlight));
+                                    !!highlight &&
+                                    (p?.name?.toLowerCase()?.includes(highlight.toLowerCase()) ||
+                                        club?.toLowerCase()?.includes(highlight.toLowerCase()));
                                 return (
                                     <g key={idx}>
                                         <text className={`txt ${isHL ? 'hl' : ''}`} x={x0 + 18} y={y}>

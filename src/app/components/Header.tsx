@@ -109,7 +109,13 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
         } catch {}
     };
 
-    const onPrint = () => window.print();
+    // <<< DEĞİŞTİ >>> — Yazdırma akışını özel olaya devrettik
+    const onPrint = () => {
+        window.dispatchEvent(
+            new CustomEvent('bracket:print', { detail: { title: headerText || '' } })
+        );
+    };
+
     const onSave = () => window.dispatchEvent(new CustomEvent('bracket:save'));
 
     return (

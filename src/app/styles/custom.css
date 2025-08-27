@@ -120,21 +120,106 @@
 
 /* Katılımcı şeridi (ilk 8 görünür, fazlası yatay kaydır) */
 .participants-strip{
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  gap: .5rem;
-  overflow-x: auto;
-  padding-bottom: .25rem;
-  scroll-snap-type: x proximity;
-  mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    gap: .5rem;
+    overflow-x: auto;
+    padding-bottom: .25rem;
+    scroll-snap-type: x proximity;
+    mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
 }
 .participant-pill{
-  scroll-snap-align: start;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.06);
-  padding: .35rem .6rem;
-  border-radius: .65rem;
-  white-space: nowrap;
-  font-size: .9rem;
+    scroll-snap-align: start;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
+    padding: .35rem .6rem;
+    border-radius: .65rem;
+    white-space: nowrap;
+    font-size: .9rem;
+}
+
+/* ========================================================================
+   PRINT-ONLY STYLES (yalnızca başlık + şablon kutuları)
+   - Header ortasındaki metin sayfa başlığında
+   - Sayfa başına max 6 kutucuk
+   - Ekranda görünmez, yalnızca yazdırmada görünür
+=========================================================================== */
+#print-root { display: none; }
+
+@media print {
+    /* ekrandaki her şeyi gizle, sadece print-root kalsın */
+    body > *:not(#print-root) { display: none !important; }
+    #print-root { display: block !important; }
+
+    @page { size: A4; margin: 12mm; }
+
+    .print-page {
+        width: 210mm;
+        min-height: 273mm; /* 297 - margin buffer */
+        box-sizing: border-box;
+        page-break-after: always;
+        display: flex;
+        flex-direction: column;
+        gap: 8mm;
+        font-family: "Inter", Arial, sans-serif;
+        color: #111;
+    }
+    .print-page:last-child { page-break-after: auto; }
+
+    .pr-title {
+        text-align: center;
+        font-weight: 700;
+        font-size: 16pt;
+        margin-top: 2mm;
+    }
+
+    .print-matches {
+        display: grid;
+        grid-template-columns: 1fr;
+        row-gap: 6mm;  /* 6 kutucuk / sayfa için dikey boşluk */
+    }
+
+    .pmatch {
+        border: 0.6pt solid #333;
+        border-radius: 6pt;
+        padding: 4mm 5mm 4mm 5mm;
+        position: relative;
+    }
+    .pmatch .mno {
+        position: absolute;
+        top: -10pt;
+        left: -10pt;
+        background: #16a34a;
+        color: #fff;
+        border-radius: 6pt;
+        padding: 2pt 6pt;
+        font-weight: 800;
+        font-size: 9pt;
+        box-shadow: 0 1pt 2pt rgba(0,0,0,.2);
+    }
+
+    .prow {
+        display: grid;
+        grid-template-columns: 14pt 1fr 16pt;
+        align-items: center;
+        column-gap: 6pt;
+        padding: 2pt 0;
+        border-bottom: 0.4pt solid #bbb;
+    }
+    .prow:last-child { border-bottom: 0; }
+    .pidx {
+        text-align: center;
+        font-weight: 700;
+        font-size: 10pt;
+    }
+    .pname {
+        font-size: 11pt;
+        line-height: 1.25;
+        font-weight: 600;
+    }
+    .ptick {
+        font-size: 12pt;
+        font-weight: 900;
+    }
 }
