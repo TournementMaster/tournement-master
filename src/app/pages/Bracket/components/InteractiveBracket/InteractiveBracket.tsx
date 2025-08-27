@@ -177,6 +177,7 @@ export default memo(function InteractiveBracket() {
         ((location.state as (SubTournament & { can_edit?: boolean }) | undefined) || null);
     const [subId, setSubId] = useState<number | null>(stateItem?.id ?? null);
     const [tournamentSlug, setTournamentSlug] = useState<string | null>(null);
+    const [courtNo, setCourtNo] = useState<number | null>(null);
 
     const [mode, setMode] = useState<'view' | 'edit'>('view');
     const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true));
@@ -318,17 +319,39 @@ export default memo(function InteractiveBracket() {
 
     // slug → detay çek
     useEffect(() => {
-        if (!slug || subId) return;
+        if (!slug) return;
         (async () => {
             try {
                 const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
                 if (data?.id) setSubId(data.id);
-                const tSlug =
-                    (data as any)?.tournament_public_slug ??
-                    (data as any)?.tournament_slug ??
-                    (data as any)?.tournament?.public_slug ??
-                    null;
-                if (typeof tSlug === 'string' && tSlug) setTournamentSlug(tSlug);
+                // court_no
+                const cNo = (data as any)?.court_no;
+                setCourtNo(typeof cNo === 'number' && Number.isFinite(cNo) ? cNo : null);
+
+                // --- ANA TURNUVA SLUG'INI SAĞLAM AL ---
+                let tSlug: string | null = null;
+
+                // 1) API'de doğrudan alan varsa
+                if (typeof (data as any)?.tournament_slug === 'string' && (data as any).tournament_slug) {
+                    tSlug = (data as any).tournament_slug;
+                }
+                // 2) Bazı backendler tournament_public_slug döndürebilir
+                else if (typeof (data as any)?.tournament_public_slug === 'string' && (data as any).tournament_public_slug) {
+                    tSlug = (data as any).tournament_public_slug;
+                }
+                // 3) Embed turnuva objesi geldiyse
+                else if (typeof (data as any)?.tournament?.public_slug === 'string' && (data as any).tournament.public_slug) {
+                    tSlug = (data as any).tournament.public_slug;
+                }
+                // 4) Sadece numeric id geldiyse, public_slug'ı fetch et
+                else if (typeof (data as any)?.tournament === 'number') {
+                    try {
+                        const { data: t } = await api.get<{ public_slug?: string }>(`tournaments/${(data as any).tournament}/`);
+                        if (typeof t?.public_slug === 'string' && t.public_slug) tSlug = t.public_slug;
+                    } catch { /* yoksay */ }
+                }
+
+                setTournamentSlug(tSlug);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) {
                     setStarted(Boolean(data.started));
@@ -341,7 +364,7 @@ export default memo(function InteractiveBracket() {
                 setSaveMsg('Alt turnuva bilgisi alınamadı (slug).');
             }
         })();
-    }, [slug, subId]);
+    }, [slug]);
 
     useEffect(() => {
         const nav = (performance.getEntriesByType?.('navigation') as any[]) || [];
@@ -530,16 +553,20 @@ export default memo(function InteractiveBracket() {
                     const a1 = getAthleteIdFor(m.players[0]);
                     const a2 = getAthleteIdFor(m.players[1]);
                     const winner = m.players[0]?.winner ? a1 : m.players[1]?.winner ? a2 : null;
-                    const court_no = (() => {
-                        const raw = m.meta?.court?.trim();
+                    const metaCourt = (() => {
+                        const raw = (m.meta?.court as any)?.toString?.().trim?.();
                         const n = raw ? parseInt(raw, 10) : NaN;
                         return Number.isFinite(n) ? n : null;
                     })();
+
+                    // court_no önceliği: alt turnuva court_no → meta.court → null
+                    const court_no_final = (courtNo ?? metaCourt) ?? null;
+
                     const scheduled_at = timeToISO(m.meta?.time);
                     const row: any = {
                         round_no: rIdx + 1,
                         position: iIdx + 1,
-                        court_no,
+                        court_no: court_no_final,
                         scheduled_at,
                         extra_note: '',
                         sub_tournament: subId,
@@ -557,30 +584,31 @@ export default memo(function InteractiveBracket() {
 
             try {
                 if (!started) {
-                    const courts = new Set<number>();
-                    for (const round of roundsForSave)
-                        for (const m of round) {
-                            const n = parseInt((m.meta?.court ?? '').toString(), 10);
-                            if (Number.isFinite(n)) courts.add(n);
-                        }
-                    if (tournamentSlug && courts.size) {
-                        const hit = async (court: number) => {
-                            try {
-                                await api.post(
-                                    `tournaments/${encodeURIComponent(tournamentSlug)}/generate-match-numbers/`,
-                                    {},
-                                    { params: { court } }
-                                );
-                            } catch {
-                                try {
-                                    await api.get(
-                                        `tournaments/${encodeURIComponent(tournamentSlug)}/generate-match-numbers/`,
-                                        { params: { court } }
-                                    );
-                                } catch {}
+                    const genSlug = tournamentSlug;
+                    const genCourt = courtNo;
+                    if (genSlug && Number.isFinite(genCourt as any) && genCourt !== null) {
+                        await api.post(
+                            `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
+                            {},
+                            {params: {court: genCourt as number}}
+                        );
+                    } else if (genSlug) {
+                        // yedek: meta.court'lardan topla
+                        const courts = new Set<number>();
+                        for (const round of roundsForSave)
+                            for (const m of round) {
+                                const n = parseInt((m.meta?.court ?? '').toString(), 10);
+                                if (Number.isFinite(n)) courts.add(n);
                             }
-                        };
-                        await Promise.all([...courts].map((c) => hit(c)));
+                        await Promise.all(
+                            [...courts].map((c) =>
+                                api.post(
+                                    `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
+                                    {},
+                                    { params: { court: c } }
+                                ).catch(() => {})
+                            )
+                        );
                     }
                 }
             } catch {}
@@ -596,7 +624,7 @@ export default memo(function InteractiveBracket() {
             setSaving(false);
             setTimeout(() => setSaveMsg(null), 2400);
         }
-    }, [slug, subId, players, rounds, settings.placementMap, started, tournamentSlug]);
+    }, [slug, subId, players, rounds, settings.placementMap, started, tournamentSlug, courtNo]);
 
     useEffect(() => {
         const h = () => {
