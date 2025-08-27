@@ -135,7 +135,7 @@ export default function SubFilterSidebar({
                         aria-label="Leaderboard"
                     >
                         <span className="text-lg">🏆</span>
-                        <span className="font-medium">Leaderboard</span>
+                        <span className="font-medium">Liderlik Tablosu</span>
                     </Link>
 
                     <Link

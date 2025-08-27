@@ -31,7 +31,7 @@ export const PALETTES: Record<ThemeKey, Palette> = {
     forest : { bg:'#ecfdf5', bar:'#065f46', win:'#10b981', txt:'#052e2b',
         glow1:'#a7f3d0', glow2:'#10b981' },
     rose   : { bg:'#fdf2f8', bar:'#9d174d', win:'#e11d48', txt:'#4a044e',
-        glow1:'#fbcfe8', glow2:'#e11d48' },
+        glow1:'#fbcfe8', glow2:'#f3083c' },
     gold   : { bg:'#fffbeb', bar:'#92400e', win:'#f59e0b', txt:'#451a03',
         glow1:'#fde68a', glow2:'#f59e0b' },
     crimson: { bg:'#fff1f2', bar:'#7f1d1d', win:'#ef4444', txt:'#450a0a',

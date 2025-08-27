@@ -131,7 +131,7 @@ export default function ParticipantsPanel() {
                     className="w-full bg-[#111318] rounded px-3 py-2"
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Ara… (brakette vurgulanır)"
+                    placeholder="(Sporcu ara...)"
                 />
             </div>
         </div>

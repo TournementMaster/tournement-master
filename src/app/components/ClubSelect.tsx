@@ -104,7 +104,7 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
                         className="w-full text-left px-3 py-2 hover:bg-emerald-900/30 text-emerald-300"
                         onClick={() => { setShowModal(true); setOpen(false) }}
                     >
-                        + Yeni kulüp oluştur…
+                        + Kulüp oluştur ve Düzenle
                     </button>
                 </div>
             )}

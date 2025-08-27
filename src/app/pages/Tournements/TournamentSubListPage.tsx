@@ -391,7 +391,7 @@ export default function TournamentSubListPage() {
                     {/* top bar */}
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between py-6">
                         <div>
-                            <h2 className="text-xl font-semibold">All Brackets</h2>
+                            <h2 className="text-xl font-semibold">Tüm Alt Turnuvalar</h2>
                             <p className="text-sm text-gray-400">
                                 Toplam <b>{data?.length ?? 0}</b> alt turnuva
                             </p>

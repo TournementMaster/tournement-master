@@ -82,87 +82,96 @@ export default function LeaderboardPage() {
         return () => { cancelled = true; };
     }, [public_slug]);
 
-    if (loading) return <div className="max-w-5xl mx-auto py-8 text-gray-200">Yükleniyor…</div>;
+    if (loading) return <div className="max-w-6xl mx-auto py-10 text-white subpixel-antialiased text-xl">Yükleniyor…</div>;
     if (err)      return (
-        <div className="max-w-5xl mx-auto py-8">
-            <div className="rounded border border-red-400/30 bg-red-500/10 text-red-200 p-4">{err}</div>
-            <div className="mt-3">
-                <Link to={`/tournements/${public_slug}`} className="text-sm text-blue-300 hover:underline">← Alt Turnuvalar</Link>
+        <div className="max-w-6xl mx-auto py-10 subpixel-antialiased">
+            <div className="rounded-2xl border border-red-400/40 bg-red-600/15 text-red-100 p-6 text-lg leading-relaxed">{err}</div>
+            <div className="mt-4 flex items-center gap-6">
+                <Link to={`/tournements/${public_slug}`} className="text-lg text-blue-300 hover:underline">← Alt Turnuvalar</Link>
                 {err.includes('Yetki yok') && (
-                    <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="ml-4 text-sm text-blue-300 hover:underline">Giriş Yap →</Link>
+                    <Link
+                        to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+                        className="text-lg text-blue-300 hover:underline"
+                    >
+                        Giriş Yap →
+                    </Link>
                 )}
             </div>
         </div>
     );
 
     return (
-        <div className="max-w-5xl mx-auto py-6 space-y-6">
+        <div className="max-w-7xl mx-auto py-8 space-y-8 subpixel-antialiased">
             <div className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold">Leaderboard – İlk 8</h1>
-                <Link to={`/tournements/${public_slug}`} className="text-sm text-blue-300 hover:underline">← Alt Turnuvalar</Link>
+                <h1 className="text-2xl md:text-3xl font-extrabold text-white leading-tight">Liderlik Tablosu – İlk 8</h1>
+                <Link to={`/tournements/${public_slug}`} className="text-lg text-blue-300 hover:underline">← Alt Turnuvalar</Link>
             </div>
 
             {items.length === 0 ? (
-                <div className="rounded border border-white/10 p-6 text-gray-300">Liste boş.</div>
+                <div className="rounded-2xl border border-white/15 p-8 text-lg text-gray-100">Liste boş.</div>
             ) : (
-                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
                     {items.map((b) => (
                         <article
                             key={b.sub_slug}
-                            className="group rounded-2xl border border-white/10 bg-[#1b1f27]/90 backdrop-blur
-                 hover:border-emerald-400/40 hover:shadow-[0_0_0_2px_rgba(16,185,129,.25)]
-                 transition"
+                            className="group rounded-3xl border border-white/10 bg-[#1b1f27]/95
+                                       hover:border-emerald-400/40 hover:shadow-[0_0_0_3px_rgba(16,185,129,.25)]
+                                       transition"
                         >
                             {/* Header */}
-                            <div className="p-4 border-b border-white/5 flex items-start justify-between">
+                            <div className="p-6 border-b border-white/10 flex items-start justify-between">
                                 <div>
-                                    <h3 className="font-semibold text-slate-100">
+                                    <h3 className="font-bold text-white text-xl leading-snug">
                                         <Link to={`/bracket/${b.sub_slug}`} className="hover:underline">
                                             {b.sub_title}
                                         </Link>
                                     </h3>
-                                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                                    <div className="mt-3 flex flex-wrap gap-2 text-base">
                                         {b.gender && (
-                                            <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-400/20">
-                        {gLabel(b.gender)}
-                      </span>
+                                            <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">
+                                                {gLabel(b.gender)}
+                                            </span>
                                         )}
                                         {b.age && (
-                                            <span className="px-2 py-1 rounded-full bg-violet-500/15 text-violet-200 border border-violet-400/20">
-                        Yaş {b.age}
-                      </span>
+                                            <span className="px-2 py-1 rounded-full bg-violet-500/15 text-violet-200 border border-violet-400/30">
+                                                Yaş {b.age}
+                                            </span>
                                         )}
                                         {b.weight && (
-                                            <span className="px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/20">
-                        Kilo {b.weight}
-                      </span>
+                                            <span className="px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/30">
+                                                Kilo {b.weight}
+                                            </span>
                                         )}
                                     </div>
                                 </div>
                                 <Link
                                     to={`/bracket/${b.sub_slug}`}
-                                    className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-white/10 text-white/90
-                     bg-[#0f131a]/70 hover:bg-[#121722] transition"
+                                    className="shrink-0 px-3 py-1.5 text-lg rounded-xl border border-white/15 text-white
+                                               bg-[#0f131a]/80 hover:bg-[#121722] transition"
                                 >
                                     Bracket →
                                 </Link>
                             </div>
 
                             {/* Top-8 */}
-                            <div className="px-2 pt-2 text-[11px] uppercase tracking-wider text-slate-400/80">Top 8</div>
-                            <ol className="p-2 pb-3 space-y-1">
+                            <div className="px-4 pt-3 text-base tracking-wide text-slate-300">İLK 8</div>
+                            <ol className="p-4 pb-6 space-y-2">
                                 {b.athletes.slice(0, 8).map((a) => (
                                     <li
                                         key={`${b.sub_slug}-${a.rank}-${a.name}`}
-                                        className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-white/5 transition"
+                                        className="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-white/5 transition"
                                     >
-                                        <div className="w-7 h-7 shrink-0 rounded-full bg-emerald-500/20 text-emerald-300
-                            flex items-center justify-center font-semibold">
+                                        <div className="w-12 h-12 shrink-0 rounded-full bg-emerald-500/20 text-emerald-300
+                                                        flex items-center justify-center font-extrabold text-xl">
                                             {a.rank}
                                         </div>
                                         <div className="min-w-0">
-                                            <div className="text-sm font-medium text-slate-100 truncate">{a.name || '—'}</div>
-                                            <div className="text-[11px] text-slate-400 truncate">{a.club || '—'}</div>
+                                            <div className="text-xl font-semibold text-white truncate leading-snug">
+                                                {a.name || '—'}
+                                            </div>
+                                            <div className="text-lg text-slate-300 truncate leading-snug">
+                                                {a.club || '—'}
+                                            </div>
                                         </div>
                                     </li>
                                 ))}

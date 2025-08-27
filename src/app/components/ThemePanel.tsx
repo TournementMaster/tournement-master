@@ -9,13 +9,13 @@ const ITEMS: Item[] = [
     { key:'purple-orange', label:'Turuncu'},
     { key:'black-white',   label:'Siyah–Beyaz' },
     // yeniler
-    { key:'ocean',   label:'Ocean'   },
-    { key:'forest',  label:'Forest'  },
-    { key:'rose',    label:'Rose'    },
-    { key:'gold',    label:'Gold'    },
-    { key:'crimson', label:'Crimson' },
-    { key:'teal',    label:'Teal'    },
-    { key:'slate',   label:'Slate'   },
+    { key:'ocean',   label:'Okyanus Mavisi'   },
+    { key:'forest',  label:'Orman Yeşili'  },
+    { key:'rose',    label:'Gül Kırmızısı'    },
+    { key:'gold',    label:'Altın Sarısı'    },
+    { key:'crimson', label:'Kızıl Elma' },
+    { key:'teal',    label:'Turkuaz'    },
+    { key:'slate',   label:'Füme'   },
 ]
 
 export default function ThemePanel() {
