@@ -157,7 +157,7 @@ function StartConfirmModal({
 /* -------------------------------- Component ------------------------------- */
 export default memo(function InteractiveBracket() {
     const { players, setPlayers } = usePlayers();
-    const { settings } = useSettings();
+    const { settings, set } = useSettings();
     const themeKey = useBracketTheme();
 
     // TS7053 fix: PALETTES indeksini güvenli anahtar ile yap
@@ -207,6 +207,7 @@ export default memo(function InteractiveBracket() {
         return finalMatch?.players?.some((p) => p?.winner != null) ?? false;
     }, [rounds]);
     const backendMatrixRef = useRef<Matrix>([]);
+    const acceptBackendOnceRef = useRef<boolean>(true);
 
     const [selected, setSelected] = useState<{ r: number; m: number } | null>(null);
     const [saving, setSaving] = useState(false);
@@ -232,15 +233,34 @@ export default memo(function InteractiveBracket() {
     const handleBuilt = useCallback(
         (matrix: Matrix, firstRoundParticipants: Participant[]) => {
             backendMatrixRef.current = matrix;
-            if (mode === 'view') setRounds(matrix);
-            else if (!rounds.length) setRounds(matrix);
 
+            // 1) İlk backend cevabını MOD ne olursa olsun ekrana yaz
+            if (acceptBackendOnceRef.current) {
+                setRounds(matrix);
+                acceptBackendOnceRef.current = false;
+
+                // Lokal kurulum tetikleyicilerini "backend tabanlı" baseline'a sabitle
+                const basePlayers =
+                    players.length
+                        ? players
+                        : firstRoundParticipants.length
+                            ? firstRoundParticipants.map((p, i) => ({ ...p, seed: i + 1 }))
+                            : [];
+                editPlayersSnapshotRef.current = basePlayers.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
+                lastPlacementRef.current = settings.placementMap ?? null; // (genelde null)
+            } else {
+                // 2) Sonrakiler mevcut kuralı izlesin
+                if (mode === 'view') setRounds(matrix);
+                else if (!rounds.length) setRounds(matrix);
+            }
+
+            // 3) players boşsa, backend’den türeyeni yaz (mevcut davranış)
             if (firstRoundParticipants.length && !players.length) {
                 const reseeded = firstRoundParticipants.map((p, i) => ({ ...p, seed: i + 1 }));
                 setPlayers(reseeded);
             }
         },
-        [mode, rounds.length, players.length, setPlayers]
+        [mode, rounds.length, players.length, setPlayers, settings.placementMap]
     );
 
     const twRef = useRef<ReactZoomPanPinchRef | null>(null);
@@ -323,6 +343,21 @@ export default memo(function InteractiveBracket() {
         })();
     }, [slug, subId]);
 
+    useEffect(() => {
+        const nav = (performance.getEntriesByType?.('navigation') as any[]) || [];
+        const isReload = !!nav[0] && nav[0].type === 'reload';
+        if (isReload) {
+            // Sadece İSTEMCİ tarafı temizlik: backend’e dokunma
+            setPlayers([]);
+            set({ placementMap: null, version: settings.version + 1 });
+            editPlayersSnapshotRef.current = null;
+            lastPlacementRef.current = null;
+        }
+        // not: acceptBackendOnceRef zaten true başlıyor
+        // bu sayede ilk backend cevabı ekrana yazılacak
+        // ve lokal kurulum baskılanacak
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
     /* Bracket kaynağı seçimi */
     useEffect(() => {
         const placement = settings.placementMap;
@@ -332,6 +367,7 @@ export default memo(function InteractiveBracket() {
                 setRounds(backendMatrixRef.current);
                 return;
             }
+            if (acceptBackendOnceRef.current) return;
             // Başlamadan önce: BYE auto-advance YAPMA (propagate yok)
             const snap = editPlayersSnapshotRef.current;
             const now = players.map((p) => ({ name: p.name, club: p.club, seed: p.seed }));
