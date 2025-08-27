@@ -1,5 +1,5 @@
 // src/app/pages/Bracket/components/InteractiveBracket/BracketCanvas.tsx
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import type { Matrix } from "./bracketData.ts";
 import type { Palette } from '../../../../context/themePalettes';
 
@@ -19,6 +19,16 @@ type Props = {
 
 const cut = (s = '', n = 22) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
+/** Hex rengin parlaklığını kaba hesapla (0..255). Hex değilse koyu varsay */
+function luminance(c: string): number {
+    const m = /^#([0-9a-f]{6})$/i.exec((c || '').trim());
+    if (!m) return 0;
+    const v = parseInt(m[1], 16);
+    const r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
+    // perceptual
+    return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+}
+
 export default memo(function BracketCanvas({
                                                rounds,
                                                palette,
@@ -31,6 +41,13 @@ export default memo(function BracketCanvas({
                                            }: Props) {
     const { BOX_W, BOX_H, GAP, BASE, CORNER } = sizes;
 
+    // Arka plan parlaklığına göre yazı rengi seç
+    const textFill = useMemo(() => {
+        const L = luminance((palette as any)?.bg as string);
+        // L>160 ise açık zemin → koyu yazı; aksi halde açık yazı
+        return L > 160 ? '#0b1220' : '#f1f5f9';
+    }, [palette]);
+
     return (
         <svg
             width={svgDims.width}
@@ -39,32 +56,32 @@ export default memo(function BracketCanvas({
         >
             <defs>
                 <style>{`
-          .rect{fill:${palette.bg}}
-          .bar {fill:${palette.bar}}
-          .mid {stroke:${palette.bar};stroke-width:1.4}
+          .rect{fill:${(palette as any).bg}}
+          .bar {fill:${(palette as any).bar}}
+          .mid {stroke:${(palette as any).bar};stroke-width:1.4}
           .ln  {stroke:white;stroke-width:1.4;vector-effect:non-scaling-stroke}
           .txt {
             font: 700 17px/1 Inter, ui-sans-serif;
-            fill: #f1f5f9;                           /* daha güçlü kontrast */
+            fill: ${textFill};
             dominant-baseline: middle;
             paint-order: stroke fill;
-            stroke: rgba(0,0,0,.55);                 /* outline */
+            stroke: rgba(0,0,0,.55);
             stroke-width: .8;
             letter-spacing: .15px;
           }
-          .win {fill:${palette.win}}
+          .win {fill:${(palette as any).win}}
           .outline{stroke:url(#g);fill:none;stroke-width:0}
-          .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${palette.glow2})}
-          .done {opacity:.88}                        /* eskiden .55 idi → daha görünür */
+          .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${(palette as any).glow2})}
+          .done {opacity:.88}
           .tick {fill:#22c55e}
           .hl { fill:#fff; stroke:#22d3ee; stroke-width:1.2; paint-order:stroke fill }
-          .mno-bg { fill: rgba(34,197,94,.14); stroke: ${palette.win}; stroke-width:1.6; rx:7 }
+          .mno-bg { fill: rgba(34,197,94,.14); stroke: ${(palette as any).win}; stroke-width:1.6; rx:7 }
           .mno-txt{ font: 800 12px/1 Inter,ui-sans-serif; fill:#eafff3; letter-spacing:.35px; dominant-baseline:middle;
                     paint-order: stroke fill; stroke: rgba(0,0,0,.45); stroke-width:.6; }
         `}</style>
                 <linearGradient id="g" x1="0" x2="1">
-                    <stop offset="0%" stopColor={palette.glow1} />
-                    <stop offset="100%" stopColor={palette.glow2} />
+                    <stop offset="0%" stopColor={(palette as any).glow1} />
+                    <stop offset="100%" stopColor={(palette as any).glow2} />
                 </linearGradient>
             </defs>
 
