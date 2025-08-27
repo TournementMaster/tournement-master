@@ -319,7 +319,7 @@ export default function TournamentWizard({
                                 <Labeled label="Bitiş Tarihi" type="date" value={endDate} set={setEndDate} />
                             </div>
                             <TextArea label="Açıklama" value={description} set={setDescription} />
-                            <Toggle checked={isPublic} onChange={setIsPublic}>Public</Toggle>
+                            <Toggle checked={isPublic} onChange={setIsPublic}>Herkes</Toggle>
                         </>
                     )}
 
@@ -405,7 +405,7 @@ export default function TournamentWizard({
                                 />
                                 <div />
                             </div>
-                            <Toggle checked={subPublic} onChange={setSubPublic}>Public</Toggle>
+                            <Toggle checked={subPublic} onChange={setSubPublic}>Herkes</Toggle>
                         </>
                     )}
 
@@ -525,7 +525,7 @@ function SummaryCard({
                     <div><b>Mekan:</b> {venue}</div>
                     <div><b>Başlangıç:</b> {startDate}</div>
                     <div><b>Bitiş:</b> {endDate}</div>
-                    <div><b>Public:</b> {isPublic ? 'Evet' : 'Hayır'}</div>
+                    <div><b>Herkes:</b> {isPublic ? 'Evet' : 'Hayır'}</div>
                     <div><b>Editörler:</b> {editors.length ? editors.map(e=>e.username).join(', ') : '—'}</div>
                 </div>
             ) : (
@@ -534,7 +534,7 @@ function SummaryCard({
                     <div><b>Cinsiyet:</b> {gender === 'M' ? 'Erkek' : gender === 'F' ? 'Kadın' : 'Karma'}</div>
                     <div><b>Yaş:</b> {(ageMin || '?') + '–' + (ageMax || '?')}</div>
                     <div><b>Kilo:</b> {(weightMin || '?') + '–' + (weightMax || '?')} kg</div>
-                    <div><b>Public:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
+                    <div><b>Herkes:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
                 </div>
             )}
         </div>
