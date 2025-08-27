@@ -183,6 +183,7 @@ export default memo(function InteractiveBracket() {
     const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true));
     const [refreshKey, setRefreshKey] = useState(0);
     const [authErr, setAuthErr] = useState<number | null>(null);
+    const [subDetail, setSubDetail] = useState<SubTournamentDetail | null>(null);
 
     type SubTournamentDetail = SubTournament & {
         started?: boolean;
@@ -215,6 +216,18 @@ export default memo(function InteractiveBracket() {
     const [saveMsg, setSaveMsg] = useState<string | null>(null);
     const [dirty, setDirty] = useState(false);
     const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+    // EKLE: statü label + renk sınıfları
+    const statusBadge = useMemo(() => {
+        if (isFinished) {
+            return { label: 'Maç bitti', cls: 'border-red-600/40 bg-red-600/20 text-red-300' };
+        }
+        if (started) {
+            return { label: 'Maç başladı', cls: 'border-emerald-600/40 bg-emerald-600/20 text-emerald-300' };
+        }
+        return { label: 'Maç düzenleniyor', cls: 'border-yellow-500/40 bg-yellow-500/20 text-yellow-300' };
+    }, [isFinished, started]);
+
 
     const [startConfirmOpen, setStartConfirmOpen] = useState(false);
     const pendingPickRef = useRef<{ r: number; m: number } | null>(null);
@@ -324,6 +337,7 @@ export default memo(function InteractiveBracket() {
             try {
                 const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
                 if (data?.id) setSubId(data.id);
+                setSubDetail(data);
                 // court_no
                 const cNo = (data as any)?.court_no;
                 setCourtNo(typeof cNo === 'number' && Number.isFinite(cNo) ? cNo : null);
@@ -720,28 +734,53 @@ export default memo(function InteractiveBracket() {
     const isBackend = !!slug;
     const pollingEnabled = isBackend && mode === 'view';
 
-    // “Şablonu Sıfırla” – backend’de silme uç noktası yok; UI’yi temizliyoruz
+    // “Şablonu Sıfırla” – DELETE yok; public slug ile SADE payload PATCH et
     useEffect(() => {
-        const hardReset = async () => {
+        const patchFlagsThenReset = async () => {
             if (!slug) return;
-            setSaveMsg('Şablon temizleniyor…');
+
+            // Yalnız değişebilir alanları gönder (started / finished).
+            // started_at:null, id, tournament, public_slug vb. YOLLAMA.
+            const body: Record<string, boolean> = {};
+            if (startedRef.current === true) body.started = false;
+            if (isFinished === true) body.finished = false;
+
+            if (Object.keys(body).length === 0) return;
+
             try {
-                await api.delete(`subtournaments/${slug}/matches/`);
-            } catch {
+                await api.patch(
+                    // ÖNEMLİ: trailing slash var
+                    `http://93.183.74.124:8000/api/subtournaments/${encodeURIComponent(slug)}/`,
+                    body,
+                    { headers: { 'Content-Type': 'application/json' } }
+                );
+            } catch (err) {
+                // Bazı kurulumlarda tek tek göndermek daha sorunsuz olabilir
                 try {
-                    await api.delete('matches/bulk/', { params: { sub_tournament: subId } });
-                } catch {}
+                    if (body.started === false) {
+                        await api.patch(
+                            `http://93.183.74.124:8000/api/subtournaments/${encodeURIComponent(slug)}/`,
+                            { started: false },
+                            { headers: { 'Content-Type': 'application/json' } }
+                        );
+                    }
+                    if (body.finished === false) {
+                        await api.patch(
+                            `http://93.183.74.124:8000/api/subtournaments/${encodeURIComponent(slug)}/`,
+                            { finished: false },
+                            { headers: { 'Content-Type': 'application/json' } }
+                        );
+                    }
+                } catch (_) { /* yoksay; UI reset zaten client-side effect ile yapılacak */ }
             }
-            setPlayers([]);
-            backendMatrixRef.current = [];
-            setRounds([]);
-            setDirty(false);
-            setSaveMsg('Şablon sıfırlandı');
-            setTimeout(() => setSaveMsg(null), 1500);
         };
-        window.addEventListener('bracket:hard-reset', hardReset);
-        return () => window.removeEventListener('bracket:hard-reset', hardReset);
-    }, [slug, subId, setPlayers]);
+
+        window.addEventListener('bracket:hard-reset', patchFlagsThenReset);
+        return () => window.removeEventListener('bracket:hard-reset', patchFlagsThenReset);
+    }, [slug, isFinished]);
+
+
+
 
     // Başlatma akışı
     const startTournament = useCallback(async () => {
@@ -905,22 +944,6 @@ export default memo(function InteractiveBracket() {
                 </div>
             ) : null}
 
-            {/* Sağ üst durum rozeti (HER ZAMAN görünür) */}
-            <div className="absolute right-3 top-3 z-[40] select-none pointer-events-none">
-                {isFinished ? (
-                    <span className="px-2 py-1 rounded text-xs border border-red-600/40 bg-red-600/20 text-red-300">
-                        Maç bitti
-                    </span>
-                ) : started ? (
-                    <span className="px-2 py-1 rounded text-xs border border-emerald-600/40 bg-emerald-600/20 text-emerald-300">
-                        Maç başladı
-                    </span>
-                ) : (
-                    <span className="px-2 py-1 rounded text-xs border border-yellow-500/40 bg-yellow-500/20 text-yellow-300">
-                        Maç düzenleniyor
-                    </span>
-                )}
-            </div>
 
             {isBackend && (
                 <BackendBracketLoader
@@ -964,6 +987,13 @@ export default memo(function InteractiveBracket() {
                     </div>
                 </TransformComponent>
             </TransformWrapper>
+
+            {/* Header’ın altında sabit statü rozeti (HER ZAMAN görünür) */}
+            <div className="fixed right-3 top-[84px] z-[100] select-none">
+  <span className={`px-2 py-1 rounded text-xs border ${statusBadge.cls}`}>
+    {statusBadge.label}
+  </span>
+            </div>
 
             {/* Görünümü sıfırla */}
             <button
