@@ -31,9 +31,11 @@ function buildSubtitle(s: SubTournament) {
 export default function SubTournamentRow({
                                              item,
                                              onChanged,
+                                             canManage = false,
                                          }: {
     item: SubTournament;
     onChanged: () => void;
+    canManage?: boolean;
 }) {
     const navigate = useNavigate();
     const subtitle = useMemo(() => buildSubtitle(item), [item]);
@@ -98,6 +100,7 @@ export default function SubTournamentRow({
 
                 <div className="flex items-center gap-4">
                     {/* ✅ Sağdaki faz rozeti de kaldırıldı. Sadece menü bırakıldı. */}
+                    {canManage && (
                     <div
                         className="relative z-10"
                         ref={menuRef}
@@ -149,7 +152,7 @@ export default function SubTournamentRow({
                                 </button>
                             </div>
                         )}
-                    </div>
+                    </div>)}
                 </div>
             </div>
 

@@ -4,6 +4,8 @@ import { useParams, useSearchParams, Link, useNavigate, } from 'react-router-dom
 import { useSubTournaments, type SubTournament } from '../../hooks/useSubTournaments';
 import SubFilterSidebar, { type SubFilters } from './components/SubFilterSidebar';
 import { api } from '../../lib/api';
+import { useAuth } from '../../context/useAuth';
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    Helpers
@@ -20,19 +22,19 @@ type Phase = 'pending' | 'in_progress' | 'completed';
 
 // API’den dönebilecek muhtemel alanlara dayanarak faz çıkarımı
 function inferPhaseFromDetail(detail: any): Phase {
-    const started = Boolean(detail?.started ?? detail?.has_started ?? detail?.is_started);
-    const completed = Boolean(detail?.completed ?? detail?.is_completed);
-    if (completed) return 'completed';
-    if (started) return 'in_progress';
+    const started  = Boolean(detail?.started);
+    const finished = Boolean(detail?.finished);
+    if (finished) return 'completed';
+    if (started)  return 'in_progress';
     return 'pending';
 }
 
 // Satır içi durum (yalnızca item’dan)
 function inlinePhase(s: any): Phase {
-    const started = Boolean(s?.started ?? s?.has_started ?? s?.is_started);
-    const completed = Boolean(s?.completed ?? s?.is_completed);
-    if (completed) return 'completed';
-    if (started) return 'in_progress';
+    const started  = Boolean(s?.started);
+    const finished = Boolean(s?.finished);
+    if (finished) return 'completed';
+    if (started)  return 'in_progress';
     return 'pending';
 }
 
@@ -48,9 +50,11 @@ const PHASE_BADGE = {
 function Row({
                  item,
                  onChanged,
+                 canManage,
              }: {
     item: SubTournament;
     onChanged: () => void;
+    canManage: boolean;
 }) {
     const nav = useNavigate();
     const [open, setOpen] = useState(false);
@@ -127,13 +131,11 @@ function Row({
 
                 {/* SAĞ: durum rozeti + menü */}
                 <div className="relative flex items-center gap-4">
-          <span
-              className={`px-2 py-1 rounded text-xs border border-white/10 ${badge.chip}`}
-              title={`Durum: ${badge.text}`}
-          >
+          <span className={`px-2 py-1 rounded text-xs border border-white/10 ${badge.chip}`}>
             {badge.text}
           </span>
-
+                    {/* 🔒 Yalnızca yetkiliyse üç nokta menüsü */}
+                    {canManage && (
                     <div className="relative">
                         <button
                             onClick={(e) => {
@@ -192,7 +194,7 @@ function Row({
                                 </button>
                             </div>
                         )}
-                    </div>
+                    </div>)}
                 </div>
             </div>
 
@@ -264,6 +266,22 @@ export default function TournamentSubListPage() {
 
     const [sort, setSort] = useState<SortKey>('alpha');
     const [q, setQ] = useState('');
+    const [canManage, setCanManage] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        async function load() {
+            if (!public_slug) { setCanManage(false); return; }
+            try {
+                const { data } = await api.get(`tournaments/${encodeURIComponent(public_slug)}/`);
+                if (!cancelled) setCanManage(Boolean((data as any)?.can_edit));
+            } catch {
+                if (!cancelled) setCanManage(false);
+            }
+        }
+        load();
+        return () => { cancelled = true; };
+    }, [public_slug]);
 
     // Status filtresi 'all' değilse ve listedeki maddelerde started/completed alanları yoksa
     // küçük bir detay prefetch'i yapıp cache'leyelim.
@@ -271,9 +289,7 @@ export default function TournamentSubListPage() {
         if (filters.status === 'all' || !data?.length) return;
 
         const candidates = (data as SubTournament[]).filter((s) => {
-            const hasInline =
-                ('started' in (s as any)) || ('has_started' in (s as any)) ||
-                ('completed' in (s as any)) || ('is_completed' in (s as any));
+            const hasInline = ('started' in (s as any)) ||('finished' in (s as any));
             const cached = statusMap[s.public_slug];
             return !hasInline && !cached;
         });
@@ -301,10 +317,10 @@ export default function TournamentSubListPage() {
     }, [filters.status, data]);
 
     function getPhaseFromItemOrCache(s: SubTournament, cache: Record<string, Phase>): Phase {
-        const started = Boolean((s as any).started ?? (s as any).has_started ?? (s as any).is_started);
-        const completed = Boolean((s as any).completed ?? (s as any).is_completed);
-        if (completed) return 'completed';
-        if (started) return 'in_progress';
+        const started  = Boolean((s as any).started);
+        const finished = Boolean((s as any).finished);
+        if (finished) return 'completed';
+        if (started)  return 'in_progress';
         return cache[s.public_slug] ?? 'pending';
     }
 
@@ -420,35 +436,71 @@ export default function TournamentSubListPage() {
 
                     {/* content states */}
                     {isLoading && <SkeletonList />}
-                    {isError && (
-                                                errorStatus === 401 ? (
-                                                        <div className="mt-2 rounded-2xl border border-white/10 bg-[#1b1f27] p-8 text-center">
-                                                                <div className="text-amber-200 font-semibold mb-1">Yetki yok (401)</div>
-                                                                <div className="text-sm text-gray-300 mb-4">Bu içeriği görüntülemek için oturum açmalısınız.</div>
-                                                                <div className="text-xl font-bold mb-2">Bu Sayfa Bulunamadı</div>
-                                                                <div className="flex items-center justify-center gap-3">
-                                                                    <Link to="/" className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">← Dashboard</Link>
-                                                                    <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm">Giriş Yap →</Link>
-                                                                </div>
-                                                            </div>
-                                                    ) : (
-                                                        <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6 space-y-2">
-                                                                <p className="text-red-300 font-semibold">Veri alınamadı.</p>
-                                                                <p className="text-sm text-gray-300">
-                                                                    {error instanceof Error ? error.message : 'Bilinmeyen hata.'}
-                                                                </p>
-                                                                <div className="flex items-center gap-3">
-                                                                    <button
-                                                                        onClick={() => refetch()}
-                                                                        className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
-                                                                        type="button"
-                                                                    >
-                                                                        Tekrar Dene
-                                                                    </button>
-                                                                </div>
-                                                        </div>
-                                                )
-                                            )}
+                    {isError && (() => {
+                        const code = errorStatus; // 401 / 403 / 404 / diğer
+                        if (code === 401) {
+                            return (
+                                <div className="mt-2 rounded-2xl border border-white/10 bg-[#1b1f27] p-8 text-center">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-500/15 text-amber-300 flex items-center justify-center text-2xl">🔒</div>
+                                    <div className="text-amber-200 font-semibold mb-1">Erişim kısıtlı (401)</div>
+                                    <p className="text-sm text-gray-300 mb-4">
+                                        Bu sayfayı görüntülemek için oturum açın ya da organizatörden yetki isteyin.
+                                    </p>
+                                    <div className="flex items-center justify-center gap-3">
+                                        <Link to="/" className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">← Dashboard</Link>
+                                        <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm">Giriş Yap →</Link>
+                                    </div>
+                                </div>
+                            );
+                        }
+                        if (code === 403) {
+                            return (
+                                <div className="mt-2 rounded-2xl border border-white/10 bg-[#1b1f27] p-8 text-center">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-500/15 text-amber-300 flex items-center justify-center text-2xl">🚫</div>
+                                    <div className="text-amber-200 font-semibold mb-1">Yetkiniz yok (403)</div>
+                                    <p className="text-sm text-gray-300 mb-4">
+                                        Bu turnuvanın alt turnuvalarını görüntüleme yetkiniz bulunmuyor.
+                                    </p>
+                                    <div className="flex items-center justify-center gap-3">
+                                        <Link to="/" className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">← Dashboard</Link>
+                                    </div>
+                                </div>
+                            );
+                        }
+                        if (code === 404) {
+                            return (
+                                <div className="mt-2 rounded-2xl border border-white/10 bg-[#1b1f27] p-8 text-center">
+                                    <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center text-2xl">❓</div>
+                                    <div className="text-violet-200 font-semibold mb-1">Turnuva bulunamadı (404)</div>
+                                    <p className="text-sm text-gray-300 mb-4">
+                                        Böyle bir turnuva yok ya da erişiminiz yok.
+                                    </p>
+                                    <div className="flex items-center justify-center gap-3">
+                                        <Link to="/" className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">← Dashboard</Link>
+                                        <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm">Giriş Yap →</Link>
+                                    </div>
+                                </div>
+                            );
+                        }
+                        // Diğer hatalar için mevcut "tekrar dene" panelini göster
+                        return (
+                            <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6 space-y-2">
+                                <p className="text-red-300 font-semibold">Veri alınamadı.</p>
+                                <p className="text-sm text-gray-300">
+                                    {error instanceof Error ? error.message : 'Bilinmeyen hata.'}
+                                </p>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => refetch()}
+                                        className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
+                                        type="button"
+                                    >
+                                        Tekrar Dene
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {!isLoading && !isError && (
                         <>
@@ -475,7 +527,7 @@ export default function TournamentSubListPage() {
                             ) : (
                                 <div className="space-y-4 pb-8">
                                     {list.map((s) => (
-                                        <Row key={s.id} item={s} onChanged={refetch} />
+                                        <Row key={s.id} item={s} onChanged={refetch} canManage={canManage} />
                                     ))}
                                 </div>
                             )}
