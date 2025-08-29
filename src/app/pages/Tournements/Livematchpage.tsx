@@ -49,6 +49,7 @@ export default function LiveMatchPage() {
             const r = await api.get<Match[]>(`subtournaments/${subSlug}/matches/`);
             return r.data;
         } catch {
+            // bazı kurulumlarda eski kısayol var
             const r2 = await api.get<Match[]>(`subtournements/${subSlug}/matches`);
             return r2.data;
         }
@@ -74,29 +75,35 @@ export default function LiveMatchPage() {
         return results;
     };
 
-    /** ---- İlk çözümleme + periyodik yenileme ---- */
+    /* ───────────────────────── 1) SLUG çözümleme: sadece 1 kez ───────────────────────── */
     useEffect(() => {
-        let alive = true;
         if (!slug) return;
+        let cancelled = false;
 
-        const runFirst = async () => {
-            setError(null);
+        // reset
+        setResolved('unknown');
+        setSubs({});
+        setMatches({});
+        setError(null);
+
+        (async () => {
             try {
+                // önce sub olarak dene
                 const asSub = await fetchAsSub(slug);
-                if (!alive) return;
+                if (cancelled) return;
                 setResolved('sub');
                 setSubs({ [asSub.sub.public_slug]: asSub.sub });
                 setMatches({ [asSub.sub.public_slug]: asSub.matches });
-            } catch (err1: any) {
-                const code = err1?.response?.status;
+            } catch (err: any) {
+                // 404 ise tournament olarak dene
+                const code = err?.response?.status;
                 if (code && code !== 404) {
-                    if (!alive) return;
-                    setError('Alt turnuva bilgisi alınamadı.');
+                    if (!cancelled) setError('Alt turnuva bilgisi alınamadı.');
                     return;
                 }
                 try {
                     const bundles = await fetchAsTournament(slug);
-                    if (!alive) return;
+                    if (cancelled) return;
                     const nextSubs: Record<string, SubTournament> = {};
                     const nextMatches: Record<string, Match[]> = {};
                     bundles.forEach(({ sub, matches }) => {
@@ -107,14 +114,24 @@ export default function LiveMatchPage() {
                     setSubs(nextSubs);
                     setMatches(nextMatches);
                 } catch {
-                    if (!alive) return;
-                    setError('Veri alınamadı.');
+                    if (!cancelled) setError('Veri alınamadı.');
                 }
             }
-        };
+        })();
 
-        const refresh = async () => {
-            if (!alive) return;
+        return () => {
+            cancelled = true;
+        };
+    }, [slug]);
+
+    /* ───────────────────────── 2) Polling: tek timer, overlap yok ─────────────────────── */
+    useEffect(() => {
+        if (!slug || resolved === 'unknown') return;
+        let stop = false;
+        let timer: any;
+
+        const poll = async () => {
+            if (stop) return;
             refreshingRef.current = true;
             try {
                 if (resolved === 'sub') {
@@ -123,40 +140,40 @@ export default function LiveMatchPage() {
                         fetchSubDetail(key).catch(() => subs[key]),
                         fetchSubMatches(key).catch(() => matches[key] || []),
                     ]);
-                    if (!alive) return;
+                    if (stop) return;
                     setSubs({ [detail.public_slug]: detail });
                     setMatches({ [detail.public_slug]: m });
-                } else if (resolved === 'tournament') {
+                } else {
                     const keys = Object.keys(subs);
                     if (!keys.length) return;
                     const refreshed = await Promise.all(
-                        keys.map(async (k) => fetchSubMatches(k).catch(() => matches[k] || []))
+                        keys.map(k => fetchSubMatches(k).catch(() => matches[k] || []))
                     );
-                    if (!alive) return;
+                    if (stop) return;
                     const next: Record<string, Match[]> = {};
                     keys.forEach((k, i) => (next[k] = refreshed[i]));
                     setMatches(next);
                 }
             } finally {
                 refreshingRef.current = false;
+                if (!stop) timer = setTimeout(poll, 15000); // 15 sn sonra tekrar; tek timer
             }
         };
 
-        runFirst();
-        const id = setInterval(() => {
-            if (resolved === 'unknown') return;
-            void refresh();
-        }, 15000);
+        // ilk tetikleme
+        timer = setTimeout(poll, 15000);
 
         return () => {
-            alive = false;
-            clearInterval(id);
+            stop = true;
+            clearTimeout(timer);
         };
-    }, [slug, resolved, subs, matches]);
+        // DİKKAT: burada subs/matches bağımlılığı YOK -> timer yeniden kurulmaz
+    }, [slug, resolved]);
 
     /** Kart verileri */
     const cards = useMemo(() => {
         type Card = {
+            id: string; // benzersiz anahtar
             court: number;
             matchNo: number | null;
             roundText: string;
@@ -189,6 +206,7 @@ export default function LiveMatchPage() {
                 if (seen.has(c)) continue;
                 seen.add(c);
                 entries.push({
+                    id: `${subSlug}-${c}-${m.match_no ?? m.position}-${m.round_no}`, // benzersiz
                     court: c,
                     matchNo: m.match_no,
                     roundText: roundLabel(m.round_no, maxR),
@@ -209,14 +227,21 @@ export default function LiveMatchPage() {
             : '—';
 
     return (
-        <div className="min-h-[calc(100vh-64px)] w-full text-white
+        <div className="min-h[calc(100vh-64px)] w-full text-white
       bg-[#161a20] bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(120,119,198,.08),transparent_50%),radial-gradient(1000px_500px_at_100%_10%,rgba(16,185,129,.07),transparent_55%)]">
             <header className="px-5 md:px-8 py-4 border-b border-white/10 bg-[#1d2129]/95 backdrop-blur">
                 <div className="flex items-center justify-between gap-4">
-                    <h1 className="text-[1.15rem] md:text-xl font-semibold tracking-wide
-            bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
-                        Canlı Maç Odası
-                    </h1>
+                    <div className="flex items-center gap-2.5">
+                        <h1 className="text-[1.15rem] md:text-xl font-semibold tracking-wide
+              bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
+                            Canlı Maç Odası
+                        </h1>
+                        {/* isterseniz styles/custom.css’te .live-dot animasyonu var */}
+                        <span
+                            className="h-2.5 w-2.5 md:h-3 md:w-3 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,.28)] live-dot"
+                            aria-label="live"
+                        />
+                    </div>
                     <div className="flex items-center gap-3">
             <span className="text-sm text-white/80">
               Kategori:
@@ -248,7 +273,7 @@ export default function LiveMatchPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {cards.map((c) => (
                             <CourtCard
-                                key={`court-${c.court}`}
+                                key={c.id} // benzersiz key
                                 court={c.court}
                                 matchNo={c.matchNo}
                                 roundText={c.roundText}
@@ -288,7 +313,7 @@ function CourtCard({
             <div className="absolute left-0 top-0 h-full w-1.5
         bg-gradient-to-b from-indigo-400 via-sky-300 to-emerald-300 opacity-60" />
 
-            {/* Üst şerit — daha büyük Court ve başlık badge'i */}
+            {/* Üst şerit */}
             <div className="flex items-center justify-between px-5 py-4
         bg-gradient-to-r from-[#262b38] to-[#2a3040] border-b border-white/10">
                 <div className="flex items-center gap-3 text-base text-white/90">
@@ -299,15 +324,15 @@ function CourtCard({
                             <path d="M3 12h18M12 5v14" stroke="currentColor" strokeWidth="1.7"/>
                         </svg>
                         <span className="font-semibold tracking-wide">Court</span>
-                        <span className="px-2.5 py-1 rounded-md bg-gradient-to-b from-zinc-200/90 to-zinc-50/90 text-gray-900 text-sm font-bold tabular-nums shadow">
+                        <span className="px-4.5 py-2 rounded-md bg-gradient-to-b from-zinc-200/90 to-zinc-50/90 text-gray-900 text-lg md:text-xl font-bold tabular-nums shadow">
               {court}
             </span>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                     {title ? (
-                        <span className="hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-sm
+                        <span className="hidden md:inline-flex items-center px-4 py-2.5 rounded-full text-sm
               bg-indigo-400/15 text-indigo-100 ring-1 ring-indigo-300/30">
               {title}
             </span>

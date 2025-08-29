@@ -223,3 +223,13 @@
         font-weight: 900;
     }
 }
+/* smoother, slower live pulse */
+@keyframes live-pulse {
+    0%   { transform: scale(1);    opacity: .45; box-shadow: 0 0 0 0 rgba(239,68,68,.35); }
+    50%  { transform: scale(1.15); opacity: 1;   box-shadow: 0 0 14px 6px rgba(239,68,68,.28); }
+    100% { transform: scale(1);    opacity: .45; box-shadow: 0 0 0 0 rgba(239,68,68,.35); }
+}
+.live-dot {
+    animation: live-pulse 1.8s ease-in-out infinite; /* daha yavaş ve yumuşak */
+    will-change: transform, opacity;
+}
