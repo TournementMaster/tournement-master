@@ -508,7 +508,8 @@ export default function TournamentSubListPage() {
                                 <div className="rounded-lg border border-white/10 bg-[#2a2d34] p-8 text-center">
                                     <div className="text-lg font-semibold mb-2">Henüz alt turnuvanız yok</div>
                                     <p className="text-sm text-gray-300 mb-5">Oluşturmak ister misiniz?</p>
-                                    {parentId ? (
+                                    {canManage && (
+                                        parentId ? (
                                         <Link
                                             to={`/create?mode=sub&parent=${parentId}`}
                                             className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
@@ -522,7 +523,7 @@ export default function TournamentSubListPage() {
                                         >
                                             Alt Turnuva Oluştur
                                         </Link>
-                                    )}
+                                    ))}
                                 </div>
                             ) : (
                                 <div className="space-y-4 pb-8">

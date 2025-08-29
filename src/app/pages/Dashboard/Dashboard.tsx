@@ -14,15 +14,28 @@ import { useTournaments, type Tournament } from '../../hooks/useTournaments';
 import { api } from '../../lib/api';
 
 type SortKey = 'recent' | 'alpha';
+type Me = { is_admin:boolean };
 
 export default function Dashboard() {
     const { data, isLoading, isError, error, refetch } = useTournaments();
 
     const [sort, setSort] = useState<SortKey>('recent');
+    const [isAdmin, setIsAdmin] = useState(false);
     const [q, setQ] = useState('');
 
     const navigate = useNavigate();
     const location = useLocation();
+
+    useEffect(() => {
+        if (!isLoading) {
+            (async () => {
+                try {
+                    const { data } = await api.get<Me>('me/');
+                    setIsAdmin(Boolean(data?.is_admin));
+                } catch { setIsAdmin(false); }
+            })();
+        }
+    }, [isLoading]);
 
     // ➜ Giriş kontrolü
     useEffect(() => {
@@ -130,7 +143,7 @@ export default function Dashboard() {
                     setQ={setQ}
                     total={Array.isArray(data) ? data.length : 0}
                 />
-                <EmptyState />
+                <EmptyState isAdmin={isAdmin} />
             </div>
         );
     }
@@ -226,6 +239,7 @@ function Card({
     const [menuOpen, setMenuOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
+    const canEdit = Boolean((tournament as any)?.can_edit);
 
     const dateRange =
         tournament.start_date && tournament.end_date
@@ -278,21 +292,23 @@ function Card({
             {/* ÜST BAR (3 nokta + şehir) */}
             <div className="absolute top-0 left-0 right-0 p-2 flex items-start justify-between text-[11px] pointer-events-none">
                 <div className="relative z-20 pointer-events-auto" ref={menuRef}>
-                    <button
-                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(v => !v); }}
-                        className="w-11 h-11 rounded-full flex items-center justify-center
+                    {canEdit && (
+                        <button
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(v => !v); }}
+                            className="w-11 h-11 rounded-full flex items-center justify-center
                  bg-gray-900/70 border border-white/15 text-gray-100 text-[22px] font-semibold
                  hover:bg-gray-900/90 shadow"
-                        title="Seçenekler"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen}
-                        type="button"
-                    >
-                        ⋯
-                    </button>
+                            title="Seçenekler"
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpen}
+                            type="button"
+                        >
+                            ⋯
+                        </button>
+                    )}
 
-                    {menuOpen && (
+                    {menuOpen && canEdit && (
                         <div
                             role="menu"
                             className="absolute left-0 mt-2 w-56 bg-[#161a20] border border-white/10 rounded-xl
@@ -423,19 +439,16 @@ function SkeletonGrid() {
     );
 }
 
-function EmptyState() {
+function EmptyState({ isAdmin=false }: { isAdmin?: boolean }) {
     return (
         <div className="mt-8 rounded-lg border border-white/10 bg-[#2a2d34] p-8 text-center">
             <div className="text-lg font-semibold mb-2">Henüz ana turnuvanız yok</div>
-            <p className="text-sm text-gray-300 mb-5">
-                Oluşturmak ister misiniz?
-            </p>
-            <Link
-                to="/create?mode=main"
-                className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700"
-            >
-                Turnuva Oluştur
-            </Link>
+            <p className="text-sm text-gray-300 mb-5">Oluşturmak ister misiniz?</p>
+            {isAdmin && (
+                <Link to="/create?mode=main" className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700">
+                    Turnuva Oluştur
+                </Link>
+            )}
         </div>
     );
 }

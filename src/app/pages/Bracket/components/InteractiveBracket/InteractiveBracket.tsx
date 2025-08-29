@@ -185,6 +185,8 @@ export default memo(function InteractiveBracket() {
     const [authErr, setAuthErr] = useState<number | null>(null);
     const [subDetail, setSubDetail] = useState<SubTournamentDetail | null>(null);
 
+    const [isReferee, setIsReferee] = useState<boolean>(false);
+
     type SubTournamentDetail = SubTournament & {
         started?: boolean;
         can_edit?: boolean;
@@ -308,9 +310,9 @@ export default memo(function InteractiveBracket() {
     const autoModeAppliedRef = useRef(false);
     useEffect(() => {
         if (autoModeAppliedRef.current) return;
-        setMode(isAuth && canEdit ? 'edit' : 'view');
+        setMode(isAuth && (canEdit || isReferee) ? 'edit' : 'view');
         autoModeAppliedRef.current = true;
-    }, [isAuth, canEdit]);
+    }, [isAuth, canEdit, isReferee]);
 
     useEffect(() => {
         if (!isAuth && mode === 'edit') {
@@ -320,15 +322,11 @@ export default memo(function InteractiveBracket() {
     }, [isAuth, mode]);
 
     useEffect(() => {
-        const participantsViewOnly = mode === 'view' || startedRef.current;
-        window.dispatchEvent(
-            new CustomEvent('bracket:view-only', { detail: { value: participantsViewOnly } })
-        );
-        window.dispatchEvent(
-            new CustomEvent('bracket:players-locked', { detail: { value: startedRef.current } })
-        );
+        const participantsViewOnly = (mode === 'view') || startedRef.current || isReferee;
+        window.dispatchEvent(new CustomEvent('bracket:view-only', { detail: { value: participantsViewOnly } }));
+        window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: startedRef.current || isReferee } }));
         window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', { detail: { mode } }));
-    }, [mode, started]);
+    }, [mode, started, isReferee]);
 
     // slug → detay çek
     useEffect(() => {
@@ -367,6 +365,10 @@ export default memo(function InteractiveBracket() {
 
                 setTournamentSlug(tSlug);
                 if (typeof data?.can_edit === 'boolean') setCanEdit(Boolean(data.can_edit));
+                if (typeof (data as any)?.can_referee === 'boolean') {
+                    setIsReferee(Boolean((data as any).can_referee));
+                }
+
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) {
                     setStarted(Boolean(data.started));
                 } else if (Object.prototype.hasOwnProperty.call(data as any, 'has_started')) {
@@ -434,7 +436,7 @@ export default memo(function InteractiveBracket() {
     /* Header eventleri */
     useEffect(() => {
         const enterEdit = () => {
-            if (!canEdit) return;
+            if (!(canEdit || isReferee)) return;
             editPlayersSnapshotRef.current = players.map((p) => ({
                 name: p.name,
                 club: p.club,

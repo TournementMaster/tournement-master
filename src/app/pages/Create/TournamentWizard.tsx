@@ -6,6 +6,8 @@ import { api } from '../../lib/api'
 
 export type Mode = 'main' | 'sub'
 export type Editor = { id: number; username: string }
+export type Referee = { id: number; username: string };
+
 
 export default function TournamentWizard({
                                              mode: initialMode,
@@ -40,6 +42,36 @@ export default function TournamentWizard({
     const [weighInSlug, setWeighInSlug] = useState<string | null>(null);
     const [weighOpen, setWeighOpen] = useState(true);
     const [editingTournamentId, setEditingTournamentId] = useState<number | null>(null);
+
+    // SUB: Hakem ekleme
+    const [refInput, setRefInput] = useState('');
+    const [referees, setReferees] = useState<Referee[]>([]);
+    const [busyRef, setBusyRef] = useState(false);
+    const [refFeedback, setRefFeedback] = useState<string | null>(null);
+
+    async function addReferee() {
+        const u = refInput.trim();
+        setRefFeedback(null);
+        if (!u) return;
+        if (referees.some(r => r.username.toLowerCase() === u.toLowerCase())) {
+            setRefFeedback('Bu kullanıcı zaten hakem listesinde.');
+            return;
+        }
+        setBusyRef(true);
+        try {
+            const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`);
+            if (!data || typeof data.id !== 'number' || data.id === -1) {
+                setRefFeedback('Kullanıcı bulunamadı.');
+            } else {
+                setReferees(prev => [...prev, { id: data.id, username: u }]);
+                setRefInput('');
+            }
+        } catch {
+            setRefFeedback('Sunucu hatası, tekrar deneyin.');
+        } finally {
+            setBusyRef(false);
+        }
+    }
 
     // MAIN: Düzenleme modunda alanları doldur
     useEffect(() => {
@@ -142,7 +174,10 @@ export default function TournamentWizard({
                 setGender((data.gender as never) || 'M')
                 setSubPublic(!!data.public)
                 setDefaultCourt(String(data.court_no ?? ''))
-            } catch {}
+                if (Array.isArray((data as any).referees)) {
+                    setReferees((data.referees as number[]).map((id: number) => ({ id, username: `#${id}` })));
+                }
+            } catch { /* empty */ }
         })()
     }, [mode, editSlug])
 
@@ -283,6 +318,7 @@ export default function TournamentWizard({
                     gender,
                     public: subPublic,
                     ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
+                    referees: referees.map(r => r.id),
                 })
                 await qc.invalidateQueries({ queryKey: ['subtournaments'] })
                 navigate(-1)
@@ -309,6 +345,7 @@ export default function TournamentWizard({
                 gender,
                 public: subPublic,
                 ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
+                referees: referees.map(r => r.id),
             })
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
             navigate(-1)
@@ -471,6 +508,48 @@ export default function TournamentWizard({
                                 <div />
                             </div>
                             <Toggle checked={subPublic} onChange={setSubPublic}>Herkes</Toggle>
+
+                            <div className="mt-4">
+                                <label className="block text-sm mb-1">Hakem Ekle (kullanıcı adı)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        value={refInput}
+                                        onChange={e => setRefInput(e.target.value)}
+                                        className="flex-1 bg-[#1f2229] rounded px-3 py-2"
+                                    />
+                                    <button
+                                        disabled={busyRef || !refInput.trim()}
+                                        onClick={addReferee}
+                                        className="px-3 py-2 rounded bg-emerald-600 disabled:opacity-50"
+                                        type="button"
+                                    >
+                                        Ekle
+                                    </button>
+                                </div>
+                                {refFeedback && <p className="mt-2 text-sm text-red-400">{refFeedback}</p>}
+
+                                <div className="bg-[#23252b] rounded p-3 mt-3">
+                                    <div className="mb-2 text-sm font-medium text-gray-200">Hakemler</div>
+                                    {referees.length === 0 ? (
+                                        <p className="text-xs text-gray-400">Henüz hakem eklenmedi.</p>
+                                    ) : (
+                                        <ul className="space-y-1">
+                                            {referees.map((r, i) => (
+                                                <li key={i} className="flex items-center justify-between text-sm">
+                                                    <span>{r.username}</span>
+                                                    <button
+                                                        onClick={() => setReferees(list => list.filter((_, idx) => idx !== i))}
+                                                        className="rounded bg-gray-700 px-2 py-0.5 text-xs"
+                                                        type="button"
+                                                    >
+                                                        Kaldır
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
                         </>
                     )}
 

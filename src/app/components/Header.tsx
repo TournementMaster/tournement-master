@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useAuth } from '../context/useAuth';
 import { api } from '../lib/api';
 import type { SubTournament } from '../hooks/useSubTournaments';
+type WhoAmI = { id:number; username:string; is_admin:boolean };
 
 export default function Header({ showSave = false }: { showSave?: boolean }) {
     const { isAuth, logout } = useAuth();
@@ -17,7 +18,41 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const isBracket = pathname.startsWith('/bracket');
     const isSubList = pathname.startsWith('/tournements/');
 
+    // + NEW: izin bayrakları
+    const [canCreateMain, setCanCreateMain] = useState(false);
+    const [canCreateSub, setCanCreateSub] = useState(false);
+
     const [headerText, setHeaderText] = useState<string>('');
+
+    // + NEW: dashboard’dayken admin mi?
+    useEffect(() => {
+        let cancelled = false;
+        if (!isDashboard || !isAuth) { setCanCreateMain(false); return; }
+        (async () => {
+            try {
+                const { data } = await api.get<WhoAmI>('me/');
+                if (!cancelled) setCanCreateMain(Boolean(data?.is_admin));
+            } catch { if (!cancelled) setCanCreateMain(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [isDashboard, isAuth]);
+
+    // + NEW: alt turnuva listesindeyken ilgili ana turnuva can_edit?
+    useEffect(() => {
+        let cancelled = false;
+        if (!isSubList || !isAuth) { setCanCreateSub(false); return; }
+        const slug = pathname.match(/^\/tournements\/([^/?#]+)/)?.[1];
+        if (!slug) { setCanCreateSub(false); return; }
+        (async () => {
+            try {
+                const { data } = await api.get(`tournaments/${encodeURIComponent(slug)}/`);
+                if (!cancelled) setCanCreateSub(Boolean((data as any)?.can_edit));
+            } catch { if (!cancelled) setCanCreateSub(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [isSubList, pathname, isAuth]);
+
+
 
     useEffect(() => {
         if (!isBracket) {
@@ -53,7 +88,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
         };
     }, [isBracket, pathname, sp]);
 
-    const showCreateBtn = isDashboard || isSubList;
+    const showCreateBtn = (isDashboard && canCreateMain) || (isSubList && canCreateSub);
     const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur';
 
     const onCreate = () => {
@@ -61,6 +96,9 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             navigate('/login');
             return;
         }
+        if (isDashboard && !canCreateMain) { alert('Bu işlem için yetkiniz yok.'); return; }
+        if (isSubList && !canCreateSub)   { alert('Bu turnuvada düzenleme yetkiniz yok.'); return; }
+
         if (isSubList) {
             const parentId =
                 Number(new URLSearchParams(location.search).get('parent') || '0') || undefined;
