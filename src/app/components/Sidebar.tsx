@@ -49,8 +49,20 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
     const { setPlayers } = usePlayers()
     const [active, setActive] = useState<'participants' | 'sub' | 'settings' | 'theme'>(isAuth ? 'participants' : 'theme')
     const [full, setFull] = useState(false)
+    const [paletteOnly, setPaletteOnly] = useState(false)
 
     useEffect(() => { if (!isAuth) setActive('theme') }, [isAuth])
+
+    // InteractiveBracket'tan gelen "yalnız palet" sinyalini dinle
+    useEffect(() => {
+        const h = (e:any) => setPaletteOnly(Boolean(e?.detail?.value))
+        window.addEventListener('bracket:palette-only', h)
+        return () => window.removeEventListener('bracket:palette-only', h)
+    }, [])
+    // paletteOnly olduğunda sekmeyi zorunlu 'theme' yap
+    useEffect(() => { if (paletteOnly) setActive('theme') }, [paletteOnly])
+
+
     const ensureOpen = () => { if (!isOpen) onToggle() }
 
     // Excel import
@@ -106,7 +118,7 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                 </button>
 
                 <div className="flex flex-col items-center gap-4">
-                    {isAuth && (
+                    {isAuth && !paletteOnly && (
                         <>
                             <IconButton title="Katılımcılar" active={active === 'participants'} onClick={() => { ensureOpen(); setActive('participants') }}>
                                 <Icon d={PATH.users} />
@@ -148,16 +160,19 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
             </nav>
 
             {isOpen && (
-                   <div className="bg-[#2a303a] text-slate-100 p-4 w-72 z-30 h-[calc(100vh-64px)] overflow-hidden">
-                    {!isAuth ? (
+                <div className="bg-[#2a303a] text-slate-100 p-4 w-72 z-30 h[calc(100vh-64px)] overflow-hidden">
+                    {/* paletteOnly iken her koşulda sadece ThemePanel */}
+                    {paletteOnly ? (
+                        <div className="h-full"><ThemePanel /></div>
+                    ) : !isAuth ? (
                         <div className="h-full"><ThemePanel /></div>
                     ) : (
                         <div className="h-full">
-                                     {active === 'participants' && <ParticipantsPanel />}
-                                     {active === 'sub' && <SubTournamentSettingsPanel />}
-                                     {active === 'settings' && <SettingsPanel />}
-                                     {active === 'theme' && <ThemePanel />}
-                                   </div>
+                            {active === 'participants' && <ParticipantsPanel />}
+                            {active === 'sub' && <SubTournamentSettingsPanel />}
+                            {active === 'settings' && <SettingsPanel />}
+                            {active === 'theme' && <ThemePanel />}
+                        </div>
                     )}
                 </div>
             )}

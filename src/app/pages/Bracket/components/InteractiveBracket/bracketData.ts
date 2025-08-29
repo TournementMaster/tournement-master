@@ -1,5 +1,5 @@
 // src/app/pages/Bracket/components/InteractiveBracket/bracketData.ts
-import { useEffect } from 'react';
+import {useEffect, useRef} from 'react';
 import { api } from '../../../../lib/api';
 import type { Participant } from '../../../../hooks/usePlayers';
 import type { Palette } from '../../../../context/themePalettes';
@@ -51,6 +51,15 @@ type ApiMatch = {
     match_no?: number | null;
 };
 type ClubRow = { id: number; name: string; city?: string };
+
+type LoaderProps = {
+    slug: string
+    enabled: boolean
+    refreshKey: number
+    onBuilt: (matrix: Matrix, firstRoundParticipants: Participant[]) => void
+    onAuthError?: (code: number) => void
+    pollMs?: number // varsayılan 15sn
+}
 
 /* -------------------------------- Helpers -------------------------------- */
 export function blank(): Match {
@@ -325,7 +334,7 @@ export function BackendBracketLoader({
                                          enabled,
                                          refreshKey,
                                          onBuilt,
-                                         pollMs = 30_000,
+                                         pollMs = 15_000,
                                          onAuthError,
                                      }: {
     slug: string;
@@ -335,18 +344,33 @@ export function BackendBracketLoader({
     pollMs?: number;
     onAuthError?: (code: number) => void;
 }) {
-    // polling
+    // callback'leri ref'e al — efektin dependency’sini daralt
+    const onBuiltRef = useRef(onBuilt);
+    const onAuthErrRef = useRef(onAuthError);
+    useEffect(() => { onBuiltRef.current = onBuilt }, [onBuilt]);
+    useEffect(() => { onAuthErrRef.current = onAuthError }, [onAuthError]);
+
+    // Tek interval + overlap koruması
     useEffect(() => {
         if (!slug || !enabled) return;
-        let mounted = true;
+
         let timer: number | null = null;
+        let mounted = true;
+        const inflightRef = { current: false };
+        let abortCtrl: AbortController | null = null;
 
         const fetchAll = async () => {
+            if (!mounted || inflightRef.current) return;
+            if (document.hidden) return; // sekme gizliyken bekle
+
+            inflightRef.current = true;
+            abortCtrl?.abort();
+            abortCtrl = new AbortController();
             try {
                 const [athRes, matchRes, clubsRes] = await Promise.all([
-                    api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`),
-                    api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`),
-                    api.get<ClubRow[]>('clubs/').catch(() => ({ data: [] as ClubRow[] })),
+                    api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`, { signal: abortCtrl.signal }),
+                    api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`,  { signal: abortCtrl.signal }),
+                    api.get<ClubRow[]>('clubs/', { signal: abortCtrl.signal }).catch(() => ({ data: [] as ClubRow[] })),
                 ]);
                 if (!mounted) return;
                 const built = buildFromBackend(
@@ -354,49 +378,30 @@ export function BackendBracketLoader({
                     Array.isArray(matchRes.data) ? matchRes.data : [],
                     Array.isArray(clubsRes.data) ? clubsRes.data : []
                 );
-                onBuilt(propagate(built.matrix, { autoByes: true }), built.firstRound);
+                onBuiltRef.current?.(propagate(built.matrix, { autoByes: true }), built.firstRound);
             } catch (e: any) {
                 const code = e?.response?.status;
-                if (code && onAuthError) onAuthError(code);
+                if (code) onAuthErrRef.current?.(code);
+            } finally {
+                inflightRef.current = false;
             }
         };
 
+        // hemen bir kez çek
         void fetchAll();
+        // 15 sn’de bir
         timer = window.setInterval(fetchAll, pollMs);
+        // görünürlük değişince görünür olduğunda bir kez daha çek
+        const onVis = () => { if (!document.hidden) void fetchAll(); };
+        document.addEventListener('visibilitychange', onVis);
+
         return () => {
             mounted = false;
             if (timer) window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', onVis);
+            abortCtrl?.abort();
         };
-    }, [slug, enabled, pollMs, refreshKey, onBuilt, onAuthError]);
-
-    // initial once (extra)
-    useEffect(() => {
-        if (!slug) return;
-        let cancelled = false;
-        const once = async () => {
-            try {
-                const [athRes, matchRes, clubsRes] = await Promise.all([
-                    api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`),
-                    api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`),
-                    api.get<ClubRow[]>('clubs/').catch(() => ({ data: [] as ClubRow[] })),
-                ]);
-                if (cancelled) return;
-                const built = buildFromBackend(
-                    Array.isArray(athRes.data) ? athRes.data : [],
-                    Array.isArray(matchRes.data) ? matchRes.data : [],
-                    Array.isArray(clubsRes.data) ? clubsRes.data : []
-                );
-                onBuilt(propagate(built.matrix, { autoByes: true }), built.firstRound);
-            } catch (e: any) {
-                const code = e?.response?.status;
-                if (code && onAuthError) onAuthError(code);
-            }
-        };
-        void once();
-        return () => {
-            cancelled = true;
-        };
-    }, [slug, refreshKey, onAuthError, onBuilt]);
+    }, [slug, enabled, pollMs, refreshKey]);
 
     return null;
 }

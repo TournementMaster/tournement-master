@@ -23,6 +23,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const [canCreateSub, setCanCreateSub] = useState(false);
 
     const [headerText, setHeaderText] = useState<string>('');
+    const [paletteOnly, setPaletteOnly] = useState(false);
 
     // + NEW: dashboard’dayken admin mi?
     useEffect(() => {
@@ -52,7 +53,12 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
         return () => { cancelled = true; };
     }, [isSubList, pathname, isAuth]);
 
-
+    // InteractiveBracket'tan gelen "palette-only" sinyalini dinle
+    useEffect(() => {
+        const h = (e:any) => setPaletteOnly(Boolean(e?.detail?.value));
+        window.addEventListener('bracket:palette-only', h);
+        return () => window.removeEventListener('bracket:palette-only', h);
+    }, []);
 
     useEffect(() => {
         if (!isBracket) {
@@ -239,8 +245,8 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                             Yazdır
                         </button>
 
-                        {/* Kaydet sadece girişliyken */}
-                        {isAuth && (
+                        {/* Kaydet: girişli ve yetkili (paletteOnly değil) ise göster */}
+                        {isAuth && !paletteOnly && (
                             <button
                                 onClick={onSave}
                                 className="relative inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl shadow

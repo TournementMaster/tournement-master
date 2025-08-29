@@ -180,7 +180,7 @@ export default memo(function InteractiveBracket() {
     const [courtNo, setCourtNo] = useState<number | null>(null);
 
     const [mode, setMode] = useState<'view' | 'edit'>('view');
-    const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? true));
+    const [canEdit, setCanEdit] = useState<boolean>(Boolean(stateItem?.can_edit ?? false));
     const [refreshKey, setRefreshKey] = useState(0);
     const [authErr, setAuthErr] = useState<number | null>(null);
     const [subDetail, setSubDetail] = useState<SubTournamentDetail | null>(null);
@@ -284,20 +284,18 @@ export default memo(function InteractiveBracket() {
     // Hard reset (sadece istemci tarafı güvenli temizleme)
     useEffect(() => {
         const hardReset = () => {
-            backendMatrixRef.current = [];
-            setRounds([]);
+            // Oyuncuları KORU, sadece maç ilerlemelerini/sonuçları sıfırla
             setSelected(null);
-            setDirty(false);
-            setPlayers([]);
             setStarted(false);
-            editPlayersSnapshotRef.current = null;
-            lastPlacementRef.current = null;
-            setSaveMsg('Şablon sıfırlandı');
+            setDirty(true); // kullanıcı isterse “Kaydet” ile backend’e yazar
+            // Başlangıç görünümü: mevcut oyuncular + mevcut placement ile ilk turu yeniden kur
+            setRounds(players.length ? buildMatrix(players, settings.placementMap) : []);
+            setSaveMsg('Şablon başlangıç hâline alındı.');
             setTimeout(() => setSaveMsg(null), 1200);
         };
         window.addEventListener('bracket:hard-reset', hardReset);
         return () => window.removeEventListener('bracket:hard-reset', hardReset);
-    }, [setPlayers]);
+    }, [players, settings.placementMap]);
 
     useEffect(() => {
         window.dispatchEvent(
@@ -307,26 +305,37 @@ export default memo(function InteractiveBracket() {
     }, [mode]);
 
     // otomatik mod: auth + izin → edit
+    const [permReady, setPermReady] = useState<boolean>(Boolean(stateItem?.can_edit !== undefined));
     const autoModeAppliedRef = useRef(false);
     useEffect(() => {
-        if (autoModeAppliedRef.current) return;
-        setMode(isAuth && (canEdit || isReferee) ? 'edit' : 'view');
-        autoModeAppliedRef.current = true;
-    }, [isAuth, canEdit, isReferee]);
-
-    useEffect(() => {
-        if (!isAuth && mode === 'edit') {
+        if (!permReady) return;
+        if (!autoModeAppliedRef.current) {
+            setMode(isAuth && (canEdit || isReferee) ? 'edit' : 'view');
+            autoModeAppliedRef.current = true;
+            return;
+        }
+        // yetki kaybı olursa editten düşür
+        if (mode === 'edit' && !(canEdit || isReferee)) {
             setMode('view');
             editPlayersSnapshotRef.current = null;
         }
-    }, [isAuth, mode]);
+    }, [permReady, isAuth, canEdit, isReferee, mode]);
 
     useEffect(() => {
-        const participantsViewOnly = (mode === 'view') || startedRef.current || isReferee;
-        window.dispatchEvent(new CustomEvent('bracket:view-only', { detail: { value: participantsViewOnly } }));
-        window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: startedRef.current || isReferee } }));
-        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode', { detail: { mode } }));
-    }, [mode, started, isReferee]);
+        if ((!(canEdit || isReferee) || !isAuth) && mode === 'edit') {
+            setMode('view');
+            editPlayersSnapshotRef.current = null;
+        }
+    }, [isAuth, mode, canEdit, isReferee]);
+
+    useEffect(() => {
+        // Sadece DÜZENLEME YETKİSİ OLMAYAN hakemleri kilitle
+        const refereeLock = !canEdit && isReferee;
+        const participantsViewOnly = (mode === 'view') || startedRef.current || refereeLock;
+        window.dispatchEvent(new CustomEvent('bracket:view-only',   { detail: { value: participantsViewOnly } }));
+        window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: startedRef.current || refereeLock } }));
+        window.dispatchEvent(new CustomEvent('bracket:sidebar-mode',   { detail: { mode } }));
+    }, [mode, started, isReferee, canEdit]);
 
     // slug → detay çek
     useEffect(() => {
@@ -368,6 +377,7 @@ export default memo(function InteractiveBracket() {
                 if (typeof (data as any)?.can_referee === 'boolean') {
                     setIsReferee(Boolean((data as any).can_referee));
                 }
+                setPermReady(true);
 
                 if (Object.prototype.hasOwnProperty.call(data, 'started')) {
                     setStarted(Boolean(data.started));
@@ -556,6 +566,10 @@ export default memo(function InteractiveBracket() {
 
 
     const persistBracket = useCallback(async () => {
+        if (!(canEdit || isReferee)) {
+            setSaveMsg('Bu turnuvayı düzenleme yetkiniz yok.');
+            return;
+        }
         if (!slug) {
             setSaveMsg('Slug okunamadı.');
             return;
@@ -690,7 +704,7 @@ export default memo(function InteractiveBracket() {
             setSaving(false);
             setTimeout(() => setSaveMsg(null), 2400);
         }
-    }, [slug, subId, players, rounds, settings.placementMap, started, tournamentSlug, courtNo]);
+    }, [slug, subId, players, rounds, settings.placementMap, started, tournamentSlug, courtNo, canEdit, isReferee]);
 
     useEffect(() => {
         const h = () => {
@@ -802,7 +816,7 @@ export default memo(function InteractiveBracket() {
             try {
                 await api.patch(
                     // ÖNEMLİ: trailing slash var
-                    `http://93.183.74.124:8000/api/subtournaments/${encodeURIComponent(slug)}/`,
+                    `subtournaments/${encodeURIComponent(slug)}/`,
                     body,
                     { headers: { 'Content-Type': 'application/json' } }
                 );
@@ -811,14 +825,14 @@ export default memo(function InteractiveBracket() {
                 try {
                     if (body.started === false) {
                         await api.patch(
-                            `http://93.183.74.124:8000/api/subtournaments/${encodeURIComponent(slug)}/`,
+                            `subtournaments/${encodeURIComponent(slug)}/`,
                             { started: false },
                             { headers: { 'Content-Type': 'application/json' } }
                         );
                     }
                     if (body.finished === false) {
                         await api.patch(
-                            `http://93.183.74.124:8000/api/subtournaments/${encodeURIComponent(slug)}/`,
+                            `subtournaments/${encodeURIComponent(slug)}/`,
                             { finished: false },
                             { headers: { 'Content-Type': 'application/json' } }
                         );
@@ -836,6 +850,11 @@ export default memo(function InteractiveBracket() {
 
     // Başlatma akışı
     const startTournament = useCallback(async () => {
+        if (!(canEdit || isReferee)) {
+            setSaveMsg('Yetkiniz yok.');
+            setTimeout(() => setSaveMsg(null), 1500);
+            return;
+        }
         if (!slug) return;
         try {
             await api.patch(`subtournaments/${slug}/`, { started: true });
@@ -849,7 +868,7 @@ export default memo(function InteractiveBracket() {
             setSaveMsg('Maç başlatılamadı.');
             setTimeout(() => setSaveMsg(null), 1800);
         }
-    }, [slug]);
+    }, [slug, canEdit, isReferee]);
 
     /* ------------------- PRINT: yalnizca başlık + şablon ------------------- */
     const cut = (s = '', n = 28) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
@@ -1056,7 +1075,7 @@ export default memo(function InteractiveBracket() {
                     enabled={pollingEnabled}
                     refreshKey={refreshKey}
                     onBuilt={handleBuilt}
-                    pollMs={30_000}
+                    pollMs={15_000}
                     onAuthError={(code) => code === 401 && setAuthErr(401)}
                 />
             )}

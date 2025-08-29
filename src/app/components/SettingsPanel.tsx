@@ -153,7 +153,7 @@ export default function SettingsPanel() {
         set({ placementMap: null, version: settings.version + 1 });
 
         // güvenlik için players'ı burada da temizliyoruz (idempotent)
-        setPlayers([]);
+        // setPlayers([]);
 
         setConfirmOpen(false);
     };
