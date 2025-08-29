@@ -1,6 +1,6 @@
 // src/app/pages/Tournements/LeaderboardPage.tsx
 import { useParams, Link } from 'react-router-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 
 type ApiLeaderboardItem = {
@@ -52,21 +52,27 @@ const normalize = (it: ApiLeaderboardItem): Top8Row => ({
         club: a.club_name || undefined,
     })),
 });
+
+// Türkçe büyük harfe çevirme (i → İ vb.)
 const toTRUpper = (s: string | undefined | null) => (s ?? '').toLocaleUpperCase('tr-TR');
+
 /* ---------------------------
    BACKEND çağrıları
 ----------------------------*/
 async function fetchMatchesForSub(subPublicSlug: string): Promise<MatchDTO[]> {
+    // DRF action: /api/subtournaments/<slug>/matches/
     const r = await api.get(`subtournaments/${subPublicSlug}/matches/`);
     return Array.isArray(r.data) ? r.data : [];
 }
 
 async function fetchAthletesForSub(subPublicSlug: string): Promise<AthleteDTO[]> {
+    // DRF action: /api/subtournaments/<slug>/athletes/
     const r = await api.get(`subtournaments/${subPublicSlug}/athletes/`);
     return Array.isArray(r.data) ? r.data : [];
 }
 
 async function fetchSubsForTournament(tournamentSlug: string): Promise<SubItem[]> {
+    // /api/tournaments/<slug>/subtournaments/
     const r = await api.get(`tournaments/${tournamentSlug}/subtournaments/`);
     const data = Array.isArray(r.data) ? r.data : [];
     return data.map((d: any) => ({ public_slug: d.public_slug, title: d.title }));
@@ -87,9 +93,8 @@ const sortByRatio = (rows: TeamRow[]) =>
     });
 
 function calcTeamStats(matches: MatchDTO[], athletes: AthleteDTO[]): TeamRow[] {
-    // athlete.id -> clubId
+    // athlete.id -> clubId & clubId -> clubName
     const clubIdByAthlete = new Map<number, number>();
-    // clubId -> clubName
     const clubNameById = new Map<number, string>();
 
     for (const a of athletes) {
@@ -100,9 +105,7 @@ function calcTeamStats(matches: MatchDTO[], athletes: AthleteDTO[]): TeamRow[] {
         }
     }
 
-    // clubId -> TeamRow
     const rows = new Map<number, TeamRow>();
-
     const push = (clubId: number, dp: number, dw: number) => {
         const existing = rows.get(clubId) || {
             clubId,
@@ -112,10 +115,9 @@ function calcTeamStats(matches: MatchDTO[], athletes: AthleteDTO[]): TeamRow[] {
         };
         existing.played += dp;
         existing.won += dw;
-        // Kulüp adı sonradan gelirse güncelle
-        if (!clubNameById.get(clubId) && clubNameById.get(clubId) !== undefined) {
-            existing.club = clubNameById.get(clubId) || existing.club;
-        }
+        // isim sonradan gelirse güncelle
+        const nm = clubNameById.get(clubId);
+        if (nm) existing.club = nm;
         rows.set(clubId, existing);
     };
 
@@ -138,6 +140,32 @@ function calcTeamStats(matches: MatchDTO[], athletes: AthleteDTO[]): TeamRow[] {
     return sortByRatio(out);
 }
 
+/* ---------------------------
+   İNDİR (PNG) yardımcıları
+----------------------------*/
+const safeFile = (name: string, suffix: string) => {
+    const base = (name || 'siralama')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9._ -]/g, '')
+        .trim()
+        .replace(/\s+/g, '_');
+    return `${base}_${suffix}.png`;
+};
+
+const downloadElementAsPNG = async (el: HTMLElement, filename: string) => {
+    const { toPng } = await import('html-to-image');
+    const dataUrl = await toPng(el, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: '#0b0f16', // koyu arka planla aynı ton (UI ile tutarlı)
+    });
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    link.click();
+};
+
 type TabKey = 'oyuncu' | 'siklet' | 'genel';
 
 export default function LeaderboardPage() {
@@ -150,7 +178,7 @@ export default function LeaderboardPage() {
     const [tab, setTab] = useState<TabKey>('oyuncu');
     const [selSub, setSelSub] = useState<string | null>(null);
 
-    // Turnuvadaki tüm alt turnuvalar (genel/siklet seçenekleri için)
+    // Turnuvadaki tüm alt turnuvalar (genel/siklet için)
     const [subs, setSubs] = useState<SubItem[]>([]);
 
     // Siklet takım state
@@ -161,7 +189,12 @@ export default function LeaderboardPage() {
     const [generalLoading, setGeneralLoading] = useState(false);
     const [generalRows, setGeneralRows] = useState<TeamRow[] | null>(null);
 
-    /* --- Top8 verisini yükle (oyuncu sıralaması için) --- */
+    // İndirilecek alan referansları
+    const cardsGridRef = useRef<HTMLDivElement>(null);
+    const weightBoxRef = useRef<HTMLDivElement>(null);
+    const generalBoxRef = useRef<HTMLDivElement>(null);
+
+    /* --- Top8 verisini yükle (oyuncu sıralaması) --- */
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -204,7 +237,7 @@ export default function LeaderboardPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [public_slug]);
 
-    /* --- Turnuvadaki alt turnuvaları yükle (genel/siklet dropdown) --- */
+    /* --- Turnuvadaki alt turnuvaları yükle --- */
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -287,7 +320,6 @@ export default function LeaderboardPage() {
                         } else {
                             cur.played += r.played;
                             cur.won += r.won;
-                            // isim güncellenmişse koru
                             if (r.club && r.club !== cur.club) cur.club = r.club;
                         }
                     }
@@ -315,17 +347,52 @@ export default function LeaderboardPage() {
         return items.map((i) => ({ value: i.sub_slug, label: i.sub_title }));
     }, [subs, items]);
 
-    if (loading) return <div className="max-w-6xl mx-auto py-10 text-white subpixel-antialiased text-xl">Yükleniyor…</div>;
+    const selSubTitle = useMemo(
+        () => subOptions.find((o) => o.value === (selSub ?? ''))?.label ?? '',
+        [subOptions, selSub]
+    );
+
+    // İNDİR handler’ları
+    const handleDownloadCard = async (e: React.MouseEvent<HTMLButtonElement>) => {
+        const card = (e.currentTarget as HTMLElement).closest('article') as HTMLElement | null;
+        if (card) {
+            const title = (card.getAttribute('data-title') || 'ilk8').toString();
+            await downloadElementAsPNG(card, safeFile(title, 'ilk8'));
+        }
+    };
+    const handleDownloadAllCards = async () => {
+        if (cardsGridRef.current) {
+            await downloadElementAsPNG(cardsGridRef.current, safeFile(selSubTitle || 'tum_alt_tur', 'ilk8_toplu'));
+        }
+    };
+    const handleDownloadWeight = async () => {
+        if (weightBoxRef.current) {
+            await downloadElementAsPNG(weightBoxRef.current, safeFile(selSubTitle || 'siklet', 'takim'));
+        }
+    };
+    const handleDownloadGeneral = async () => {
+        if (generalBoxRef.current) {
+            await downloadElementAsPNG(generalBoxRef.current, safeFile('genel', 'takim'));
+        }
+    };
+
+    if (loading)
+        return <div className="max-w-6xl mx-auto py-10 text-white subpixel-antialiased text-xl">Yükleniyor…</div>;
     if (err)
         return (
             <div className="max-w-6xl mx-auto py-10 subpixel-antialiased">
-                <div className="rounded-2xl border border-red-400/40 bg-red-600/15 text-red-100 p-6 text-lg leading-relaxed">{err}</div>
+                <div className="rounded-2xl border border-red-400/40 bg-red-600/15 text-red-100 p-6 text-lg leading-relaxed">
+                    {err}
+                </div>
                 <div className="mt-4 flex items-center gap-6">
                     <Link to={`/tournements/${public_slug}`} className="text-lg text-blue-300 hover:underline">
                         ← Alt Turnuvalar
                     </Link>
                     {err.includes('Yetki yok') && (
-                        <Link to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} className="text-lg text-blue-300 hover:underline">
+                        <Link
+                            to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+                            className="text-lg text-blue-300 hover:underline"
+                        >
                             Giriş Yap →
                         </Link>
                     )}
@@ -342,11 +409,27 @@ export default function LeaderboardPage() {
                 </Link>
             </div>
 
+            {/* Oyuncu sekmesindeyken hepsini indir */}
+            {tab === 'oyuncu' && (
+                <div className="mt-2 flex justify-end">
+                    <button
+                        onClick={handleDownloadAllCards}
+                        className="px-3 py-2 rounded-xl text-sm font-semibold
+                       border border-emerald-400/30 bg-emerald-500/15 text-emerald-100
+                       hover:bg-emerald-500/25 hover:border-emerald-400/50 transition"
+                    >
+                        Tüm İlk 8’i İndir
+                    </button>
+                </div>
+            )}
+
             <div className="flex gap-6">
                 {/* Sidebar */}
                 <aside className="hidden md:block w-72 shrink-0">
                     <div className="rounded-3xl border border-white/10 bg-[#121723]/95 overflow-hidden">
-                        <div className="px-4 py-3 text-sm tracking-wide text-slate-300 border-b border-white/10">Sıralama Görünümleri</div>
+                        <div className="px-4 py-3 text-sm tracking-wide text-slate-300 border-b border-white/10">
+                            Sıralama Görünümleri
+                        </div>
                         <nav className="p-2">
                             <button
                                 onClick={() => setTab('oyuncu')}
@@ -411,21 +494,25 @@ export default function LeaderboardPage() {
 
                 {/* CONTENT */}
                 <section className="flex-1 min-w-0">
-                    {/* === OYUNCU SIRALAMASI (mevcut görünüm) === */}
+                    {/* === OYUNCU SIRALAMASI === */}
                     {tab === 'oyuncu' && (
                         <>
                             {items.length === 0 ? (
                                 <div className="rounded-2xl border border-white/15 p-8 text-lg text-gray-100">Liste boş.</div>
                             ) : (
-                                <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
+                                <div ref={cardsGridRef} className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
                                     {items.map((b) => (
                                         <article
                                             key={b.sub_slug}
-                                            className="group rounded-3xl border border-white/10 bg-[#1b1f27]/95 hover:border-emerald-400/40 hover:shadow-[0_0_0_3px_rgba(16,185,129,.25)] transition"
+                                            data-top8-card
+                                            data-title={b.sub_title}
+                                            className="group rounded-3xl border border-white/10 bg-[#1b1f27]/95
+                                 hover:border-emerald-400/40 hover:shadow-[0_0_0_3px_rgba(16,185,129,.25)]
+                                 transition"
                                         >
                                             {/* Header */}
                                             <div className="p-6 border-b border-white/10 flex items-start justify-between">
-                                                <div>
+                                                <div className="min-w-0">
                                                     <h3 className="font-bold text-white text-xl leading-snug">
                                                         <Link to={`/bracket/${b.sub_slug}`} className="hover:underline">
                                                             {b.sub_title}
@@ -438,19 +525,36 @@ export default function LeaderboardPage() {
                               </span>
                                                         )}
                                                         {b.age && (
-                                                            <span className="px-2 py-1 rounded-full bg-violet-500/15 text-violet-200 border border-violet-400/30">Yaş {b.age}</span>
+                                                            <span className="px-2 py-1 rounded-full bg-violet-500/15 text-violet-200 border border-violet-400/30">
+                                Yaş {b.age}
+                              </span>
                                                         )}
                                                         {b.weight && (
-                                                            <span className="px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/30">Kilo {b.weight}</span>
+                                                            <span className="px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/30">
+                                Kilo {b.weight}
+                              </span>
                                                         )}
                                                     </div>
                                                 </div>
-                                                <Link
-                                                    to={`/bracket/${b.sub_slug}`}
-                                                    className="shrink-0 px-3 py-1.5 text-lg rounded-xl border border-white/15 text-white bg-[#0f131a]/80 hover:bg-[#121722] transition"
-                                                >
-                                                    Bracket →
-                                                </Link>
+
+                                                {/* Sağ: Bracket ve hemen altında İndir */}
+                                                <div className="shrink-0 flex flex-col items-end gap-2">
+                                                    <Link
+                                                        to={`/bracket/${b.sub_slug}`}
+                                                        className="px-3 py-1.5 text-lg rounded-xl border border-white/15 text-white
+                                       bg-[#0f131a]/80 hover:bg-[#121722] transition"
+                                                    >
+                                                        Bracket →
+                                                    </Link>
+                                                    <button
+                                                        onClick={handleDownloadCard}
+                                                        className="px-3 py-1.5 rounded-xl
+                                       border border-emerald-300/30 bg-emerald-500/10 text-emerald-200
+                                       hover:bg-emerald-500/20 hover:border-emerald-300/50 text-sm"
+                                                    >
+                                                        İndir
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             {/* Top-8 */}
@@ -461,7 +565,10 @@ export default function LeaderboardPage() {
                                                         key={`${b.sub_slug}-${a.rank}-${a.name}`}
                                                         className="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-white/5 transition"
                                                     >
-                                                        <div className="w-12 h-12 shrink-0 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-extrabold text-xl">
+                                                        <div
+                                                            className="w-12 h-12 shrink-0 rounded-full bg-emerald-500/20 text-emerald-300
+                                         flex items-center justify-center font-extrabold text-xl"
+                                                        >
                                                             {a.rank}
                                                         </div>
                                                         <div className="min-w-0">
@@ -496,10 +603,20 @@ export default function LeaderboardPage() {
                                             </option>
                                         ))}
                                     </select>
+
+                                    {/* Siklet indir */}
+                                    <button
+                                        onClick={handleDownloadWeight}
+                                        className="px-3 py-2 rounded-xl text-sm font-semibold
+                               border border-violet-400/30 bg-violet-500/15 text-violet-100
+                               hover:bg-violet-500/25 hover:border-violet-400/50 transition"
+                                    >
+                                        İndir
+                                    </button>
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-white/10 overflow-hidden">
+                            <div ref={weightBoxRef} className="rounded-2xl border border-white/10 overflow-hidden">
                                 <div className="bg-[#10131a] px-4 py-3 text-slate-300 text-sm tracking-wide">
                                     Kulüp bazında toplam maç ve kazanılan maç sayısı
                                 </div>
@@ -520,20 +637,20 @@ export default function LeaderboardPage() {
                                             {weightTeamRows.map((r, idx) => (
                                                 <tr key={`w-${r.clubId}`}>
                                                     <td className="px-4 py-3">
-  <span className="inline-flex w-10 h-10 items-center justify-center rounded-full
-                   bg-gradient-to-br from-amber-400 to-yellow-300
-                   text-[#0b0f16] font-extrabold text-lg
-                   shadow-[0_2px_12px_rgba(251,191,36,.25)] ring-1 ring-white/10">
-    {idx + 1}
-   </span>
+                              <span
+                                  className="inline-flex w-10 h-10 items-center justify-center rounded-full
+                                           bg-gradient-to-br from-amber-400 to-yellow-300
+                                           text-[#0b0f16] font-extrabold text-lg
+                                           shadow-[0_2px_12px_rgba(251,191,36,.25)] ring-1 ring-white/10"
+                              >
+                                {idx + 1}
+                              </span>
                                                     </td>
                                                     <td className="px-4 py-3">
-   <span className="text-lg md:text-xl font-semibold tracking-wide text-indigo-200">
-    {toTRUpper(r.club)}
-   </span>
+                              <span className="text-lg md:text-xl font-semibold tracking-wide text-indigo-200">
+                                {toTRUpper(r.club)}
+                              </span>
                                                     </td>
-
-
                                                     <td className="px-4 py-3 text-slate-200">{r.played}</td>
                                                     <td className="px-4 py-3 text-emerald-300">{r.won}</td>
                                                 </tr>
@@ -551,8 +668,19 @@ export default function LeaderboardPage() {
                     {/* === GENEL TAKIM SIRALAMASI (tüm alt turnuvalar) === */}
                     {tab === 'genel' && (
                         <div className="space-y-6">
-                            <h2 className="text-xl font-bold text-amber-200">Genel takım sıralaması</h2>
-                            <div className="rounded-2xl border border-white/10 overflow-hidden">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold text-amber-200">Genel takım sıralaması</h2>
+                                <button
+                                    onClick={handleDownloadGeneral}
+                                    className="px-3 py-2 rounded-xl text-sm font-semibold
+                             border border-amber-400/30 bg-amber-500/15 text-amber-100
+                             hover:bg-amber-500/25 hover:border-amber-400/50 transition"
+                                >
+                                    İndir
+                                </button>
+                            </div>
+
+                            <div ref={generalBoxRef} className="rounded-2xl border border-white/10 overflow-hidden">
                                 <div className="bg-[#10131a] px-4 py-3 text-slate-300 text-sm tracking-wide">
                                     Bu turnuvadaki tüm alt turnuvalar üzerinden kulüp toplamları
                                 </div>
@@ -563,7 +691,7 @@ export default function LeaderboardPage() {
                                         <table className="min-w-full text-left">
                                             <thead className="bg-white/5 text-slate-200">
                                             <tr>
-                                                <th className="px-4 py-3 font-semibold w-16">Sıra</th>
+                                                <th className="px-4 py-3 font-semibold w-20">Sıra</th>
                                                 <th className="px-4 py-3 font-semibold">Kulüp</th>
                                                 <th className="px-4 py-3 font-semibold">Maç (Toplam)</th>
                                                 <th className="px-4 py-3 font-semibold">Kazanılan</th>
@@ -573,20 +701,20 @@ export default function LeaderboardPage() {
                                             {generalRows.map((r, idx) => (
                                                 <tr key={`g-${r.clubId}`}>
                                                     <td className="px-4 py-3">
-  <span className="inline-flex w-10 h-10 items-center justify-center rounded-full
-                   bg-gradient-to-br from-amber-400 to-yellow-300
-                   text-[#0b0f16] font-extrabold text-lg
-                   shadow-[0_2px_12px_rgba(251,191,36,.25)] ring-1 ring-white/10">
-    {idx + 1}
-  </span>
+                              <span
+                                  className="inline-flex w-10 h-10 items-center justify-center rounded-full
+                                           bg-gradient-to-br from-amber-400 to-yellow-300
+                                           text-[#0b0f16] font-extrabold text-lg
+                                           shadow-[0_2px_12px_rgba(251,191,36,.25)] ring-1 ring-white/10"
+                              >
+                                {idx + 1}
+                              </span>
                                                     </td>
                                                     <td className="px-4 py-3">
-  <span className="text-lg md:text-xl font-semibold tracking-wide text-indigo-200">
-    {toTRUpper(r.club)}
-  </span>
+                              <span className="text-lg md:text-xl font-semibold tracking-wide text-indigo-200">
+                                {toTRUpper(r.club)}
+                              </span>
                                                     </td>
-
-
                                                     <td className="px-4 py-3 text-slate-200">{r.played}</td>
                                                     <td className="px-4 py-3 text-emerald-300">{r.won}</td>
                                                 </tr>

@@ -504,6 +504,57 @@ export default memo(function InteractiveBracket() {
         return local.toISOString();
     };
 
+    // --- MATCH NO senkronizasyonu (generate sonrası local matrise yaz) ---
+    const toInt = (v: any): number | null => {
+        const n = parseInt(String(v ?? ''), 10);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const fetchAndMergeMatchNumbers = async (subIdParam: number) => {
+        try {
+            const { data } = await api.get<any>('matches/', {
+                params: { sub_tournament: subIdParam, page_size: 1000 },
+            });
+            const items: any[] = Array.isArray(data?.results)
+                ? data.results
+                : Array.isArray(data)
+                    ? data
+                    : [];
+
+            if (!items.length) return;
+
+            setRounds((prev) => {
+                if (!prev.length) return prev;
+
+                const copy: Matrix = prev.map((rnd) =>
+                    rnd.map((match) => ({
+                        players: match.players.map((p) => ({ ...p })),
+                        meta: match.meta ? { ...match.meta } : {},
+                    })),
+                );
+
+                for (const it of items) {
+                    const r = (toInt(it.round_no) ?? 0) - 1;      // 1-based → 0-based
+                    const p = (toInt(it.position) ?? 0) - 1;      // 1-based → 0-based
+                    const no =
+                        toInt(it.match_no) ??
+                        toInt(it.matchNo) ??
+                        toInt(it.number) ??
+                        toInt(it.no);
+
+                    if (r >= 0 && p >= 0 && no != null && copy[r]?.[p]) {
+                        (copy[r][p].meta ??= {});
+                        (copy[r][p].meta as any).matchNo = no;
+                    }
+                }
+                return copy;
+            });
+        } catch {
+            /* yoksay – numaralar backend polling ile zaten gelebilir */
+        }
+    };
+
+
     const persistBracket = useCallback(async () => {
         if (!slug) {
             setSaveMsg('Slug okunamadı.');
@@ -606,10 +657,9 @@ export default memo(function InteractiveBracket() {
                         await api.post(
                             `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
                             {},
-                            {params: {court: genCourt as number}}
+                            { params: { court: genCourt as number } }
                         );
                     } else if (genSlug) {
-                        // yedek: meta.court'lardan topla
                         const courts = new Set<number>();
                         for (const round of roundsForSave)
                             for (const m of round) {
@@ -808,16 +858,42 @@ export default memo(function InteractiveBracket() {
         const onPrint = (ev: any) => {
             const title = (ev?.detail?.title || '').toString();
 
-            // 1) rounds → düz liste (round 0'dan başlayarak)
-            const flat = [] as Array<{
+            type MatchItem = {
+                kind: 'match';
                 a: string;
                 b: string;
                 winner?: 0 | 1 | undefined;
                 matchNo?: number;
-                round: number;
-            }>;
+                round: number; // 1-based
+            };
 
+            type LabelItem = {
+                kind: 'label';
+                round: number; // 1-based
+                label: string;
+            };
+
+            type FlatItem = MatchItem | LabelItem;
+
+            const totalRounds = rounds.length;
+
+            const roundLabel = (r1: number) => {
+                // r1 is 1-based index of the round
+                const idxFromEnd = totalRounds - r1; // 0 ⇒ Final, 1 ⇒ Semi, 2 ⇒ Quarter
+                if (idxFromEnd === 0) return 'Final';
+                if (idxFromEnd === 1) return 'Yarı Final';
+                if (idxFromEnd === 2) return 'Çeyrek Final';
+                return `${r1}. Tur`;
+            };
+
+            // 1) rounds → düz liste (round 0'dan başlayarak) + her turun başına bir etiket kutusu
+            const flat: FlatItem[] = [];
             for (let r = 0; r < rounds.length; r++) {
+                const r1 = r + 1;
+
+                // Tur etiketi (bu kutu da bir "pmatch" gibi davranır ve sayfa sayımına dahil edilir)
+                flat.push({ kind: 'label', round: r1, label: roundLabel(r1) });
+
                 const round = rounds[r];
                 for (let i = 0; i < round.length; i++) {
                     const m = round[i];
@@ -832,13 +908,20 @@ export default memo(function InteractiveBracket() {
                     else if (p2?.winner === true) win = 1;
                     else if (typeof m.meta?.manual === 'number') win = m.meta!.manual as 0 | 1;
 
-                    flat.push({ a, b, winner: win, matchNo: m.meta?.matchNo, round: r + 1 });
+                    flat.push({
+                        kind: 'match',
+                        a,
+                        b,
+                        winner: win,
+                        matchNo: m.meta?.matchNo,
+                        round: r1,
+                    });
                 }
             }
 
-            // 2) 6'şarlı sayfalara böl
-            const chunkSize = 6;
-            const pages: typeof flat[] = [];
+            // 2) Sayfaları 8 kutucuk (etiketler + maçlar) olacak şekilde böl
+            const chunkSize = 8;
+            const pages: FlatItem[][] = [];
             for (let i = 0; i < flat.length; i += chunkSize) {
                 pages.push(flat.slice(i, i + chunkSize));
             }
@@ -861,32 +944,53 @@ export default memo(function InteractiveBracket() {
             };
 
             const titleHtml = (t: string) => `
-                <div class="pr-title">${t || ''}</div>
-            `;
+      <div class="pr-title">${t || ''}</div>
+    `;
 
             pages.forEach((page, pi) => {
                 const pageEl = mk(`<section class="print-page"></section>`);
-                pageEl.appendChild(mk(titleHtml(title)));
 
-                const list = mk(`<div class="print-matches"></div>`);
-                page.forEach((m, idx) => {
-                    const num = m.matchNo != null ? String(m.matchNo) : `R${m.round}-${idx + 1 + pi*chunkSize}`;
-                    const box = mk(`
-                        <div class="pmatch">
-                          <div class="mno">${num}</div>
-                          <div class="prow">
-                            <span class="pidx">1</span>
-                            <span class="pname">${m.a.replace(/</g,'&lt;')}</span>
-                            ${m.winner === 0 ? '<span class="ptick">✓</span>' : ''}
-                          </div>
-                          <div class="prow">
-                            <span class="pidx">2</span>
-                            <span class="pname">${m.b.replace(/</g,'&lt;')}</span>
-                            ${m.winner === 1 ? '<span class="ptick">✓</span>' : ''}
-                          </div>
-                        </div>
-                    `);
-                    list.appendChild(box);
+                // Başlık SADECE İLK SAYFADA
+                if (pi === 0) {
+                    pageEl.appendChild(mk(titleHtml(title)));
+                }
+
+                const list = mk(`<div class="print-matches" style="padding-left:16px;"></div>`);
+                page.forEach((item, idx) => {
+                    if (item.kind === 'label') {
+                        // Tur etiketi kutusu (pmatch gibi davranır)
+                        const labelBox = mk(`
+            <div class="pmatch pmatch--label">
+              <div class="plabel" style="width:100%; text-align:center; font-weight:700; font-size:14pt; padding:8px 6px;">
+                ${item.label}
+              </div>
+            </div>
+          `);
+                        list.appendChild(labelBox);
+                    } else {
+                        // Normal eşleşme kutusu
+                        const num =
+                            item.matchNo != null
+                                ? String(item.matchNo)
+                                : `R${item.round}-${idx + 1 + pi * chunkSize}`;
+
+                        const box = mk(`
+            <div class="pmatch">
+              <div class="mno" style="min-width:42px;padding:2px 8px;text-align:center;">${num}</div>
+              <div class="prow">
+                <span class="pidx">1</span>
+                <span class="pname">${item.a.replace(/</g, '&lt;')}</span>
+                ${item.winner === 0 ? '<span class="ptick">✓</span>' : ''}
+              </div>
+              <div class="prow">
+                <span class="pidx">2</span>
+                <span class="pname">${item.b.replace(/</g, '&lt;')}</span>
+                ${item.winner === 1 ? '<span class="ptick">✓</span>' : ''}
+              </div>
+            </div>
+          `);
+                        list.appendChild(box);
+                    }
                 });
 
                 pageEl.appendChild(list);
@@ -916,7 +1020,6 @@ export default memo(function InteractiveBracket() {
         window.addEventListener('bracket:print', onPrint);
         return () => window.removeEventListener('bracket:print', onPrint);
     }, [rounds]);
-
     return (
         <div className="relative h-[calc(100vh-64px)] overflow-hidden">
             {/* 401 overlay */}
