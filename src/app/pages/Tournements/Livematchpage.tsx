@@ -18,7 +18,12 @@ type Match = {
     court_no: number | null;
     match_no: number | null;
     winner: number | null;
+    /** oyuncular (serializer’dan geliyor) */
+    athlete1?: number | null;
+    athlete2?: number | null;
 };
+
+type AthleteLite = { id: number; name: string; club?: string };
 
 type ResolvedKind = 'unknown' | 'sub' | 'tournament';
 
@@ -39,6 +44,10 @@ export default function LiveMatchPage() {
     const [matches, setMatches] = useState<Record<string, Match[]>>({});
     const [error, setError] = useState<string | null>(null);
     const refreshingRef = useRef(false);
+
+    // subSlug -> { athleteId -> {name, club} }
+    const [athletesBySub, setAthletesBySub] =
+        useState<Record<string, Record<number, AthleteLite>>>({});
 
     /** ---- Veri çekiciler ---- */
     const fetchSubDetail = (subSlug: string) =>
@@ -75,7 +84,7 @@ export default function LiveMatchPage() {
         return results;
     };
 
-    /* ───────────────────────── 1) SLUG çözümleme: sadece 1 kez ───────────────────────── */
+    /* ───────── 1) SLUG çözümleme: sadece 1 kez ───────── */
     useEffect(() => {
         if (!slug) return;
         let cancelled = false;
@@ -87,23 +96,10 @@ export default function LiveMatchPage() {
         setError(null);
 
         (async () => {
+            // 1) ÖNCE TURNUVA OLARAK DENE
             try {
-                // önce sub olarak dene
-                const asSub = await fetchAsSub(slug);
-                if (cancelled) return;
-                setResolved('sub');
-                setSubs({ [asSub.sub.public_slug]: asSub.sub });
-                setMatches({ [asSub.sub.public_slug]: asSub.matches });
-            } catch (err: any) {
-                // 404 ise tournament olarak dene
-                const code = err?.response?.status;
-                if (code && code !== 404) {
-                    if (!cancelled) setError('Alt turnuva bilgisi alınamadı.');
-                    return;
-                }
-                try {
-                    const bundles = await fetchAsTournament(slug);
-                    if (cancelled) return;
+                const bundles = await fetchAsTournament(slug);
+                if (!cancelled && bundles.length > 0) {
                     const nextSubs: Record<string, SubTournament> = {};
                     const nextMatches: Record<string, Match[]> = {};
                     bundles.forEach(({ sub, matches }) => {
@@ -113,18 +109,28 @@ export default function LiveMatchPage() {
                     setResolved('tournament');
                     setSubs(nextSubs);
                     setMatches(nextMatches);
-                } catch {
-                    if (!cancelled) setError('Veri alınamadı.');
+                    return;
                 }
+            } catch {
+                // yoksay, sub olarak dene
+            }
+
+            // 2) SUB OLARAK DENE (fallback)
+            try {
+                const asSub = await fetchAsSub(slug);
+                if (cancelled) return;
+                setResolved('sub');
+                setSubs({ [asSub.sub.public_slug]: asSub.sub });
+                setMatches({ [asSub.sub.public_slug]: asSub.matches });
+            } catch {
+                if (!cancelled) setError('Alt turnuva veya turnuva bulunamadı.');
             }
         })();
 
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [slug]);
 
-    /* ───────────────────────── 2) Polling: tek timer, overlap yok ─────────────────────── */
+    /* ───────── 2) Polling: tek timer, overlap yok ───────── */
     useEffect(() => {
         if (!slug || resolved === 'unknown') return;
         let stop = false;
@@ -156,7 +162,7 @@ export default function LiveMatchPage() {
                 }
             } finally {
                 refreshingRef.current = false;
-                if (!stop) timer = setTimeout(poll, 15000); // 15 sn sonra tekrar; tek timer
+                if (!stop) timer = setTimeout(poll, 15000); // 15 sn
             }
         };
 
@@ -167,19 +173,58 @@ export default function LiveMatchPage() {
             stop = true;
             clearTimeout(timer);
         };
-        // DİKKAT: burada subs/matches bağımlılığı YOK -> timer yeniden kurulmaz
+        // burada subs/matches bağımlılığı YOK -> timer yeniden kurulmaz
     }, [slug, resolved]);
+
+    /* Sporcuları bir kez cache’le (her alt turnuva için) */
+    useEffect(() => {
+        const slugs = Object.keys(subs || {});
+        if (!slugs.length) return;
+
+        let cancelled = false;
+
+        (async () => {
+            await Promise.all(slugs.map(async (s) => {
+                if (athletesBySub[s]) return; // daha önce çekilmiş
+                try {
+                    const { data } = await api.get(`subtournaments/${s}/athletes/`);
+                    if (cancelled) return;
+                    const map: Record<number, AthleteLite> = {};
+                    (Array.isArray(data) ? data : []).forEach((a: any) => {
+                        const fn = String(a.first_name || '');
+                        const ln = String(a.last_name  || '');
+// "example" kelimesini (büyük/küçük fark etmeksizin) ayıkla, boşlukları toparla
+                        const cleaned = `${fn} ${ln}`.replace(/\bexample\b/ig, '').replace(/\s+/g, ' ').trim();
+
+                        map[a.id] = {
+                            id: a.id,
+                            name: cleaned,
+                            club: a.club_name || undefined,
+                        };
+                    });
+                    setAthletesBySub((prev) => ({ ...prev, [s]: map }));
+                } catch {
+                    /* yoksay – anonim erişimde de çalışır */
+                }
+            }));
+        })();
+
+        return () => { cancelled = true; };
+    }, [subs, athletesBySub, api]);
 
     /** Kart verileri */
     const cards = useMemo(() => {
         type Card = {
-            id: string; // benzersiz anahtar
+            id: string;               // benzersiz anahtar
             court: number;
             matchNo: number | null;
             roundText: string;
             gender: string;
             isRunning: boolean;
             title?: string;
+            subSlug: string;
+            athlete1: number | null;
+            athlete2: number | null;
         };
 
         const entries: Card[] = [];
@@ -206,13 +251,16 @@ export default function LiveMatchPage() {
                 if (seen.has(c)) continue;
                 seen.add(c);
                 entries.push({
-                    id: `${subSlug}-${c}-${m.match_no ?? m.position}-${m.round_no}`, // benzersiz
+                    id: `${subSlug}-${c}-${m.match_no ?? m.position}-${m.round_no}`,
                     court: c,
                     matchNo: m.match_no,
                     roundText: roundLabel(m.round_no, maxR),
                     gender: gLabel(sub.gender),
                     isRunning: !!sub.started,
                     title: sub.title,
+                    subSlug,
+                    athlete1: m.athlete1 ?? null,
+                    athlete2: m.athlete2 ?? null,
                 });
             }
         });
@@ -221,11 +269,7 @@ export default function LiveMatchPage() {
         return entries;
     }, [matches, subs]);
 
-    const headerGender =
-        Object.keys(subs).length === 1
-            ? gLabel(subs[Object.keys(subs)[0]].gender)
-            : '—';
-
+    
     return (
         <div className="min-h[calc(100vh-64px)] w-full text-white
       bg-[#161a20] bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(120,119,198,.08),transparent_50%),radial-gradient(1000px_500px_at_100%_10%,rgba(16,185,129,.07),transparent_55%)]">
@@ -236,17 +280,13 @@ export default function LiveMatchPage() {
               bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
                             Canlı Maç Odası
                         </h1>
-                        {/* isterseniz styles/custom.css’te .live-dot animasyonu var */}
                         <span
                             className="h-2.5 w-2.5 md:h-3 md:w-3 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,.28)] live-dot"
                             aria-label="live"
                         />
                     </div>
                     <div className="flex items-center gap-3">
-            <span className="text-sm text-white/80">
-              Kategori:
-              <b className="ml-1 text-white/90">{headerGender}</b>
-            </span>
+
                         {refreshingRef.current && (
                             <svg className="animate-spin h-4 w-4 text-white/70" viewBox="0 0 24 24" fill="none">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
@@ -273,13 +313,16 @@ export default function LiveMatchPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {cards.map((c) => (
                             <CourtCard
-                                key={c.id} // benzersiz key
+                                key={c.id}
                                 court={c.court}
                                 matchNo={c.matchNo}
                                 roundText={c.roundText}
                                 gender={c.gender}
                                 isRunning={c.isRunning}
                                 title={c.title}
+                                athletesMap={athletesBySub[c.subSlug] || {}}
+                                athlete1={c.athlete1}
+                                athlete2={c.athlete2}
                             />
                         ))}
                     </div>
@@ -297,6 +340,9 @@ function CourtCard({
                        gender,
                        isRunning,
                        title,
+                       athletesMap,
+                       athlete1,
+                       athlete2,
                    }: {
     court: number;
     matchNo: number | null;
@@ -304,7 +350,13 @@ function CourtCard({
     gender: string;
     isRunning: boolean;
     title?: string;
+    athletesMap?: Record<number, AthleteLite>;
+    athlete1: number | null;
+    athlete2: number | null;
 }) {
+    const A1 = athlete1 != null ? athletesMap?.[athlete1] : undefined;
+    const A2 = athlete2 != null ? athletesMap?.[athlete2] : undefined;
+
     return (
         <section className="relative overflow-hidden rounded-2xl
       bg-[#232834]/85 backdrop-blur
@@ -349,6 +401,23 @@ function CourtCard({
                 <Row label="Maç No" value={matchNo != null ? `#${matchNo}` : '—'} big />
                 <Row label="Tur" value={roundText} big />
 
+                {/* O anki maçın sporcuları – modern kutular + adaptif çizgi */}
+                {(A1 || A2) && (
+                    <div className="mt-4">
+                        <div className="flex items-center gap-4 md:gap-6 xl:gap-8">
+                            <PlayerBox name={A1?.name} club={A1?.club} className="basis-[42%]" />
+                            <div className="flex-1 flex items-center justify-center">
+    <span className="px-3 py-1 md:px-4 md:py-1.5 rounded-md font-extrabold tracking-widest
+                     text-white/90 text-lg md:text-2xl bg-white/10 ring-1 ring-white/20 select-none">
+      VS
+    </span>
+                            </div>
+                            <PlayerBox name={A2?.name} club={A2?.club} className="basis-[42%]" />
+                        </div>
+
+                    </div>
+                )}
+
                 <div className="pt-1">
           <span
               className={[
@@ -358,10 +427,7 @@ function CourtCard({
                       : 'bg-amber-400/25 text-amber-100 ring-amber-300/45 shadow-[0_0_0_3px_rgba(251,191,36,.12)_inset]',
               ].join(' ')}
           >
-            <span
-                className="w-2 h-2 rounded-full bg-current opacity-90"
-                aria-hidden
-            />
+            <span className="w-2 h-2 rounded-full bg-current opacity-90" aria-hidden />
               {isRunning ? 'OYNANIYOR' : 'BEKLEMEDE'}
           </span>
                 </div>
@@ -369,6 +435,34 @@ function CourtCard({
         </section>
     );
 }
+
+/** Oyuncu kartı (UPPERCASE isim + açık mavi kulüp) */
+function PlayerBox({ name, club, className = '' }: { name?: string; club?: string; className?: string }) {
+    const cleanedName = String(name || '')
+        .replace(/\bexample\b/ig, '')     // "example" kelimesini sil
+        .replace(/\s+/g, ' ')
+        .trim() || '—';
+
+    return (
+        <div className={`min-w-[180px] ${className}`}>
+            <div className="bg-[#3a404b] ring-1 ring-white/10 rounded-xl px-4 py-2.5 md:px-4 md:py-3 text-center shadow-sm">
+                <div className="font-extrabold uppercase tracking-wide text-white truncate
+                        text-[0.95rem] sm:text-[1.05rem] lg:text-[1.15rem] leading-tight">
+                    {cleanedName}
+                </div>
+                {club ? (
+                    <div className="mt-1 uppercase font-semibold truncate
+                          text-[11px] sm:text-xs md:text-sm text-sky-300/90">
+                        {club}
+                    </div>
+                ) : (
+                    <div className="mt-1 h-4 sm:h-4 md:h-5" />
+                )}
+            </div>
+        </div>
+    );
+}
+
 
 function Row({ label, value, big = false }: { label: string; value: string; big?: boolean }) {
     return (
