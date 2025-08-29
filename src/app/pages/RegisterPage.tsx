@@ -22,7 +22,7 @@ export default function RegisterPage() {
         e.preventDefault();
         setErr(null);
         if (!canSubmit) {
-            setErr('Lütfen alanları doğru doldurun (şifre en az 6 karakter).');
+            setErr('Lütfen alanları doğru doldurun (şifre en az 8 karakter).');
             return;
         }
         try {
@@ -58,7 +58,7 @@ export default function RegisterPage() {
                 />
                 <input
                     className="w-full px-3 py-2 rounded bg-gray-700"
-                    placeholder="Şifre (en az 6 karakter)"
+                    placeholder="Şifre (en az 8 karakter)"
                     type="password"
                     value={password}
                     onChange={e => setP(e.target.value)}
