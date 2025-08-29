@@ -414,9 +414,7 @@ export default function LeaderboardPage() {
                 <div className="mt-2 flex justify-end">
                     <button
                         onClick={handleDownloadAllCards}
-                        className="px-3 py-2 rounded-xl text-sm font-semibold
-                       border border-emerald-400/30 bg-emerald-500/15 text-emerald-100
-                       hover:bg-emerald-500/25 hover:border-emerald-400/50 transition"
+                        className="px-3 py-1.5 rounded-xl border border-sky-500 bg-sky-500 text-white hover:bg-sky-600 text-sm"
                     >
                         Tüm İlk 8’i İndir
                     </button>
@@ -548,9 +546,7 @@ export default function LeaderboardPage() {
                                                     </Link>
                                                     <button
                                                         onClick={handleDownloadCard}
-                                                        className="px-3 py-1.5 rounded-xl
-                                       border border-emerald-300/30 bg-emerald-500/10 text-emerald-200
-                                       hover:bg-emerald-500/20 hover:border-emerald-300/50 text-sm"
+                                                        className="px-3 py-1.5 rounded-xl border border-sky-500 bg-sky-500 text-white hover:bg-sky-600 text-sm"
                                                     >
                                                         İndir
                                                     </button>
