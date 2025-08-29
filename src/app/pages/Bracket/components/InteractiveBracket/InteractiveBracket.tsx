@@ -153,6 +153,31 @@ function StartConfirmModal({
         </div>
     );
 }
+/* -------------------------- Shuffle Countdown Modal -------------------------- */
+function ShuffleCountdownModal({
+                                   open, count
+                               }: { open: boolean; count: number }) {
+    if (!open) return null;
+
+    const done = count <= 0;
+
+    return (
+        <div className="fixed inset-0 z-[75] bg-black/60 flex items-center justify-center">
+            <div className="rounded-2xl bg-[#0f1217] border border-white/10 shadow-2xl px-8 py-10 text-center w-[min(92vw,520px)]">
+                {!done ? (
+                    <>
+                        <div className="text-white/80 text-sm mb-2">Şablon karıştırılıyor…</div>
+                        <div className="text-white font-extrabold tracking-wider text-[64px] leading-none">
+                            {count}
+                        </div>
+                    </>
+                ) : (
+                    <div className="text-emerald-300 font-semibold text-xl">Şablon karıştırıldı ✓</div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 /* -------------------------------- Component ------------------------------- */
 export default memo(function InteractiveBracket() {
@@ -184,6 +209,11 @@ export default memo(function InteractiveBracket() {
     const [refreshKey, setRefreshKey] = useState(0);
     const [authErr, setAuthErr] = useState<number | null>(null);
     const [subDetail, setSubDetail] = useState<SubTournamentDetail | null>(null);
+
+    const [shuffleOpen, setShuffleOpen] = useState(false);
+    const [shuffleCount, setShuffleCount] = useState(5);
+    const shuffleTimerRef = useRef<number | null>(null);
+
 
     const [isReferee, setIsReferee] = useState<boolean>(false);
 
@@ -396,16 +426,13 @@ export default memo(function InteractiveBracket() {
         const nav = (performance.getEntriesByType?.('navigation') as any[]) || [];
         const isReload = !!nav[0] && nav[0].type === 'reload';
         if (isReload) {
-            // Sadece İSTEMCİ tarafı temizlik: backend’e dokunma
-            setPlayers([]);
-            set({ placementMap: null, version: settings.version + 1 });
+            // Local state’i silme; yalnızca snapshot/ref’leri temizle.
+            // BackendLoader ilk fetch’i (değişiklik #1) edit modda da yapacağı için ekrana backend matrisi yazılacak.
             editPlayersSnapshotRef.current = null;
             lastPlacementRef.current = null;
         }
-        // not: acceptBackendOnceRef zaten true başlıyor
-        // bu sayede ilk backend cevabı ekrana yazılacak
-        // ve lokal kurulum baskılanacak
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
 
     /* Bracket kaynağı seçimi */
     useEffect(() => {
@@ -478,6 +505,52 @@ export default memo(function InteractiveBracket() {
             window.removeEventListener('bracket:refresh', refresh);
         };
     }, [canEdit, mode, dirty, players, settings.placementMap]);
+    // "Karıştır" isteği geldiğinde 5-4-3-2-1 geri sayımı yap, bitince karıştırmayı tetikle
+    useEffect(() => {
+        const onRequestShuffle = () => {
+            // varsa eski timer'ı temizle
+            if (shuffleTimerRef.current) {
+                clearInterval(shuffleTimerRef.current);
+                shuffleTimerRef.current = null;
+            }
+            setShuffleOpen(true);
+            setShuffleCount(5);
+
+            let c = 5;
+            shuffleTimerRef.current = window.setInterval(() => {
+                c -= 1;
+                setShuffleCount(c);
+
+                if (c <= 0) {
+                    // süre bitti
+                    if (shuffleTimerRef.current) {
+                        clearInterval(shuffleTimerRef.current);
+                        shuffleTimerRef.current = null;
+                    }
+
+                    // Asıl karıştırma aksiyonunu ilan et
+                    window.dispatchEvent(new CustomEvent('bracket:do-shuffle'));
+
+                    // kısa bir "bitti" bilgisi göster ve modalı kapat
+                    setTimeout(() => setShuffleOpen(false), 600);
+
+                    // opsiyonel: ekran altı yeşil tost
+                    setSaveMsg('Şablon karıştırıldı.');
+                    setTimeout(() => setSaveMsg(null), 1500);
+                }
+            }, 1000);
+        };
+
+        window.addEventListener('bracket:request-shuffle', onRequestShuffle);
+        return () => {
+            window.removeEventListener('bracket:request-shuffle', onRequestShuffle);
+            if (shuffleTimerRef.current) {
+                clearInterval(shuffleTimerRef.current);
+                shuffleTimerRef.current = null;
+            }
+        };
+    }, [setSaveMsg]);
+
 
     /* Yardımcı: üst turlardaki manuel/scores bayraklarını zincir halinde temizle */
     const clearUpstream = (mat: Matrix, r: number, m: number) => {
@@ -798,7 +871,7 @@ export default memo(function InteractiveBracket() {
     };
 
     const isBackend = !!slug;
-    const pollingEnabled = isBackend && mode === 'view';
+    const pollingEnabled = isBackend && (mode === 'view' || acceptBackendOnceRef.current);
 
     // “Şablonu Sıfırla” – DELETE yok; public slug ile SADE payload PATCH et
     useEffect(() => {
@@ -1169,6 +1242,8 @@ export default memo(function InteractiveBracket() {
                     if (pick) setSelected(pick);
                 }}
             />
+            {/* Karıştır geri sayım modalı */}
+            <ShuffleCountdownModal open={shuffleOpen} count={shuffleCount} />
 
             {/* Edit'ten çıkış onayı */}
             {showExitConfirm && (

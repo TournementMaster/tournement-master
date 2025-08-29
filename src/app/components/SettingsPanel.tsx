@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSettings } from '../context/BracketSettingsCtx';
 import { usePlayers } from '../hooks/usePlayers';
 
@@ -124,6 +124,7 @@ export default function SettingsPanel() {
     const [confirmOpen, setConfirmOpen] = useState(false);
 
     const shufflePlacement = () => {
+
         const n = players.length;
         if (n < 2) return;
 
@@ -144,6 +145,14 @@ export default function SettingsPanel() {
 
         set({ placementMap: fixed, version: settings.version + 1 });
     };
+    // Geri sayım (InteractiveBracket) tamamlanınca asıl karıştırmayı yap
+    useEffect(() => {
+        const h = () => shufflePlacement();
+        window.addEventListener('bracket:do-shuffle', h);
+        return () => window.removeEventListener('bracket:do-shuffle', h);
+        // shufflePlacement kapanımındaki state'leri güncel tutmak için effect her değişimde yeniden bağlanır
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [players, settings.version]);
 
     const doReset = () => {
         // Braket bileşenine “sert sıfırla” de
@@ -183,7 +192,9 @@ export default function SettingsPanel() {
 
             <section className="rounded-lg bg-[#111318] border border-white/10 p-4 space-y-5">
                 <button
-                    onClick={shufflePlacement}
+                   onClick={() => {
+                     window.dispatchEvent(new CustomEvent('bracket:request-shuffle'));
+                   }}
                     className="w-full py-2 rounded border border-sky-500/70 text-sky-200 hover:bg-sky-900/20 font-semibold"
                     title="Seed sabit kalır; braket üzerindeki yerler rastgelelenir (aynı kulüp çakışmaları minimize edilir)"
                 >
