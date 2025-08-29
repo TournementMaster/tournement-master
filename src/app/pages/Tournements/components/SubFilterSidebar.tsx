@@ -32,11 +32,11 @@ export default function SubFilterSidebar({
     const clear = () => setFilters({ ...DEFAULTS });
 
     return (
-        <aside className="w-64 bg-[#2d3038] rounded-lg p-4 h-fit sticky top-6">
+        <aside className="w-64 bg-[#2d3038] rounded-lg p-4 h-fit sticky top-6 text-[15px]">
             <nav className="space-y-6">
                 {/* DURUM */}
                 <div>
-                    <h3 className="text-sm font-semibold text-gray-200 mb-2">DURUM</h3>
+                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">DURUM</h3>
                     {([
                         ['all', 'Tümü'],
                         ['pending', 'Başlamayan'],
@@ -45,7 +45,7 @@ export default function SubFilterSidebar({
                     ] as const).map(([k, lbl]) => (
                         <button
                             key={k}
-                            className={`w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 ${filters.status===k?'bg-gray-700':''}`}
+                            className={`w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 ${filters.status === k ? 'bg-gray-700' : ''}`}
                             onClick={() => set({ status: k })}
                         >
                             {lbl}
@@ -55,7 +55,7 @@ export default function SubFilterSidebar({
 
                 {/* CİNSİYET */}
                 <div>
-                    <h3 className="text-sm font-semibold text-gray-200 mb-2">CİNSİYET</h3>
+                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">CİNSİYET</h3>
                     {([
                         ['all', 'Tümü'],
                         ['M', 'Erkek'],
@@ -63,7 +63,7 @@ export default function SubFilterSidebar({
                     ] as const).map(([k, lbl]) => (
                         <button
                             key={k}
-                            className={`w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 ${filters.gender===k?'bg-gray-700':''}`}
+                            className={`w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 ${filters.gender === k ? 'bg-gray-700' : ''}`}
                             onClick={() => set({ gender: k as SubFilters['gender'] })}
                         >
                             {lbl}
@@ -73,42 +73,42 @@ export default function SubFilterSidebar({
 
                 {/* YAŞ (min–max) */}
                 <div>
-                    <h3 className="text-sm font-semibold text-gray-200 mb-2">YAŞ ARALIĞI</h3>
+                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">YAŞ ARALIĞI</h3>
                     <div className="grid grid-cols-2 gap-2">
                         <input
                             value={filters.ageMin}
-                            onChange={(e)=>set({ ageMin: e.target.value.replace(/\D/g,'').slice(0,2) })}
+                            onChange={(e) => set({ ageMin: e.target.value.replace(/\D/g, '').slice(0, 2) })}
                             placeholder="Min"
                             inputMode="numeric"
-                            className="bg-gray-700 px-2 py-2 rounded text-sm"
+                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
                         />
                         <input
                             value={filters.ageMax}
-                            onChange={(e)=>set({ ageMax: e.target.value.replace(/\D/g,'').slice(0,2) })}
+                            onChange={(e) => set({ ageMax: e.target.value.replace(/\D/g, '').slice(0, 2) })}
                             placeholder="Max"
                             inputMode="numeric"
-                            className="bg-gray-700 px-2 py-2 rounded text-sm"
+                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
                         />
                     </div>
                 </div>
 
                 {/* KİLO (min–max) */}
                 <div>
-                    <h3 className="text-sm font-semibold text-gray-200 mb-2">KİLO ARALIĞI (kg)</h3>
+                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">KİLO ARALIĞI (kg)</h3>
                     <div className="grid grid-cols-2 gap-2">
                         <input
                             value={filters.weightMin}
-                            onChange={(e)=>set({ weightMin: e.target.value.replace(/[^\d.,]/g,'').replace(',', '.').slice(0,5) })}
+                            onChange={(e) => set({ weightMin: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.').slice(0, 5) })}
                             placeholder="Min"
                             inputMode="decimal"
-                            className="bg-gray-700 px-2 py-2 rounded text-sm"
+                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
                         />
                         <input
                             value={filters.weightMax}
-                            onChange={(e)=>set({ weightMax: e.target.value.replace(/[^\d.,]/g,'').replace(',', '.').slice(0,5) })}
+                            onChange={(e) => set({ weightMax: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.').slice(0, 5) })}
                             placeholder="Max"
                             inputMode="decimal"
-                            className="bg-gray-700 px-2 py-2 rounded text-sm"
+                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
                         />
                     </div>
                 </div>
@@ -117,14 +117,15 @@ export default function SubFilterSidebar({
                 <div className="pt-2">
                     <button
                         onClick={clear}
-                        className="w-full px-3 py-2 rounded bg-gray-600 hover:bg-gray-700 text-sm"
+                        className="w-full px-3 py-2 rounded bg-gray-600 hover:bg-gray-700 text-[0.95rem] font-medium"
                     >
                         Filtreyi Temizle
                     </button>
                 </div>
 
-                {/* ───────── Yeni: Hızlı Erişim Butonları ───────── */}
+                {/* ───────── Hızlı Erişim Butonları ───────── */}
                 <div className="pt-4 space-y-3">
+                    {/* Liderlik Tablosu */}
                     <Link
                         to={slug ? `/tournements/${encodeURIComponent(slug)}/leaderboard` : '#'}
                         className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
@@ -132,12 +133,13 @@ export default function SubFilterSidebar({
                         border border-amber-300/30 text-amber-200
                         hover:shadow-[0_0_0_2px_rgba(251,191,36,.35),0_0_18px_6px_rgba(251,191,36,.18)]
                         hover:border-amber-300/50 transition ${slug ? '' : 'pointer-events-none opacity-50'}`}
-                        aria-label="Leaderboard"
+                        aria-label="Liderlik Tablosu"
                     >
                         <span className="text-lg">🏆</span>
-                        <span className="font-medium">Liderlik Tablosu</span>
+                        <span className="font-medium text-[1.05rem]">Liderlik Tablosu</span>
                     </Link>
 
+                    {/* Tartı Günü */}
                     <Link
                         to={slug ? `/weigh/${encodeURIComponent(slug)}` : '#'}
                         className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
@@ -148,7 +150,25 @@ export default function SubFilterSidebar({
                         aria-label="Tartı Günü"
                     >
                         <span className="text-lg">⚖️</span>
-                        <span className="font-medium">Tartı Günü</span>
+                        <span className="font-medium text-[1.05rem]">Tartı Günü</span>
+                    </Link>
+
+                    {/* Canlı Maç Odası */}
+                    <Link
+                        to={slug ? `/live/${encodeURIComponent(slug)}` : '#'}
+                        className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
+                        bg-gradient-to-r from-rose-600/25 via-red-500/20 to-red-600/25
+                        border border-red-300/40 text-red-100
+                        hover:shadow-[0_0_0_2px_rgba(248,113,113,.35),0_0_18px_6px_rgba(248,113,113,.18)]
+                        hover:border-red-300/60 transition ${slug ? '' : 'pointer-events-none opacity-50'}`}
+                        aria-label="Canlı Maç Odası"
+                    >
+                        {/* YouTube-like icon */}
+                        <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3" y="6" width="18" height="12" rx="4" stroke="currentColor" strokeWidth="2" />
+                            <path d="M10 9.5L15 12L10 14.5V9.5Z" fill="currentColor" />
+                        </svg>
+                        <span className="font-medium text-[1.05rem]">Canlı Maç Odası</span>
                     </Link>
                 </div>
             </nav>

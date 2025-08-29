@@ -15,6 +15,8 @@ import WeighPublicBookPage from './pages/Weigh/WeighPublicBookPage.tsx';
 import LeaderboardPage from './pages/Tournements/LeaderboardPage.tsx';
 import ProfilePage from "./pages/ProfilePage.tsx";
 import MyAppointmentsPage from './pages/Weigh/MyAppointmentsPage';
+import LiveMatchPage from "./pages/Tournements/Livematchpage.tsx";
+
 
 export const router = createBrowserRouter([
     {
@@ -30,6 +32,9 @@ export const router = createBrowserRouter([
 
             /* ------- Leaderboard (ilk 8) ------- */
             { path: 'tournements/:public_slug/leaderboard', element: <LeaderboardPage /> },
+
+            /*--------Livematcpage---------- */
+            {path: "/live/:slug", element: <LiveMatchPage /> },
 
             /* ------- Tartı günü: detay ve randevu ------- */
             { path: 'weigh/:tournament_slug', element: <WeighDetailPage /> },
