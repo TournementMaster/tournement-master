@@ -269,7 +269,7 @@ export default function LiveMatchPage() {
         return entries;
     }, [matches, subs]);
 
-    
+
     return (
         <div className="min-h[calc(100vh-64px)] w-full text-white
       bg-[#161a20] bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(120,119,198,.08),transparent_50%),radial-gradient(1000px_500px_at_100%_10%,rgba(16,185,129,.07),transparent_55%)]">

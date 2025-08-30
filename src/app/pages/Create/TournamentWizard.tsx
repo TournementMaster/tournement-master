@@ -20,6 +20,23 @@ export default function TournamentWizard({
     const qc = useQueryClient()
     const [sp] = useSearchParams()
 
+    // 👇 Basit cache ile tekrar tekrar aynı id'yi çağırmayalım
+    const userCache = new Map<number, string>();
+
+    async function usernameById(id: number): Promise<string | null> {
+        if (userCache.has(id)) return userCache.get(id)!;
+        try {
+            // ✅ Doğru rota: Djoser → /api/auth/users/<id>/
+            const { data } = await api.get<{ id:number; username:string }>(`auth/users/${id}/`);
+            const uname = (data as any)?.username ?? null;
+            if (uname) userCache.set(id, uname);
+            return uname;
+        } catch {
+            return null; // bulunamazsa (403/404) null dön, ekranda fallback kullanırız
+        }
+    }
+
+
     const mode: Mode = (sp.get('mode') as Mode) || initialMode || 'main'
     const editSlug = (sp.get('edit') || '').trim()
 
@@ -53,17 +70,19 @@ export default function TournamentWizard({
         const u = refInput.trim();
         setRefFeedback(null);
         if (!u) return;
-        if (referees.some(r => r.username.toLowerCase() === u.toLowerCase())) {
-            setRefFeedback('Bu kullanıcı zaten hakem listesinde.');
-            return;
-        }
+
         setBusyRef(true);
         try {
             const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`);
-            if (!data || typeof data.id !== 'number' || data.id === -1) {
+            const uid = typeof data?.id === 'number' ? data.id : -1;
+
+            if (uid <= 0) {
                 setRefFeedback('Kullanıcı bulunamadı.');
+            } else if (referees.some(r => r.id === uid || r.username.toLowerCase() === u.toLowerCase())) {
+                setRefFeedback('Bu kullanıcı zaten hakem listesinde.');
             } else {
-                setReferees(prev => [...prev, { id: data.id, username: u }]);
+                // username görünsün
+                setReferees(prev => [...prev, { id: uid, username: u }]);
                 setRefInput('');
             }
         } catch {
@@ -72,6 +91,7 @@ export default function TournamentWizard({
             setBusyRef(false);
         }
     }
+
 
     // MAIN: Düzenleme modunda alanları doldur
     useEffect(() => {
@@ -90,8 +110,16 @@ export default function TournamentWizard({
                 setEditingTournamentId(typeof data.id === 'number' ? data.id : null);
 
                 if (Array.isArray(data.editors)) {
-                    setEditors((data.editors as number[]).map((id: number) => ({ id, username: `#${id}` })));
+                    const ids = Array.from(new Set<number>(data.editors as number[]));
+                    const resolved = await Promise.all(
+                        ids.map(async (id) => {
+                            const uname = await usernameById(id);
+                            return { id, username: uname ?? String(id) }; // bulunamazsa geçici fallback: "id"
+                        })
+                    );
+                    setEditors(resolved);
                 }
+
             } catch { /* yut */ }
 
             // Weigh-in oku (varsa)
@@ -123,30 +151,31 @@ export default function TournamentWizard({
     const [feedback, setFeedback] = useState<string | null>(null)
 
     async function addEditor() {
-        const u = editorInput.trim()
-        setFeedback(null)
-        if (!u) return
-        if (editors.some(e => e.username.toLowerCase() === u.toLowerCase())) {
-            setFeedback('Bu kullanıcı zaten listede.')
-            return
-        }
-        setBusyAdd(true)
+        const u = editorInput.trim();
+        setFeedback(null);
+        if (!u) return;
+
+        setBusyAdd(true);
         try {
-            const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`)
-            if (!data || typeof data.id !== 'number') {
-                setFeedback('Beklenmeyen cevap.')
-            } else if (data.id === -1) {
-                setFeedback('Kullanıcı bulunamadı.')
+            const { data } = await api.get<{ id: number }>(`users/lookup/${encodeURIComponent(u)}/`);
+            const uid = typeof data?.id === 'number' ? data.id : -1;
+
+            if (uid <= 0) {
+                setFeedback('Kullanıcı bulunamadı.');
+            } else if (editors.some(e => e.id === uid || e.username.toLowerCase() === u.toLowerCase())) {
+                setFeedback('Bu kullanıcı zaten listede.');
             } else {
-                setEditors(prev => [...prev, { id: data.id, username: u }])
-                setEditorInput('')
+                // username görünsün
+                setEditors(prev => [...prev, { id: uid, username: u }]);
+                setEditorInput('');
             }
         } catch {
-            setFeedback('Sunucu hatası, tekrar deneyin.')
+            setFeedback('Sunucu hatası, tekrar deneyin.');
         } finally {
-            setBusyAdd(false)
+            setBusyAdd(false);
         }
     }
+
 
     // ───── ALT TURNUVA ALANLARI ─────
     const [subTitle, setSubTitle] = useState('')
@@ -175,7 +204,14 @@ export default function TournamentWizard({
                 setSubPublic(!!data.public)
                 setDefaultCourt(String(data.court_no ?? ''))
                 if (Array.isArray((data as any).referees)) {
-                    setReferees((data.referees as number[]).map((id: number) => ({ id, username: `#${id}` })));
+                    const ids = Array.from(new Set<number>(data.referees as number[]));
+                    const resolvedRefs = await Promise.all(
+                        ids.map(async (id) => {
+                            const uname = await usernameById(id);
+                            return { id, username: uname ?? String(id) };
+                        })
+                    );
+                    setReferees(resolvedRefs);
                 }
             } catch { /* empty */ }
         })()
