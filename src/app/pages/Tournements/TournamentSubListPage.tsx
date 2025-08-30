@@ -29,6 +29,28 @@ function inlinePhase(s: any): Phase {
     if (started) return 'in_progress';
     return 'pending';
 }
+
+// Güvenli UUID: varsa crypto.randomUUID, yoksa getRandomValues, o da yoksa basit fallback
+function safeUUID(): string {
+    const g: any = (typeof globalThis !== 'undefined') ? globalThis : window;
+    const c = g?.crypto || g?.msCrypto;
+
+    if (c?.randomUUID) return c.randomUUID();
+
+    if (c?.getRandomValues) {
+        const bytes = new Uint8Array(16);
+        c.getRandomValues(bytes);
+        // RFC 4122 v4 maskeleri
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'));
+        return `${hex.slice(0,4).join('')}-${hex.slice(4,6).join('')}-${hex.slice(6,8).join('')}-${hex.slice(8,10).join('')}-${hex.slice(10).join('')}`;
+    }
+
+    // En son çare (SSR/çok eski ortamlar): pseudo-uuid
+    return `tmp-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+}
+
 const PHASE_BADGE = {
     pending: { text: 'Bekleyen', chip: 'bg-amber-500/20 text-amber-200' },
     in_progress: { text: 'Başlayan', chip: 'bg-emerald-600/20 text-emerald-300' },
@@ -51,9 +73,9 @@ function ImportModal({
 }) {
     const [file, setFile] = useState<File | null>(null);
     const [rows, setRows] = useState<ImportRow[]>([
-        { age: '12-15', weight: '10-15', key: crypto.randomUUID() },
-        { age: '15-18', weight: '15-20', key: crypto.randomUUID() },
-        { age: '12-15', weight: '20-35', key: crypto.randomUUID() },
+        { age: '12-15', weight: '10-15', key: safeUUID() },
+        { age: '15-18', weight: '15-20', key: safeUUID() },
+        { age: '12-15', weight: '20-35', key: safeUUID() },
     ]);
     const [courtNo, setCourtNo] = useState('1');
     const [startFrom, setStartFrom] = useState('');
@@ -62,7 +84,7 @@ function ImportModal({
     const [msg, setMsg] = useState<string | null>(null);
 
     function addRow() {
-        setRows((r) => [...r, { age: '', weight: '', key: crypto.randomUUID() }]);
+        setRows((r) => [...r, { age: '', weight: '', key: safeUUID() }]);
     }
     function removeRow(idx: number) {
         setRows((r) => r.filter((_, i) => i !== idx));
