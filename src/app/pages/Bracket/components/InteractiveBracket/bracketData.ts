@@ -33,7 +33,8 @@ type ApiAthlete = {
     birth_year: number;
     weight: string | number;
     gender: 'M' | 'F' | string;
-    club: number | null;
+    club: number | null;          // (FK id – gerek kalmadı ama dursun)
+    club_name?: string | null;    // <<< BUNU KULLANACAĞIZ
 };
 type ApiMatchSet = { id: number; set_no: number; a1_score: number; a2_score: number; match: number };
 type ApiMatch = {
@@ -234,10 +235,7 @@ export function toHHMM(iso: string | null | undefined): string | undefined {
 export function buildFromBackend(
     athletes: ApiAthlete[],
     matches: ApiMatch[],
-    clubs: ClubRow[]
 ): { matrix: Matrix; firstRound: Participant[] } {
-    const clubMap = new Map<number, string>();
-    clubs.forEach((c) => clubMap.set(c.id, c.name));
 
     const aMap = new Map<number, { name: string; club?: string }>();
     athletes.forEach((a) => {
@@ -245,7 +243,7 @@ export function buildFromBackend(
             (a.first_name || '').trim() ||
             `${a.first_name} ${a.last_name}`.trim() ||
             '—';
-        const club = a.club != null ? clubMap.get(a.club) : undefined;
+        const club = (a.club_name || undefined) as string | undefined;
         aMap.set(a.id, { name, club });
     });
 
@@ -318,7 +316,7 @@ export function buildFromBackend(
     if (!matrix.length && athletes.length) {
         const fallbackParticipants: Participant[] = athletes.map((a, i) => ({
             name: (a.first_name || '').trim() || `${a.first_name} ${a.last_name}`.trim() || '—',
-            club: a.club != null ? clubMap.get(a.club) : undefined,
+            club: (a.club_name || undefined) as string | undefined,
             seed: i + 1,
         }));
         const mtx = buildMatrix(fallbackParticipants, null);
@@ -367,16 +365,14 @@ export function BackendBracketLoader({
             abortCtrl?.abort();
             abortCtrl = new AbortController();
             try {
-                const [athRes, matchRes, clubsRes] = await Promise.all([
+                const [athRes, matchRes] = await Promise.all([
                     api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`, { signal: abortCtrl.signal }),
                     api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`,  { signal: abortCtrl.signal }),
-                    api.get<ClubRow[]>('clubs/', { signal: abortCtrl.signal }).catch(() => ({ data: [] as ClubRow[] })),
                 ]);
                 if (!mounted) return;
                 const built = buildFromBackend(
                     Array.isArray(athRes.data) ? athRes.data : [],
                     Array.isArray(matchRes.data) ? matchRes.data : [],
-                    Array.isArray(clubsRes.data) ? clubsRes.data : []
                 );
                 onBuiltRef.current?.(propagate(built.matrix, { autoByes: true }), built.firstRound);
             } catch (e: any) {
