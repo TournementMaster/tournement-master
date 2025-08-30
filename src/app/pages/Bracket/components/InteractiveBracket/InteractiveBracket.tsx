@@ -660,24 +660,59 @@ export default memo(function InteractiveBracket() {
         setSaving(true);
         setSaveMsg(null);
         try {
+            // 1) Mevcut kulüpleri çek
             let clubs: Club[] = [];
             try {
                 const { data } = await api.get<Club[]>('clubs/');
                 if (Array.isArray(data)) clubs = data;
             } catch {}
+
+            // 2) Mevcut kulüp haritası
             const clubIdByName = new Map(clubs.map((c) => [c.name.trim().toLowerCase(), c.id]));
 
+            // 3) Oyunculardan ihtiyaç duyulan kulüp isimlerini topla
+            const sorted = [...players].sort((a, b) => a.seed - b.seed);
+            const originalByLower = new Map<string, string>();
+            for (const p of sorted) {
+                const raw = (p.club || '').trim();
+                if (raw) originalByLower.set(raw.toLowerCase(), raw);
+            }
+            const neededLowers = [...originalByLower.keys()];
+            const missingLowers = neededLowers.filter(n => !clubIdByName.has(n));
+
+            // 4) Eksik kulüpleri idempotent şekilde oluştur
+            //    (ClubViewSet.create aynı isim varsa mevcut kaydı 200 ile döndürmeli)
+            if (missingLowers.length) {
+                for (const lower of missingLowers) {
+                    const name = originalByLower.get(lower) || lower; // orijinal büyük-küçük harfi koru
+                    try {
+                        const { data } = await api.post<Club>('clubs/', { name, city: '' });
+                        // dönen isme göre map’i güncelle (backende case/trim düzeltmesi olmuş olabilir)
+                        if (data?.id && data?.name) {
+                            clubIdByName.set(data.name.trim().toLowerCase(), data.id);
+                        }
+                    } catch {
+                        // Kulüp oluşturulamazsa sporcular o kulüp olmadan yaratılır; burada hatayı yutuyoruz
+                        // istersen kullanıcıya küçük bir uyarı gösterebilirsin.
+                    }
+                }
+            }
+
+            // 5) Sporcuları (athletes/bulk) artık kulüp id’leriyle gönder
             let seedToAthlete: Record<number, number> = {};
             if (!startedRef.current) {
-                const sorted = [...players].sort((a, b) => a.seed - b.seed);
                 const athletePayload = sorted.map((p) => ({
                     first_name: p.name,
                     last_name: 'Example',
                     birth_year: 1453,
                     weight: '-1.00',
                     gender: 'M',
-                    club: clubIdByName.get((p.club || '').trim().toLowerCase()) ?? null,
+                    club: (() => {
+                        const k = (p.club || '').trim().toLowerCase();
+                        return k ? (clubIdByName.get(k) ?? null) : null;
+                    })(),
                 }));
+
                 const { data: created } = await api.post<Array<{ id: number }>>(
                     'athletes/bulk/',
                     athletePayload

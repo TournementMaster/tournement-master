@@ -11,7 +11,7 @@ interface ClubSelectProps {
 export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
     const [clubs, setClubs] = useState<Club[]>([])
     const [open, setOpen] = useState(false)
-    const [query, setQuery] = useState('') // <<< 'Yok' yerine boş
+    const [query, setQuery] = useState('') // 'Yok' yerine boş
     const [showModal, setShowModal] = useState(false)
     const [busy, setBusy] = useState(false)
     const boxRef = useRef<HTMLDivElement>(null)
@@ -54,18 +54,55 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
         setBusy(true)
         try {
             const { data } = await api.post<Club>('clubs/', { name, city })
-            setClubs(prev => [data, ...prev])
+            setClubs(prev => {
+                // aynı isimle 200 döndüyse listede olabilir; duplicate’ı önle
+                const exists = prev.some(x => x.id === data.id)
+                return exists ? prev : [data, ...prev]
+            })
             onChange(data.name)
             setQuery(data.name)
             setShowModal(false)
-        } catch {
-            alert('Kulüp oluşturulamadı.')
+        } catch (err: any) {
+            const msg = err?.response?.data?.detail || 'Kulüp oluşturulamadı.'
+            alert(msg)
         } finally { setBusy(false) }
     }
 
-    const handleRemove = (club: Club) => {
-        setClubs(prev => prev.filter(c => c.id !== club.id))
-        if (selected === club.name) { onChange(''); setQuery('') }
+    const handleRemove = async (club: Club) => {
+        try {
+            await api.delete(`clubs/${club.id}/`)
+            setClubs(prev => prev.filter(c => c.id !== club.id))
+            // seçili kulüp silindiyse seçimi temizle
+            if (selected === club.name) { onChange(''); setQuery('') }
+            // Not: Athlete.club FK'si SET_NULL olduğundan sporcular silinmez (BE modeli)
+        } catch (err: any) {
+            const status = err?.response?.status
+            if (status === 403) alert('Bu kulübü silme yetkiniz yok.')
+            else alert('Kulüp silinemedi.')
+        }
+    }
+
+    const handleUpdate = async (club: Club, patch: { name: string; city: string }) => {
+        try {
+            const { data } = await api.patch<Club>(`clubs/${club.id}/`, patch)
+            setClubs(prev => prev.map(c => (c.id === club.id ? data : c)))
+            // eğer bu kulüp seçiliyse ve ismi değiştiyse seçimi güncelle
+            if (selected === club.name && data?.name && data.name !== club.name) {
+                onChange(data.name)
+                setQuery(data.name)
+                // İstersen global bir event ile yan paneldeki liste/oyunculara duyurabilirsin:
+                // window.dispatchEvent(new CustomEvent('club:renamed', { detail: { from: club.name, to: data.name } }))
+            }
+        } catch (err: any) {
+            const status = err?.response?.status
+            if (status === 400 || status === 409) {
+                alert('Bu isimde bir kulüp zaten var.')
+            } else if (status === 403) {
+                alert('Bu kulübü düzenleme yetkiniz yok.')
+            } else {
+                alert('Kulüp güncellenemedi.')
+            }
+        }
     }
 
     return (
@@ -114,7 +151,8 @@ export default function ClubSelect({ selected, onChange }: ClubSelectProps) {
                     existing={clubs}
                     busy={busy}
                     onCreate={handleCreate}
-                    onRemove={handleRemove}
+                    onRemove={handleRemove}      // ← DELETE çağrısı burada
+                    onUpdate={handleUpdate}      // ← PATCH çağrısı burada
                     onClose={() => setShowModal(false)}
                 />
             )}
