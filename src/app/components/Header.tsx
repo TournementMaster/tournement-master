@@ -9,23 +9,25 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const { isAuth, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const [menu, setMenu] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [sp] = useSearchParams();
-    const menuRef = useRef<HTMLDivElement>(null);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+    const mobileMenuRef = useRef<HTMLDivElement>(null);
 
     const pathname = location.pathname;
     const isDashboard = pathname === '/';
     const isBracket = pathname.startsWith('/bracket');
     const isSubList = pathname.startsWith('/tournements/');
 
-    // + NEW: izin bayrakları
+    // izin bayrakları
     const [canCreateMain, setCanCreateMain] = useState(false);
     const [canCreateSub, setCanCreateSub] = useState(false);
 
     const [headerText, setHeaderText] = useState<string>('');
     const [paletteOnly, setPaletteOnly] = useState(false);
 
-    // + NEW: dashboard’dayken admin mi?
+    // dashboard’dayken admin mi?
     useEffect(() => {
         let cancelled = false;
         if (!isDashboard || !isAuth) { setCanCreateMain(false); return; }
@@ -38,7 +40,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
         return () => { cancelled = true; };
     }, [isDashboard, isAuth]);
 
-    // + NEW: alt turnuva listesindeyken ilgili ana turnuva can_edit?
+    // alt turnuva listesindeyken ilgili ana turnuva can_edit?
     useEffect(() => {
         let cancelled = false;
         if (!isSubList || !isAuth) { setCanCreateSub(false); return; }
@@ -60,16 +62,11 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
         return () => window.removeEventListener('bracket:palette-only', h);
     }, []);
 
+    // Bracket başlığı
     useEffect(() => {
-        if (!isBracket) {
-            setHeaderText('');
-            return;
-        }
+        if (!isBracket) { setHeaderText(''); return; }
         const slug = pathname.match(/^\/bracket\/(.+)/)?.[1];
-        if (!slug) {
-            setHeaderText('');
-            return;
-        }
+        if (!slug) { setHeaderText(''); return; }
         let cancelled = false;
         (async () => {
             try {
@@ -89,42 +86,42 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 setHeaderText(t);
             }
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [isBracket, pathname, sp]);
 
     const showCreateBtn = (isDashboard && canCreateMain) || (isSubList && canCreateSub);
     const createLabel = isSubList ? 'Alt Turnuva Oluştur' : 'Turnuva Oluştur';
 
     const onCreate = () => {
-        if (!isAuth) {
-            navigate('/login');
-            return;
-        }
+        if (!isAuth) { navigate('/login'); return; }
         if (isDashboard && !canCreateMain) { alert('Bu işlem için yetkiniz yok.'); return; }
         if (isSubList && !canCreateSub)   { alert('Bu turnuvada düzenleme yetkiniz yok.'); return; }
 
         if (isSubList) {
             const parentId =
                 Number(new URLSearchParams(location.search).get('parent') || '0') || undefined;
-            if (!parentId) {
-                alert('Ana turnuva ID bulunamadı.');
-                return;
-            }
+            if (!parentId) { alert('Ana turnuva ID bulunamadı.'); return; }
             navigate(`/create?mode=sub&parent=${parentId}`);
         } else {
             navigate('/create?mode=main');
         }
     };
 
+    // dışarı tıklayınca menüleri kapat
     useEffect(() => {
         function onDocClick(e: MouseEvent) {
-            if (!menuRef.current) return;
-            if (!menuRef.current.contains(e.target as Node)) setMenu(false);
+            if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+                setUserMenuOpen(false);
+            }
+            if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+                setMobileMenuOpen(false);
+            }
         }
         function onKey(e: KeyboardEvent) {
-            if (e.key === 'Escape') setMenu(false);
+            if (e.key === 'Escape') {
+                setUserMenuOpen(false);
+                setMobileMenuOpen(false);
+            }
         }
         document.addEventListener('mousedown', onDocClick);
         window.addEventListener('keydown', onKey);
@@ -153,7 +150,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
         } catch {}
     };
 
-    // <<< DEĞİŞTİ >>> — Yazdırma akışını özel olaya devrettik
+    // Yazdırma: özel olaya devret
     const onPrint = () => {
         window.dispatchEvent(
             new CustomEvent('bracket:print', { detail: { title: headerText || '' } })
@@ -164,7 +161,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
 
     return (
         <header
-            className="relative z-50 h-16 px-6 flex items-center header-fix"
+            className="relative z-50 h-16 px-3 sm:px-6 flex items-center"
             style={{
                 background:
                     'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
@@ -172,15 +169,21 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 WebkitBackdropFilter: 'blur(2px)',
             }}
         >
-            <div className="flex items-center gap-3">
-                <Link to="/" className="text-2xl font-extrabold text-white">
+            {/* SOL: Logo + (desktop) Oluştur */}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <Link
+                    to="/"
+                    className="text-2xl font-extrabold text-white truncate max-w-[48vw] sm:max-w-none"
+                    title="Easy Tournament"
+                >
                     Easy Tournament
                 </Link>
 
+                {/* Desktop: Oluştur butonu */}
                 {showCreateBtn && (
                     <button
                         onClick={onCreate}
-                        className="ml-2 inline-flex items-center gap-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-2 text-sm font-semibold shadow"
+                        className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-2 text-sm font-semibold shadow"
                     >
                         <span className="text-lg leading-none">＋</span>
                         {createLabel}
@@ -188,32 +191,84 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 )}
             </div>
 
+            {/* ORTA: Bracket başlığı */}
             {isBracket && !!headerText && (
                 <div className="absolute inset-x-0 flex justify-center pointer-events-none">
-                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none">
+                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[70vw] sm:max-w-[50vw]">
                         {headerText}
                     </div>
                 </div>
             )}
 
-            <div className="ml-auto flex items-center gap-3">
+            {/* SAĞ: Aksiyonlar + Avatar */}
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                {/* Mobil: tek menü butonu (⋯) — tüm aksiyonlar burada */}
+                <div className="sm:hidden relative" ref={mobileMenuRef}>
+                    <button
+                        onClick={() => setMobileMenuOpen(v => !v)}
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/10 hover:bg-white/15 text-white"
+                        aria-label="Menü"
+                        title="Menü"
+                    >
+                        ⋯
+                    </button>
+
+                    {mobileMenuOpen && (
+                        <div
+                            className="absolute right-0 mt-2 w-56 bg-[#161a20] border border-white/10 rounded-xl overflow-hidden z-[9999] shadow-2xl"
+                        >
+                            {showCreateBtn && (
+                                <button
+                                    onClick={() => { setMobileMenuOpen(false); onCreate(); }}
+                                    className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white"
+                                    type="button"
+                                >
+                                    ＋ {createLabel}
+                                </button>
+                            )}
+                            {isBracket && (
+                                <>
+                                    <button onClick={() => { setMobileMenuOpen(false); onShare(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">↗ Paylaş</button>
+                                    <button onClick={() => { setMobileMenuOpen(false); onPrint(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">🖨 Yazdır</button>
+                                    {isAuth && !paletteOnly && (
+                                        <button onClick={() => { setMobileMenuOpen(false); onSave(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">💾 Kaydet</button>
+                                    )}
+                                </>
+                            )}
+                            {!isAuth ? (
+                                <Link
+                                    to="/login"
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className="block px-4 py-2.5 hover:bg-white/10 text-white"
+                                >
+                                    Giriş Yap
+                                </Link>
+                            ) : (
+                                <>
+                                    <Link to="/" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 hover:bg-white/10 text-white">Ana Sayfa</Link>
+                                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 hover:bg-white/10 text-white">Profilim</Link>
+                                    <button
+                                        onClick={() => { logout(); setMobileMenuOpen(false); navigate('/login', { replace: true }); }}
+                                        className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white"
+                                        type="button"
+                                    >
+                                        Çıkış Yap
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Desktop: ayrı aksiyon butonları */}
                 {isBracket && (
-                    <>
+                    <div className="hidden sm:flex items-center gap-2">
                         <button
                             onClick={onShare}
                             className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 hover:bg-white/15 text-white px-3 py-2 text-sm shadow"
                             title="Paylaş"
                         >
-                            <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="18" cy="5" r="3" />
                                 <circle cx="6" cy="12" r="3" />
                                 <circle cx="18" cy="19" r="3" />
@@ -228,16 +283,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                             className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 hover:bg-white/15 text-white px-3 py-2 text-sm shadow"
                             title="Yazdır"
                         >
-                            <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="6 9 6 2 18 2 18 9" />
                                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                                 <rect x="6" y="14" width="12" height="8" />
@@ -245,25 +291,15 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                             Yazdır
                         </button>
 
-                        {/* Kaydet: girişli ve yetkili (paletteOnly değil) ise göster */}
                         {isAuth && !paletteOnly && (
                             <button
                                 onClick={onSave}
                                 className="relative inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl shadow
-                         bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 hover:from-emerald-500 hover:to-green-400
-                         border border-white/10"
+                       bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 hover:from-emerald-500 hover:to-green-400
+                       border border-white/10"
                                 title="Kaydet"
                             >
-                                <svg
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.8"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                                     <polyline points="17 21 17 13 7 13 7 21" />
                                     <polyline points="7 3 7 8 15 8" />
@@ -271,47 +307,33 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                                 Kaydet
                             </button>
                         )}
-                    </>
+                    </div>
                 )}
 
+                {/* Avatar / Login */}
                 {!isAuth ? (
                     <Link
                         to="/login"
-                        className="px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold"
+                        className="hidden sm:inline-flex px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold"
                     >
                         Giriş Yap
                     </Link>
                 ) : (
-                    <div className="relative" ref={menuRef}>
+                    <div className="relative hidden sm:block" ref={userMenuRef}>
                         <img
                             src="https://placehold.co/40x40"
                             alt="avatar"
                             className="w-10 h-10 rounded-full border-2 border-white cursor-pointer"
-                            onClick={() => setMenu((m) => !m)}
+                            onClick={() => setUserMenuOpen(m => !m)}
                         />
-                        {menu && (
+                        {userMenuOpen && (
                             <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]">
-                                <Link
-                                    to="/"
-                                    onClick={() => setMenu(false)}
-                                    className="block px-4 py-2 hover:bg-gray-100 text-gray-800"
-                                >
-                                    Ana Sayfa
-                                </Link>
-                                <Link
-                                    to="/profile"
-                                    onClick={() => setMenu(false)}
-                                    className="block px-4 py-2 hover:bg-gray-100 text-gray-800"
-                                >
-                                    Profilim
-                                </Link>
+                                <Link to="/" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">Ana Sayfa</Link>
+                                <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">Profilim</Link>
                                 <button
-                                    onClick={() => {
-                                        logout();
-                                        setMenu(false);
-                                        navigate('/login', { replace: true });
-                                    }}
+                                    onClick={() => { logout(); setUserMenuOpen(false); navigate('/login', { replace: true }); }}
                                     className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800"
+                                    type="button"
                                 >
                                     Çıkış Yap
                                 </button>
@@ -320,6 +342,10 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                     </div>
                 )}
             </div>
+
+            {/* Oluştur: mobil’de menüde olduğu için burada gizli.
+          İsterseniz mini ikon olarak göstermek için aşağıyı açabilirsiniz:
+          {showCreateBtn && <button className="sm:hidden ...">＋</button>} */}
 
             {flash && (
                 <div className="absolute left-1/2 -translate-x-1/2 bottom-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded">

@@ -208,9 +208,9 @@ export default function WeighDetailPage() {
     /* ────────────────────────────────────────────────────────────── */
     if (loading) {
         return (
-            <div className="max-w-6xl mx-auto py-8">
+            <div className="max-w-6xl mx-auto px-3 py-8">
                 <div className="h-10 w-52 rounded bg-white/10 animate-pulse mb-6" />
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <div key={i} className="h-24 rounded-xl bg-white/5 border border-white/10 animate-pulse" />
                     ))}
@@ -227,7 +227,7 @@ export default function WeighDetailPage() {
 
     if (notFound) {
         return (
-            <div className="max-w-3xl mx-auto py-12">
+            <div className="max-w-3xl mx-auto px-3 py-12">
                 <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-[#1b1f27] to-[#141821] p-8 text-center">
                     <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-violet-500/15 text-violet-300 flex items-center justify-center text-2xl">
                         ⚖️
@@ -246,7 +246,7 @@ export default function WeighDetailPage() {
 
     if (err) {
         return (
-            <div className="max-w-6xl mx-auto py-8">
+            <div className="max-w-6xl mx-auto px-3 py-8">
                 <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
                     <div className="text-red-300 font-semibold mb-1">Hata</div>
                     <div className="text-sm text-red-200">{err}</div>
@@ -257,10 +257,10 @@ export default function WeighDetailPage() {
 
     /* ────────────────────────────────────────────────────────────── */
     return (
-        <div className="max-w-6xl mx-auto py-6 space-y-6">
+        <div className="max-w-6xl mx-auto px-3 py-6 space-y-6">
             {/* Header */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+                <div className="min-w-0">
                     <h1 className="text-xl font-semibold">Tartı Günü</h1>
                     <p className="text-sm text-gray-400">
                         {weighIn ? (
@@ -284,7 +284,7 @@ export default function WeighDetailPage() {
                         )}
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                     {isManager && weighIn && (
                         <button
                             onClick={toggleOpen}
@@ -292,7 +292,7 @@ export default function WeighDetailPage() {
                             role="switch"
                             aria-checked={weighIn.is_open}
                             className={clsx(
-                                'relative inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition',
+                                'relative inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition shrink-0',
                                 weighIn.is_open
                                     ? 'bg-emerald-600/20 border-emerald-400/30 text-emerald-200 hover:bg-emerald-600/30'
                                     : 'bg-[#1f2229] border-white/10 text-gray-200 hover:border-amber-400/40'
@@ -318,19 +318,19 @@ export default function WeighDetailPage() {
                     {weighIn && (
                         <Link
                             to={`/weigh/${tournament_slug}/book`}
-                            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
+                            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow shrink-0"
                         >
                             Randevu Al (Paylaşılabilir)
                         </Link>
                     )}
-                    <Link to="/" className="text-sm text-blue-300 hover:underline">
+                    <Link to="/" className="text-sm text-blue-300 hover:underline shrink-0">
                         ← Dashboard
                     </Link>
                 </div>
             </div>
 
-            {/* Quick stats */}
-            <section className="grid sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            {/* Quick stats — compact chips */}
+            <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <StatCard label="Toplam Randevu" value={stats.activeCount} hint={stats.cancelledCount ? `${stats.cancelledCount} iptal` : undefined} />
                 <StatCard label="Tahmini Sporcu" value={stats.totalHead} />
                 <StatCard label="Kulüp" value={stats.clubCount} />
@@ -344,16 +344,20 @@ export default function WeighDetailPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                     <div className="font-semibold text-white">Randevular</div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <div className="relative">
+                        <div className="relative w-full sm:w-auto">
                             <input
                                 value={q}
                                 onChange={(e) => setQ(e.target.value)}
                                 placeholder="Kulüp, kişi veya telefon ara…"
-                                className="bg-[#1f2229] px-3 py-2 rounded text-sm w-64 placeholder:text-gray-400"
+                                className="bg-[#1f2229] px-3 py-2 rounded text-sm w-full sm:w-64 placeholder:text-gray-400"
                                 aria-label="Randevu ara"
                             />
                             {q && (
-                                <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300" aria-label="Temizle">
+                                <button
+                                    onClick={() => setQ('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300"
+                                    aria-label="Temizle"
+                                >
                                     ✕
                                 </button>
                             )}
@@ -375,7 +379,11 @@ export default function WeighDetailPage() {
                             İptalleri göster
                         </label>
 
-                        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="bg-[#1f2229] px-2 py-2 rounded text-sm">
+                        <select
+                            value={sort}
+                            onChange={(e) => setSort(e.target.value as typeof sort)}
+                            className="bg-[#1f2229] px-2 py-2 rounded text-sm"
+                        >
                             <option value="time">Sıralama: Kayıt Zamanı</option>
                             <option value="name">Sıralama: İsim (A–Z)</option>
                             <option value="headcount">Sıralama: Sporcu Sayısı</option>
@@ -398,16 +406,15 @@ export default function WeighDetailPage() {
                                 <li
                                     key={a.id}
                                     className={clsx(
-                                        'group rounded-lg px-4 py-3 border bg-[#1f2229] border-white/10 hover:border-emerald-400/30',
-                                        cancelled && 'opacity-75'
-                                    )}
+                                        'group rounded-lg px-4 py-3 border bg-[#1f2229] border-white/10 hover:border-emerald-400/30'
+                                        , cancelled && 'opacity-75')}
                                 >
                                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         {/* Left block: identity & meta */}
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 min-w-0">
                                             <div
                                                 className={clsx(
-                                                    'w-10 h-10 rounded-full flex items-center justify-center select-none text-base',
+                                                    'w-10 h-10 rounded-full flex items-center justify-center select-none text-base shrink-0',
                                                     cancelled
                                                         ? 'bg-red-500/15 text-red-300'
                                                         : g === 'M'
@@ -418,19 +425,18 @@ export default function WeighDetailPage() {
                                             >
                                                 {g === 'M' ? '♂' : '♀'}
                                             </div>
-                                            <div>
-                                                <div className="font-medium text-white">
-                                                    {/* sıra no */}
+                                            <div className="min-w-0">
+                                                <div className="font-medium text-white truncate">
                                                     {a.seq_no ? <span className="text-gray-300 mr-2">#{a.seq_no}</span> : null}
-                                                    {label}
+                                                    <span className="truncate">{label}</span>
                                                     <span className="mx-2 text-gray-400">•</span>
-                                                    <span className="text-gray-200">{who}</span>
+                                                    <span className="text-gray-200 truncate">{who}</span>
                                                     {cancelled && (
                                                         <span className="ml-2 text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-200 align-middle">İptal</span>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-gray-400">
-                                                    Tel: <span className="font-mono">{a.phone || '—'}</span>
+                                                    Tel: <span className="font-mono break-all">{a.phone || '—'}</span>
                                                     <span className="mx-2">•</span>
                                                     Kayıt: {new Date(a.created_at).toLocaleString('tr-TR')}
                                                 </div>
@@ -438,7 +444,7 @@ export default function WeighDetailPage() {
                                         </div>
 
                                         {/* Right block: chips */}
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
                       <span className="inline-flex items-center px-2.5 py-1 rounded text-sm font-medium bg-white/10 text-white">
                         {a.headcount} sporcu
                       </span>
@@ -467,10 +473,17 @@ export default function WeighDetailPage() {
    ──────────────────────────────────────────────────────────────── */
 function StatCard({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
     return (
-        <div className="rounded-xl border border-white/10 bg-[#252a32] p-4">
-            <div className="text-sm text-gray-400">{label}</div>
-            <div className="text-2xl font-semibold text-white mt-1">{value}</div>
-            {hint && <div className="text-xs text-gray-400 mt-1">{hint}</div>}
+        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2
+                    flex items-center justify-between min-h-0">
+            <div className="text-[12px] leading-none text-gray-300 pr-2 truncate">{label}</div>
+            <div className="flex items-baseline gap-2 shrink-0">
+                <span className="text-lg font-semibold text-white leading-none">{value}</span>
+                {hint && (
+                    <span className="text-[11px] leading-none text-gray-400 whitespace-nowrap">
+            {hint}
+          </span>
+                )}
+            </div>
         </div>
     );
 }

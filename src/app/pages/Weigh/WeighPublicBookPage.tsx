@@ -203,8 +203,7 @@ export default function WeighPublicBookPage() {
     const exactlyOneGenderForIndividual = !isClub ? Number(maleChecked) + Number(femaleChecked) === 1 : true;
     const clubOk = isClub ? clubName.trim().length > 0 : true;
     const headcountsOk =
-        !isClub ||
-        ((maleChecked ? Number(maleCount) > 0 : true) && (femaleChecked ? Number(femaleCount) > 0 : true));
+        !isClub || ((maleChecked ? Number(maleCount) > 0 : true) && (femaleChecked ? Number(femaleCount) > 0 : true));
     const canCreate =
         !!weighIn &&
         phase === 'manage' &&
@@ -404,7 +403,7 @@ export default function WeighPublicBookPage() {
                     onChange={(e) => onChange(String(clamp(Number(e.target.value.replace(/\D/g, '')) || 1, 1, 999)))}
                     disabled={disabled}
                     className={clsx(
-                        'w-16 text-center bg-[#1b1f26] text-white px-2 outline-none',
+                        'w-14 sm:w-16 text-center bg-[#1b1f26] text-white px-2 outline-none',
                         disabled ? 'text-white/40' : ''
                     )}
                 />
@@ -464,7 +463,7 @@ export default function WeighPublicBookPage() {
                         )}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <button
                         onClick={() =>
                             navigator.clipboard
@@ -475,7 +474,7 @@ export default function WeighPublicBookPage() {
                                 )
                         }
                         disabled={busy}
-                        className="px-3 py-2 rounded-lg bg-[#1f2229] border border-white/10 hover:border-emerald-400/30 text-sm"
+                        className="px-3 py-2 rounded-lg bg-[#1f2229] border border-white/10 hover:border-emerald-400/30 text-xs sm:text-sm whitespace-nowrap"
                     >
                         Paylaşılabilir Bağlantı
                     </button>
@@ -539,7 +538,7 @@ export default function WeighPublicBookPage() {
                     </div>
                 )}
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <button
                         onClick={onLookup}
                         disabled={!idOk || busy || phase === 'manage'}
@@ -575,7 +574,7 @@ export default function WeighPublicBookPage() {
             {phase === 'manage' && (
                 <>
                     {/* Quick Stats */}
-                    <section className="grid grid-cols-2 gap-4">
+                    <section className="grid grid-cols-2 gap-3">
                         <StatCard label="Aktif Randevu" value={activeMine.length || '—'} />
                         <StatCard label="Geçmiş (iptal)" value={cancelledMine.length || '—'} />
                     </section>
@@ -597,10 +596,8 @@ export default function WeighPublicBookPage() {
                                 type="button"
                                 onClick={() => onSwitchType(true)}
                                 className={clsx(
-                                    'flex-1 px-3 py-2 text-sm transition-colors',
-                                    isClub
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-[#111318] text-gray-300 hover:text-white hover:bg-[#14171c]'
+                                    'flex-1 px-3 py-2 text-xs sm:text-sm transition-colors',
+                                    isClub ? 'bg-emerald-600 text-white' : 'bg-[#111318] text-gray-300 hover:text-white hover:bg-[#14171c]'
                                 )}
                             >
                                 Kulüp
@@ -609,10 +606,8 @@ export default function WeighPublicBookPage() {
                                 type="button"
                                 onClick={() => onSwitchType(false)}
                                 className={clsx(
-                                    'flex-1 px-3 py-2 text-sm transition-colors',
-                                    !isClub
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-[#111318] text-gray-300 hover:text-white hover:bg-[#14171c]'
+                                    'flex-1 px-3 py-2 text-xs sm:text-sm transition-colors',
+                                    !isClub ? 'bg-emerald-600 text-white' : 'bg-[#111318] text-gray-300 hover:text-white hover:bg-[#14171c]'
                                 )}
                             >
                                 Bireysel
@@ -663,11 +658,7 @@ export default function WeighPublicBookPage() {
                                     >
                                         {maleChecked ? 'Seçildi' : 'Seç'}
                                     </button>
-                                    <CountStepper
-                                        value={maleCount}
-                                        onChange={setMaleCount}
-                                        disabled={!isClub || !maleChecked}
-                                    />
+                                    <CountStepper value={maleCount} onChange={setMaleCount} disabled={!isClub || !maleChecked} />
                                 </div>
                                 {activeMine.some((a) => a.gender === 'M') && (
                                     <div className="text-[11px] mt-1 text-amber-200">
@@ -692,11 +683,7 @@ export default function WeighPublicBookPage() {
                                     >
                                         {femaleChecked ? 'Seçildi' : 'Seç'}
                                     </button>
-                                    <CountStepper
-                                        value={femaleCount}
-                                        onChange={setFemaleCount}
-                                        disabled={!isClub || !femaleChecked}
-                                    />
+                                    <CountStepper value={femaleCount} onChange={setFemaleCount} disabled={!isClub || !femaleChecked} />
                                 </div>
                                 {activeMine.some((a) => a.gender === 'F') && (
                                     <div className="text-[11px] mt-1 text-amber-200">
@@ -707,7 +694,12 @@ export default function WeighPublicBookPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center justify-between gap-2 pt-2">
+                        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 pt-2">
+                            {!isClub && (
+                                <div className="text-xs text-gray-400">
+                                    Bireysel randevuda tek cinsiyet seçilir ve kişi sayısı <b>1</b>’dir.
+                                </div>
+                            )}
                             <button
                                 onClick={startCreate}
                                 disabled={!canCreate}
@@ -720,11 +712,6 @@ export default function WeighPublicBookPage() {
                             >
                                 Randevu Oluştur
                             </button>
-                            {!isClub && (
-                                <div className="text-xs text-gray-400">
-                                    Bireysel randevuda tek cinsiyet seçilir ve kişi sayısı <b>1</b>’dir.
-                                </div>
-                            )}
                         </div>
                     </section>
 
@@ -795,11 +782,7 @@ export default function WeighPublicBookPage() {
                     <div className="relative z-10 w-[min(92vw,30rem)] bg-[#2b2f37] border border-white/10 rounded-2xl p-6 shadow-2xl">
                         <div className="flex items-center justify-between">
                             <div className="text-white font-semibold">
-                                {modalMode === 'create'
-                                    ? 'Doğrulama'
-                                    : modalMode === 'cancel'
-                                        ? 'İptal Doğrulaması'
-                                        : 'Bilgilendirme'}
+                                {modalMode === 'create' ? 'Doğrulama' : modalMode === 'cancel' ? 'İptal Doğrulaması' : 'Bilgilendirme'}
                             </div>
                             <button onClick={closeCodeModal} className="text-white/70 hover:text-white text-xl leading-none">
                                 ×
@@ -827,9 +810,7 @@ export default function WeighPublicBookPage() {
                         {/* CODE CONTENT */}
                         {modalMode !== 'notice' && (
                             <>
-                                <p className="text-sm text-gray-300 mt-2">
-                                    Telefonunuza gönderilen <b>6 haneli</b> kodu girin.
-                                </p>
+                                <p className="text-sm text-gray-300 mt-2">Telefonunuza gönderilen <b>6 haneli</b> kodu girin.</p>
 
                                 {/* Fancy 6-box input (single hidden input drives UI) */}
                                 <div className="mt-4" onClick={() => hiddenCodeInputRef.current?.focus()}>
@@ -853,9 +834,7 @@ export default function WeighPublicBookPage() {
                                                     key={i}
                                                     className={clsx(
                                                         'h-12 rounded-xl border flex items-center justify-center text-xl font-semibold shadow-sm',
-                                                        filled
-                                                            ? 'border-emerald-500/40 bg-emerald-500/10 text-white'
-                                                            : 'border-white/15 bg-[#1b1f26] text-white/60'
+                                                        filled ? 'border-emerald-500/40 bg-emerald-500/10 text-white' : 'border-white/15 bg-[#1b1f26] text-white/60'
                                                     )}
                                                 >
                                                     {ch || '•'}
@@ -924,7 +903,7 @@ export default function WeighPublicBookPage() {
    ──────────────────────────────────────────────────────────────── */
 function StatCard({ label, value }: { label: string; value: number | string }) {
     return (
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#252a32] to-[#1c2027] p-4 shadow">
+        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#252a32] to-[#1c2027] p-4 shadow">
             <div className="text-sm text-gray-400">{label}</div>
             <div className="text-2xl font-semibold text-white mt-1">{value}</div>
         </div>

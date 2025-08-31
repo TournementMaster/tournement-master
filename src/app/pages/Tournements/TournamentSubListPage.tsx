@@ -34,20 +34,15 @@ function inlinePhase(s: any): Phase {
 function safeUUID(): string {
     const g: any = (typeof globalThis !== 'undefined') ? globalThis : window;
     const c = g?.crypto || g?.msCrypto;
-
     if (c?.randomUUID) return c.randomUUID();
-
     if (c?.getRandomValues) {
         const bytes = new Uint8Array(16);
         c.getRandomValues(bytes);
-        // RFC 4122 v4 maskeleri
         bytes[6] = (bytes[6] & 0x0f) | 0x40;
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0'));
         return `${hex.slice(0,4).join('')}-${hex.slice(4,6).join('')}-${hex.slice(6,8).join('')}-${hex.slice(8,10).join('')}-${hex.slice(10).join('')}`;
     }
-
-    // En son çare (SSR/çok eski ortamlar): pseudo-uuid
     return `tmp-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 }
 
@@ -83,14 +78,9 @@ function ImportModal({
     const [submitting, setSubmitting] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
 
-    function addRow() {
-        setRows((r) => [...r, { age: '', weight: '', key: safeUUID() }]);
-    }
-    function removeRow(idx: number) {
-        setRows((r) => r.filter((_, i) => i !== idx));
-    }
+    function addRow() { setRows((r) => [...r, { age: '', weight: '', key: safeUUID() }]); }
+    function removeRow(idx: number) { setRows((r) => r.filter((_, i) => i !== idx)); }
 
-    // Parsers (tolerant to "45+")
     function parseAge(s: string) {
         const m = (s || '').trim().match(/^(\d+)\s*-\s*(\d+)$/);
         if (!m) return null;
@@ -104,7 +94,7 @@ function ImportModal({
         if (t.endsWith('+')) {
             const base = parseFloat(t.slice(0, -1));
             if (!Number.isFinite(base)) return null;
-            return { weight_min: String(base), weight_max: '45+' }; // backend '45+' → üst açık algılıyor
+            return { weight_min: String(base), weight_max: '45+' };
         }
         const m = t.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
         if (!m) return null;
@@ -113,26 +103,17 @@ function ImportModal({
 
     async function onSubmit() {
         setMsg(null);
-        if (!file) {
-            setMsg('Lütfen bir Excel (XLSX) dosyası seçin.');
-            return;
-        }
-        // build categories
+        if (!file) { setMsg('Lütfen bir Excel (XLSX) dosyası seçin.'); return; }
+
         const categories = [];
         for (const r of rows) {
             if (!r.age && !r.weight) continue;
             const age = parseAge(r.age);
             const w = parseWeight(r.weight);
-            if (!age || !w) {
-                setMsg('Satırlardaki yaş/kilo alanlarını kontrol edin (örn. 12-15 ve 10-15 veya 45+).');
-                return;
-            }
+            if (!age || !w) { setMsg('Satırlardaki yaş/kilo alanlarını kontrol edin (örn. 12-15 ve 10-15 veya 45+).'); return; }
             categories.push({ ...age, ...w });
         }
-        if (!categories.length) {
-            setMsg('En az bir siklet satırı girin.');
-            return;
-        }
+        if (!categories.length) { setMsg('En az bir siklet satırı girin.'); return; }
 
         setSubmitting(true);
         try {
@@ -162,22 +143,16 @@ function ImportModal({
 
     return (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" aria-modal="true" role="dialog">
-            {/* Overlay */}
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            {/* Dialog */}
             <div className="relative z-10 w-[min(92vw,920px)] max-h-[90vh] overflow-hidden rounded-2xl bg-[#20242c] border border-white/10 shadow-2xl flex flex-col">
-                {/* Progress bar (subtle) */}
                 {submitting && <div className="absolute left-0 top-0 h-0.5 w-full overflow-hidden">
                     <div className="h-full w-1/3 bg-emerald-400/80 animate-[progress_1.2s_ease-in-out_infinite]" />
                 </div>}
-
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
                     <div className="text-lg font-semibold text-white">Excel’den Alt Turnuva İçe Aktar</div>
                     <button onClick={onClose} className="text-gray-300 hover:text-white" aria-label="Kapat">✕</button>
                 </div>
 
-                {/* SCROLLABLE BODY */}
                 <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
                     <div>
                         <div className="text-sm text-gray-300 mb-2">Excel Dosyası (XLSX)</div>
@@ -219,7 +194,6 @@ function ImportModal({
                         </label>
                     </div>
 
-                    {/* SİKLET SATIRLARI */}
                     <div>
                         <div className="text-sm text-gray-300 mb-2">Siklet Türleri</div>
                         <div className="rounded-xl border border-white/10 overflow-hidden">
@@ -266,14 +240,12 @@ function ImportModal({
                     </div>
 
                     {msg && (
-                        <div className="rounded-lg border px-3 py-2 text-sm
-              border-amber-400/20 bg-amber-500/10 text-amber-200">
+                        <div className="rounded-lg border px-3 py-2 text-sm border-amber-400/20 bg-amber-500/10 text-amber-200">
                             {msg}
                         </div>
                     )}
                 </div>
 
-                {/* STICKY FOOTER (her zaman görünür) */}
                 <div className="px-6 py-4 border-t border-white/10 bg-[#1b2027] flex items-center justify-between">
                     <span className="text-xs text-gray-400">Her satır için hem erkek hem kadın kategorisi oluşturulur.</span>
                     <div className="flex items-center gap-2">
@@ -293,13 +265,8 @@ function ImportModal({
                 </div>
             </div>
 
-            {/* keyframes for progress bar */}
             <style>{`
-        @keyframes progress {
-          0% { transform: translateX(-120%); }
-          50% { transform: translateX(20%); }
-          100% { transform: translateX(120%); }
-        }
+        @keyframes progress { 0%{transform:translateX(-120%)} 50%{transform:translateX(20%)} 100%{transform:translateX(120%)} }
       `}</style>
         </div>
     );
@@ -321,16 +288,9 @@ function Row({ item, onChanged, canManage }: { item: SubTournament; onChanged: (
         : String(item.gender || '').toUpperCase() === 'F' ? 'Female' : 'Mixed';
 
     const confirmDelete = async () => {
-        try {
-            setDeleting(true);
-            await api.delete(`subtournaments/${encodeURIComponent(item.public_slug)}/`);
-            setConfirmOpen(false);
-            onChanged();
-        } catch {
-            alert('Silme işlemi başarısız oldu.');
-        } finally {
-            setDeleting(false);
-        }
+        try { setDeleting(true); await api.delete(`subtournaments/${encodeURIComponent(item.public_slug)}/`);
+            setConfirmOpen(false); onChanged();
+        } catch { alert('Silme işlemi başarısız oldu.'); } finally { setDeleting(false); }
     };
 
     const phase = inlinePhase(item);
@@ -345,27 +305,30 @@ function Row({ item, onChanged, canManage }: { item: SubTournament; onChanged: (
                 onKeyDown={(e) => { if (e.key === 'Enter') goView(); }}
                 className="group relative p-4 rounded-lg bg-[#2d3038] border border-white/10 cursor-pointer transition
                    focus:outline-none hover:border-emerald-400/50 hover:shadow-[0_0_0_2px_rgba(16,185,129,.45),0_0_22px_6px_rgba(168,85,247,.28),0_0_16px_4px_rgba(16,185,129,.28)]
-                   flex items-center justify-between"
+                   flex items-center justify-between gap-3"
             >
-                <div className="pr-3 flex items-start gap-4">
+                {/* SOL: içerik (daralabilir) */}
+                <div className="pr-3 flex items-start gap-4 flex-1 min-w-0">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500/15 text-emerald-300 text-xl select-none">🏆</div>
-                    <div>
-                        <div className="font-semibold text-slate-100">{item.title}</div>
-                        <div className="text-sm text-white/60 flex flex-wrap items-center gap-2">
-              <span>
+                    <div className="min-w-0">
+                        <div className="font-semibold text-slate-100 truncate">{item.title}</div>
+                        <div className="text-sm text-white/60 flex flex-wrap items-center gap-2 truncate">
+              <span className="truncate">
                 {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
               </span>
                         </div>
                     </div>
                 </div>
 
-                <div className="relative flex items-center gap-4">
+                {/* SAĞ: chip + menü (daralmaz) */}
+                <div className="relative flex items-center gap-2 sm:gap-3 shrink-0">
                     <span className={`px-2 py-1 rounded text-xs border border-white/10 ${badge.chip}`}>{badge.text}</span>
+
                     {canManage && (
                         <div className="relative">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-                                className="w-10 h-10 rounded-full bg-[#0d1117] text-white/90 border border-white/10 ring-1 ring-white/5
+                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#0d1117] text-white/90 border border-white/10 ring-1 ring-white/5
                            shadow-inner hover:border-emerald-400/40 hover:ring-emerald-400/30 flex items-center justify-center"
                                 aria-haspopup="menu" aria-expanded={open} title="İşlemler" type="button"
                             >
@@ -392,7 +355,7 @@ function Row({ item, onChanged, canManage }: { item: SubTournament; onChanged: (
             {confirmOpen && (
                 <div className="fixed inset-0 z-[80] flex items-center justify-center" onClick={() => setConfirmOpen(false)} role="dialog" aria-modal="true">
                     <div className="absolute inset-0 bg-black/60" />
-                    <div className="relative z-10 w-[min(92vw,540px)] rounded-2xl bg-[#2a2d34] border border-white/10 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative z-10 w-[min(92vw,540px)] rounded-2xl bg-[#2a2d34] border border:white/10 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                         <div className="p-6">
                             <div className="text-base font-semibold text-white mb-1">Silmek istediğinize emin misiniz?</div>
                             <p className="text-sm text-white/80 mb-4">“{item.title}” geri alınamaz şekilde silinecek.</p>
@@ -409,6 +372,7 @@ function Row({ item, onChanged, canManage }: { item: SubTournament; onChanged: (
         </>
     );
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    Page
@@ -435,6 +399,7 @@ export default function TournamentSubListPage() {
     const [q, setQ] = useState('');
     const [canManage, setCanManage] = useState(false);
     const [showImport, setShowImport] = useState(false);
+    const [drawerOpen, setDrawerOpen] = useState(false); // ← mobil filtre çekmecesi
 
     useEffect(() => {
         let cancelled = false;
@@ -526,25 +491,42 @@ export default function TournamentSubListPage() {
     const errorStatus = (error as any)?.response?.status ?? (error as any)?.status;
 
     return (
-        <div className="max-w-6xl mx-auto">
-            <div className="flex gap-6">
-                <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug} />
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 lg:px-0">
+            <div className="lg:flex lg:gap-6">
+                {/* SOL SİDEBAR — lg ve üstü görünür, mobilde çekmece */}
+                <aside className="hidden lg:block w-[280px] shrink-0">
+                    <div className="lg:sticky lg:top-20">
+                        <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug} />
+                    </div>
+                </aside>
 
+                {/* SAĞ İÇERİK */}
                 <div className="flex-1">
+                    {/* mobil toolbar: Filtreler butonu */}
+                    <div className="lg:hidden pt-4">
+                        <button
+                            onClick={() => setDrawerOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/10 text-white px-3 py-2 text-sm"
+                            type="button"
+                        >
+                            <span className="text-base">☰</span> Filtreler
+                        </button>
+                    </div>
+
                     {/* top bar */}
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between py-6">
-                        <div>
+                    <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between py-6">
+                        <div className="min-w-0">
                             <h2 className="text-xl font-semibold">Tüm Alt Turnuvalar</h2>
                             <p className="text-sm text-gray-400">Toplam <b>{data?.length ?? 0}</b> alt turnuva</p>
                         </div>
 
-                        <div className="flex items-center gap-3">
-                            <div className="relative">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+                            <div className="relative w-full sm:w-56">
                                 <input
                                     value={q}
                                     onChange={(e) => setQ(e.target.value)}
                                     placeholder="Hızlı ara (başlık)…"
-                                    className="bg-gray-700/70 px-3 py-2 rounded text-sm w-56 placeholder:text-gray-300"
+                                    className="w-full bg-gray-700/70 px-3 py-2 rounded text-sm placeholder:text-gray-300"
                                     aria-label="Alt turnuva ara"
                                 />
                                 {q && (
@@ -554,7 +536,11 @@ export default function TournamentSubListPage() {
 
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-400">SIRALA:</span>
-                                <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="bg-gray-700 px-2 py-2 rounded text-sm">
+                                <select
+                                    value={sort}
+                                    onChange={(e) => setSort(e.target.value as SortKey)}
+                                    className="bg-gray-700 px-2 py-2 rounded text-sm"
+                                >
                                     <option value="alpha">Alfabetik (A–Z)</option>
                                     <option value="created">Oluşturma Tarihi (Yeni → Eski)</option>
                                     <option value="age">Yaşa göre (Min yaş ↑)</option>
@@ -647,6 +633,20 @@ export default function TournamentSubListPage() {
                     )}
                 </div>
             </div>
+
+            {/* Mobil filtre çekmecesi */}
+            {drawerOpen && (
+                <div className="fixed inset-0 z-[85] lg:hidden">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)} />
+                    <div className="absolute left-0 top-0 bottom-0 w-[min(86vw,360px)] bg-[#1c2027] border-r border-white/10 p-4 overflow-y-auto">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="font-semibold">Filtreler</div>
+                            <button onClick={() => setDrawerOpen(false)} className="text-gray-300 hover:text-white" type="button">✕</button>
+                        </div>
+                        <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug} />
+                    </div>
+                </div>
+            )}
 
             {showImport && public_slug && (
                 <ImportModal

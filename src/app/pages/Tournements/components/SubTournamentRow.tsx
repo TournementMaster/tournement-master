@@ -78,82 +78,47 @@ export default function SubTournamentRow({
         <div
             onClick={goTo}
             className="relative block rounded-lg bg-[#2d3038] px-5 py-4 border border-transparent
-                 hover:bg-[#2f333b] hover:border-emerald-400/30
-                 focus:outline-none focus:ring-2 focus:ring-emerald-400/40
-                 cursor-pointer"
+                   hover:bg-[#2f333b] hover:border-emerald-400/30
+                   focus:outline-none focus:ring-2 focus:ring-emerald-400/40 cursor-pointer"
             title="Alt turnuvayı görüntüle"
         >
-            <div className="flex items-center justify-between">
-                <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500/15 text-emerald-300 text-xl select-none">
-                        🏆
-                    </div>
-                    <div>
-                        <div className="font-semibold">{item.title}</div>
-
-                        {/* ✅ Yalnızca alt başlık. Sarı nokta + 'Bekleyen/Devam/Bitti' tamamen kaldırıldı */}
-                        <div className="text-gray-400 text-sm">
+            <div className="flex items-center justify-between gap-3">
+                {/* SOL */}
+                <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500/15 text-emerald-300 text-xl select-none">🏆</div>
+                    <div className="min-w-0">
+                        <div className="font-semibold truncate">{item.title}</div>
+                        <div className="text-gray-400 text-sm truncate">
                             <span>{subtitle || '—'}</span>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    {/* ✅ Sağdaki faz rozeti de kaldırıldı. Sadece menü bırakıldı. */}
-                    {canManage && (
-                    <div
-                        className="relative z-10"
-                        ref={menuRef}
-                        onClick={(e) => e.stopPropagation()}
-                    >
+                {/* SAĞ */}
+                {canManage && (
+                    <div className="relative z-10 shrink-0" ref={menuRef} onClick={(e) => e.stopPropagation()}>
                         <button
-                            onMouseDown={(e) => {
-                                e.preventDefault();
-                            }}
+                            onMouseDown={(e) => { e.preventDefault(); }}
                             onClick={() => setMenuOpen((v) => !v)}
-                            className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-900/70 border border-white/15 text-gray-100 text-[20px] font-semibold hover:bg-gray-900/90 shadow"
-                            title="Seçenekler"
-                            aria-haspopup="menu"
-                            aria-expanded={menuOpen}
-                            type="button"
+                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-gray-900/70 border border-white/15 text-gray-100 text-[20px] font-semibold hover:bg-gray-900/90 shadow"
+                            title="Seçenekler" aria-haspopup="menu" aria-expanded={menuOpen} type="button"
                         >
                             ⋯
                         </button>
-
                         {menuOpen && (
-                            <div
-                                role="menu"
-                                className="absolute right-0 mt-2 w-56 bg-[#161a20] border border-white/10 rounded-xl overflow-hidden z-30 shadow-2xl"
-                            >
-                                <button
-                                    role="menuitem"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        navigate(to, { state: item });
-                                    }}
-                                    className={`${premiumItem}`}
-                                    type="button"
-                                >
+                            <div role="menu" className="absolute right-0 mt-2 w-56 bg-[#161a20] border border-white/10 rounded-xl overflow-hidden z-30 shadow-2xl">
+                                <button role="menuitem" onClick={() => { setMenuOpen(false); navigate(to, { state: item }); }} className={`${premiumItem}`} type="button">
                                     <span className="text-[18px]">✏️</span>
                                     <span className={`${premiumText}`}>Düzenle</span>
                                 </button>
-
-                                <button
-                                    role="menuitem"
-                                    onClick={() => {
-                                        setMenuOpen(false);
-                                        setConfirmOpen(true);
-                                    }}
-                                    className={`${premiumItem} text-red-300 hover:bg-red-500/10`}
-                                    type="button"
-                                >
+                                <button role="menuitem" onClick={() => { setMenuOpen(false); setConfirmOpen(true); }} className={`${premiumItem} text-red-300 hover:bg-red-500/10`} type="button">
                                     <span className="text-[18px]">🗑️</span>
                                     <span className={`${premiumText}`}>Sil</span>
                                 </button>
                             </div>
                         )}
-                    </div>)}
-                </div>
+                    </div>
+                )}
             </div>
 
             {confirmOpen && (

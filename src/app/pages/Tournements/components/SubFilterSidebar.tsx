@@ -1,9 +1,9 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom';
 
 export type SubFilters = {
     status: 'all' | 'pending' | 'in_progress' | 'completed';
     gender: 'all' | 'M' | 'F';
-    ageMin: string;   // boş string → sınır yok
+    ageMin: string;
     ageMax: string;
     weightMin: string;
     weightMax: string;
@@ -25,14 +25,14 @@ export default function SubFilterSidebar({
                                          }: {
     filters: SubFilters;
     setFilters: (f: SubFilters) => void;
-    /** Turnuva slug’ı: buton linkleri için opsiyonel */
     slug?: string;
 }) {
     const set = (patch: Partial<SubFilters>) => setFilters({ ...filters, ...patch });
     const clear = () => setFilters({ ...DEFAULTS });
 
     return (
-        <aside className="w-64 bg-[#2d3038] rounded-lg p-4 h-fit sticky top-6 text-[15px]">
+        // mobil: tam genişlik, büyük ekran: 16rem; sticky sadece lg+
+        <div className="w-full lg:w-64 bg-[#2d3038] rounded-lg p-4 h-fit lg:sticky lg:top-6 text-[15px]">
             <nav className="space-y-6">
                 {/* DURUM */}
                 <div>
@@ -71,7 +71,7 @@ export default function SubFilterSidebar({
                     ))}
                 </div>
 
-                {/* YAŞ (min–max) */}
+                {/* YAŞ */}
                 <div>
                     <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">YAŞ ARALIĞI</h3>
                     <div className="grid grid-cols-2 gap-2">
@@ -92,7 +92,7 @@ export default function SubFilterSidebar({
                     </div>
                 </div>
 
-                {/* KİLO (min–max) */}
+                {/* KİLO */}
                 <div>
                     <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">KİLO ARALIĞI (kg)</h3>
                     <div className="grid grid-cols-2 gap-2">
@@ -123,9 +123,8 @@ export default function SubFilterSidebar({
                     </button>
                 </div>
 
-                {/* ───────── Hızlı Erişim Butonları ───────── */}
+                {/* Hızlı Erişim */}
                 <div className="pt-4 space-y-3">
-                    {/* Liderlik Tablosu */}
                     <Link
                         to={slug ? `/tournements/${encodeURIComponent(slug)}/leaderboard` : '#'}
                         className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
@@ -139,7 +138,6 @@ export default function SubFilterSidebar({
                         <span className="font-medium text-[1.05rem]">Liderlik Tablosu</span>
                     </Link>
 
-                    {/* Tartı Günü */}
                     <Link
                         to={slug ? `/weigh/${encodeURIComponent(slug)}` : '#'}
                         className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
@@ -153,7 +151,6 @@ export default function SubFilterSidebar({
                         <span className="font-medium text-[1.05rem]">Tartı Günü</span>
                     </Link>
 
-                    {/* Canlı Maç Odası */}
                     <Link
                         to={slug ? `/live/${encodeURIComponent(slug)}` : '#'}
                         className={`group w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-lg
@@ -163,7 +160,6 @@ export default function SubFilterSidebar({
                         hover:border-red-300/60 transition ${slug ? '' : 'pointer-events-none opacity-50'}`}
                         aria-label="Canlı Maç Odası"
                     >
-                        {/* YouTube-like icon */}
                         <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <rect x="3" y="6" width="18" height="12" rx="4" stroke="currentColor" strokeWidth="2" />
                             <path d="M10 9.5L15 12L10 14.5V9.5Z" fill="currentColor" />
@@ -172,6 +168,6 @@ export default function SubFilterSidebar({
                     </Link>
                 </div>
             </nav>
-        </aside>
+        </div>
     );
 }

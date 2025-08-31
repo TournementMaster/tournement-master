@@ -3,9 +3,7 @@
    FILE: src/app/pages/Dashboard/Dashboard.tsx
    - Ana turnuvaları listeler
    - Sol üst köşedeki yıl rozeti yerine üç nokta menüsü (Düzenle/Sil)
-   - TS daraltmalar: data için Array guard, byText/filtered için net tipler
-   - Menü öğelerine premium yazı stili ve emoji uygulandı
-   - Giriş yapılmamışsa /login'e yönlendirir (next= mevcut sayfa)
+   - Responsive header düzenlendi (mobilde daha temiz)
    ========================================================================= */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -46,13 +44,12 @@ export default function Dashboard() {
                 navigate(`/login?next=${next}`, { replace: true });
             }
         } catch {
-            // storage yoksa yine login'e
             const next = encodeURIComponent(location.pathname + location.search);
             navigate(`/login?next=${next}`, { replace: true });
         }
     }, []); // yalnız ilk render’da kontrol
 
-    // id↔slug haritalarını yaz
+    // id↔slug haritaları
     useEffect(() => {
         if (!Array.isArray(data)) return;
         try {
@@ -92,7 +89,7 @@ export default function Dashboard() {
     /* ----------------------- Durum ekranları ----------------------- */
     if (isLoading) {
         return (
-            <div className="max-w-6xl mx-auto py-10">
+            <div className="max-w-6xl mx-auto py-10 px-4 sm:px-6">
                 <HeaderBar
                     sort={sort}
                     setSort={setSort}
@@ -108,7 +105,7 @@ export default function Dashboard() {
 
     if (isError) {
         return (
-            <div className="max-w-6xl mx-auto py-10">
+            <div className="max-w-6xl mx-auto py-10 px-4 sm:px-6">
                 <HeaderBar
                     sort={sort}
                     setSort={setSort}
@@ -135,7 +132,7 @@ export default function Dashboard() {
 
     if (!filtered.length) {
         return (
-            <div className="max-w-6xl mx-auto py-10">
+            <div className="max-w-6xl mx-auto py-10 px-4 sm:px-6">
                 <HeaderBar
                     sort={sort}
                     setSort={setSort}
@@ -150,7 +147,7 @@ export default function Dashboard() {
 
     /* ----------------------- Normal görünüm ----------------------- */
     return (
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <HeaderBar
                 sort={sort}
                 setSort={setSort}
@@ -169,10 +166,12 @@ export default function Dashboard() {
 }
 
 /* =========================================================================
-   ALT BİLEŞENLER (değişmedi)
+   ALT BİLEŞENLER
    ========================================================================= */
 
-function HeaderBar({ sort, setSort, q, setQ, total, subdued = false }: {
+function HeaderBar({
+                       sort, setSort, q, setQ, total, subdued = false
+                   }: {
     sort: SortKey;
     setSort: (s: SortKey) => void;
     q: string;
@@ -181,21 +180,42 @@ function HeaderBar({ sort, setSort, q, setQ, total, subdued = false }: {
     subdued?: boolean;
 }) {
     return (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between py-6">
-            <div>
-                <h2 className="text-xl font-semibold">Ana Turnuvalar</h2>
-                <p className={`text-sm ${subdued ? 'text-gray-500' : 'text-gray-400'}`}>
-                    Toplam <b>{total}</b> kayıt
-                </p>
+        <div className="py-4 sm:py-6">
+            {/* Üst satır: başlık + (sm ve üstü) sıralama */}
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <h2 className="text-lg sm:text-xl font-semibold leading-tight truncate">
+                        Ana Turnuvalar
+                    </h2>
+                    <p className={`mt-0.5 text-xs sm:text-sm ${subdued ? 'text-gray-500' : 'text-gray-400'}`}>
+                        Toplam <b>{total}</b> kayıt
+                    </p>
+                </div>
+
+                {/* Sıralama: sm ve üstü sağda, mobilde aşağıda ayrı satırda */}
+                <div className="hidden sm:flex items-center gap-2 shrink-0">
+                    <span className="text-sm text-gray-400">SIRALA:</span>
+                    <select
+                        value={sort}
+                        onChange={(e) => setSort(e.target.value as SortKey)}
+                        className="bg-gray-700 px-2 py-2 rounded text-sm"
+                        aria-label="Sıralama"
+                    >
+                        <option value="recent">Zamana göre (Yeni → Eski)</option>
+                        <option value="alpha">Alfabetik (A–Z)</option>
+                    </select>
+                </div>
             </div>
 
-            <div className="flex items-center gap-3">
-                <div className="relative">
+            {/* Alt satır: arama (full width) + (mobil) sıralama */}
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                {/* Arama: mobilde tam genişlik, sm’de sabit genişlik */}
+                <div className="relative w-full sm:max-w-xs">
                     <input
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
                         placeholder="Hızlı ara (başlık)…"
-                        className="bg-gray-700/70 px-3 py-2 rounded text-sm w-56 placeholder:text-gray-300"
+                        className="w-full bg-gray-700/70 px-3 py-2 rounded text-sm placeholder:text-gray-300"
                         aria-label="Turnuva ara"
                     />
                     {q && (
@@ -211,12 +231,14 @@ function HeaderBar({ sort, setSort, q, setQ, total, subdued = false }: {
                     )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-400">SIRALA:</span>
+                {/* Mobil sıralama kontrolü */}
+                <div className="flex items-center gap-2 sm:hidden">
+                    <label htmlFor="sort-mobile" className="text-xs text-gray-400">SIRALA:</label>
                     <select
+                        id="sort-mobile"
                         value={sort}
                         onChange={(e) => setSort(e.target.value as SortKey)}
-                        className="bg-gray-700 px-2 py-2 rounded text-sm"
+                        className="flex-1 bg-gray-700 px-2 py-2 rounded text-sm"
                         aria-label="Sıralama"
                     >
                         <option value="recent">Zamana göre (Yeni → Eski)</option>
@@ -442,7 +464,7 @@ function SkeletonGrid() {
 function EmptyState({ isAdmin=false }: { isAdmin?: boolean }) {
     return (
         <div className="mt-8 rounded-lg border border-white/10 bg-[#2a2d34] p-8 text-center">
-            <div className="text-lg font-semibold mb-2">Henüz ana turnuvanız yok</div>
+            <div className="text-lg font-semibold mb-2">Henüz ana turnuvalar yok</div>
             <p className="text-sm text-gray-300 mb-5">Oluşturmak ister misiniz?</p>
             {isAdmin && (
                 <Link to="/create?mode=main" className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700">

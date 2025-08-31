@@ -18,13 +18,11 @@ type Match = {
     court_no: number | null;
     match_no: number | null;
     winner: number | null;
-    /** oyuncular (serializer’dan geliyor) */
     athlete1?: number | null;
     athlete2?: number | null;
 };
 
 type AthleteLite = { id: number; name: string; club?: string };
-
 type ResolvedKind = 'unknown' | 'sub' | 'tournament';
 
 const gLabel = (g?: string) => (g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : '—');
@@ -45,20 +43,18 @@ export default function LiveMatchPage() {
     const [error, setError] = useState<string | null>(null);
     const refreshingRef = useRef(false);
 
-    // subSlug -> { athleteId -> {name, club} }
     const [athletesBySub, setAthletesBySub] =
         useState<Record<string, Record<number, AthleteLite>>>({});
 
     /** ---- Veri çekiciler ---- */
     const fetchSubDetail = (subSlug: string) =>
-        api.get<SubTournament>(`subtournaments/${subSlug}/`).then(r => r.data);
+        api.get<SubTournament>(`subtournaments/${subSlug}/`).then((r) => r.data);
 
     const fetchSubMatches = async (subSlug: string) => {
         try {
             const r = await api.get<Match[]>(`subtournaments/${subSlug}/matches/`);
             return r.data;
         } catch {
-            // bazı kurulumlarda eski kısayol var
             const r2 = await api.get<Match[]>(`subtournements/${subSlug}/matches`);
             return r2.data;
         }
@@ -71,9 +67,7 @@ export default function LiveMatchPage() {
     };
 
     const fetchAsTournament = async (tSlug: string) => {
-        const list = await api.get<SubTournament[]>(
-            `tournaments/${tSlug}/subtournaments/`
-        );
+        const list = await api.get<SubTournament[]>(`tournaments/${tSlug}/subtournaments/`);
         const subsArr = Array.isArray(list.data) ? list.data : [];
         const results = await Promise.all(
             subsArr.map(async (s) => {
@@ -84,19 +78,17 @@ export default function LiveMatchPage() {
         return results;
     };
 
-    /* ───────── 1) SLUG çözümleme: sadece 1 kez ───────── */
+    /* ───────── 1) SLUG çözümleme ───────── */
     useEffect(() => {
         if (!slug) return;
         let cancelled = false;
 
-        // reset
         setResolved('unknown');
         setSubs({});
         setMatches({});
         setError(null);
 
         (async () => {
-            // 1) ÖNCE TURNUVA OLARAK DENE
             try {
                 const bundles = await fetchAsTournament(slug);
                 if (!cancelled && bundles.length > 0) {
@@ -111,11 +103,8 @@ export default function LiveMatchPage() {
                     setMatches(nextMatches);
                     return;
                 }
-            } catch {
-                // yoksay, sub olarak dene
-            }
+            } catch {}
 
-            // 2) SUB OLARAK DENE (fallback)
             try {
                 const asSub = await fetchAsSub(slug);
                 if (cancelled) return;
@@ -127,10 +116,12 @@ export default function LiveMatchPage() {
             }
         })();
 
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     }, [slug]);
 
-    /* ───────── 2) Polling: tek timer, overlap yok ───────── */
+    /* ───────── 2) Polling ───────── */
     useEffect(() => {
         if (!slug || resolved === 'unknown') return;
         let stop = false;
@@ -153,7 +144,7 @@ export default function LiveMatchPage() {
                     const keys = Object.keys(subs);
                     if (!keys.length) return;
                     const refreshed = await Promise.all(
-                        keys.map(k => fetchSubMatches(k).catch(() => matches[k] || []))
+                        keys.map((k) => fetchSubMatches(k).catch(() => matches[k] || []))
                     );
                     if (stop) return;
                     const next: Record<string, Match[]> = {};
@@ -162,60 +153,52 @@ export default function LiveMatchPage() {
                 }
             } finally {
                 refreshingRef.current = false;
-                if (!stop) timer = setTimeout(poll, 15000); // 15 sn
+                if (!stop) timer = setTimeout(poll, 15000);
             }
         };
 
-        // ilk tetikleme
         timer = setTimeout(poll, 15000);
-
         return () => {
             stop = true;
             clearTimeout(timer);
         };
-        // burada subs/matches bağımlılığı YOK -> timer yeniden kurulmaz
-    }, [slug, resolved]);
+    }, [slug, resolved, subs, matches]);
 
-    /* Sporcuları bir kez cache’le (her alt turnuva için) */
+    /* Sporcuları bir kez cache’le */
     useEffect(() => {
         const slugs = Object.keys(subs || {});
         if (!slugs.length) return;
-
         let cancelled = false;
 
         (async () => {
-            await Promise.all(slugs.map(async (s) => {
-                if (athletesBySub[s]) return; // daha önce çekilmiş
-                try {
-                    const { data } = await api.get(`subtournaments/${s}/athletes/`);
-                    if (cancelled) return;
-                    const map: Record<number, AthleteLite> = {};
-                    (Array.isArray(data) ? data : []).forEach((a: any) => {
-                        const fn = String(a.first_name || '');
-                        const ln = String(a.last_name  || '');
-// "example" kelimesini (büyük/küçük fark etmeksizin) ayıkla, boşlukları toparla
-                        const cleaned = `${fn} ${ln}`.replace(/\bexample\b/ig, '').replace(/\s+/g, ' ').trim();
-
-                        map[a.id] = {
-                            id: a.id,
-                            name: cleaned,
-                            club: a.club_name || undefined,
-                        };
-                    });
-                    setAthletesBySub((prev) => ({ ...prev, [s]: map }));
-                } catch {
-                    /* yoksay – anonim erişimde de çalışır */
-                }
-            }));
+            await Promise.all(
+                slugs.map(async (s) => {
+                    if (athletesBySub[s]) return;
+                    try {
+                        const { data } = await api.get(`subtournaments/${s}/athletes/`);
+                        if (cancelled) return;
+                        const map: Record<number, AthleteLite> = {};
+                        (Array.isArray(data) ? data : []).forEach((a: any) => {
+                            const fn = String(a.first_name || '');
+                            const ln = String(a.last_name || '');
+                            const cleaned = `${fn} ${ln}`.replace(/\bexample\b/gi, '').replace(/\s+/g, ' ').trim();
+                            map[a.id] = { id: a.id, name: cleaned, club: a.club_name || undefined };
+                        });
+                        setAthletesBySub((prev) => ({ ...prev, [s]: map }));
+                    } catch {}
+                })
+            );
         })();
 
-        return () => { cancelled = true; };
-    }, [subs, athletesBySub, api]);
+        return () => {
+            cancelled = true;
+        };
+    }, [subs, athletesBySub]);
 
     /** Kart verileri */
     const cards = useMemo(() => {
         type Card = {
-            id: string;               // benzersiz anahtar
+            id: string;
             court: number;
             matchNo: number | null;
             roundText: string;
@@ -242,7 +225,7 @@ export default function LiveMatchPage() {
                         ? a.round_no === b.round_no
                             ? a.position - b.position
                             : a.round_no - b.round_no
-                        : (a.court_no! - b.court_no!)
+                        : a.court_no! - b.court_no!
                 );
 
             const seen = new Set<number>();
@@ -269,15 +252,18 @@ export default function LiveMatchPage() {
         return entries;
     }, [matches, subs]);
 
-
     return (
-        <div className="min-h[calc(100vh-64px)] w-full text-white
-      bg-[#161a20] bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(120,119,198,.08),transparent_50%),radial-gradient(1000px_500px_at_100%_10%,rgba(16,185,129,.07),transparent_55%)]">
+        <div
+            className="min-h-[calc(100vh-64px)] w-full text-white
+      bg-[#161a20] bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(120,119,198,.08),transparent_50%),radial-gradient(1000px_500px_at_100%_10%,rgba(16,185,129,.07),transparent_55%)]"
+        >
             <header className="px-5 md:px-8 py-4 border-b border-white/10 bg-[#1d2129]/95 backdrop-blur">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-[1.15rem] md:text-xl font-semibold tracking-wide
-              bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent">
+                        <h1
+                            className="text-[1.15rem] md:text-xl font-semibold tracking-wide
+              bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent"
+                        >
                             Canlı Maç Odası
                         </h1>
                         <span
@@ -286,12 +272,10 @@ export default function LiveMatchPage() {
                         />
                     </div>
                     <div className="flex items-center gap-3">
-
                         {refreshingRef.current && (
                             <svg className="animate-spin h-4 w-4 text-white/70" viewBox="0 0 24 24" fill="none">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                                <path className="opacity-75" fill="currentColor"
-                                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                             </svg>
                         )}
                     </div>
@@ -300,14 +284,10 @@ export default function LiveMatchPage() {
 
             <main className="px-5 md:px-8 py-6">
                 {error && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3">
-                        {error}
-                    </div>
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3">{error}</div>
                 )}
 
-                {!error && cards.length === 0 && (
-                    <div className="text-white/75">Gösterilecek maç bulunamadı.</div>
-                )}
+                {!error && cards.length === 0 && <div className="text-white/75">Gösterilecek maç bulunamadı.</div>}
 
                 {!error && cards.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -358,25 +338,20 @@ function CourtCard({
     const A2 = athlete2 != null ? athletesMap?.[athlete2] : undefined;
 
     return (
-        <section className="relative overflow-hidden rounded-2xl
-      bg-[#232834]/85 backdrop-blur
-      border border-white/10 shadow-[0_8px_30px_rgba(0,0,0,.24)]">
+        <section className="relative overflow-hidden rounded-2xl bg-[#232834]/85 backdrop-blur border border-white/10 shadow-[0_8px_30px_rgba(0,0,0,.24)]">
             {/* Dikey accent bar */}
-            <div className="absolute left-0 top-0 h-full w-1.5
-        bg-gradient-to-b from-indigo-400 via-sky-300 to-emerald-300 opacity-60" />
+            <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-indigo-400 via-sky-300 to-emerald-300 opacity-60" />
 
             {/* Üst şerit */}
-            <div className="flex items-center justify-between px-5 py-4
-        bg-gradient-to-r from-[#262b38] to-[#2a3040] border-b border-white/10">
+            <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-[#262b38] to-[#2a3040] border-b border-white/10">
                 <div className="flex items-center gap-3 text-base text-white/90">
-                    <div className="inline-flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg
-              bg-white/5 ring-1 ring-white/10">
+                    <div className="inline-flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg bg-white/5 ring-1 ring-white/10">
                         <svg width="18" height="18" viewBox="0 0 24 24" className="opacity-90">
-                            <rect x="3" y="5" width="18" height="14" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="1.7"/>
-                            <path d="M3 12h18M12 5v14" stroke="currentColor" strokeWidth="1.7"/>
+                            <rect x="3" y="5" width="18" height="14" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="1.7" />
+                            <path d="M3 12h18M12 5v14" stroke="currentColor" strokeWidth="1.7" />
                         </svg>
                         <span className="font-semibold tracking-wide">Court</span>
-                        <span className="px-4.5 py-2 rounded-md bg-gradient-to-b from-zinc-200/90 to-zinc-50/90 text-gray-900 text-lg md:text-xl font-bold tabular-nums shadow">
+                        <span className="px-4 py-2 rounded-md bg-gradient-to-b from-zinc-200/90 to-zinc-50/90 text-gray-900 text-lg md:text-xl font-bold tabular-nums shadow">
               {court}
             </span>
                     </div>
@@ -384,14 +359,11 @@ function CourtCard({
 
                 <div className="flex items-center gap-4">
                     {title ? (
-                        <span className="hidden md:inline-flex items-center px-4 py-2.5 rounded-full text-sm
-              bg-indigo-400/15 text-indigo-100 ring-1 ring-indigo-300/30">
+                        <span className="hidden md:inline-flex items-center px-4 py-2.5 rounded-full text-sm bg-indigo-400/15 text-indigo-100 ring-1 ring-indigo-300/30">
               {title}
             </span>
                     ) : null}
-                    <div className="text-2xl font-extrabold tabular-nums text-emerald-300/90">
-                        {matchNo != null ? matchNo : '—'}
-                    </div>
+                    <div className="text-2xl font-extrabold tabular-nums text-emerald-300/90">{matchNo != null ? matchNo : '—'}</div>
                 </div>
             </div>
 
@@ -401,20 +373,18 @@ function CourtCard({
                 <Row label="Maç No" value={matchNo != null ? `#${matchNo}` : '—'} big />
                 <Row label="Tur" value={roundText} big />
 
-                {/* O anki maçın sporcuları – modern kutular + adaptif çizgi */}
+                {/* Oyuncular */}
                 {(A1 || A2) && (
                     <div className="mt-4">
-                        <div className="flex items-center gap-4 md:gap-6 xl:gap-8">
-                            <PlayerBox name={A1?.name} club={A1?.club} className="basis-[42%]" />
-                            <div className="flex-1 flex items-center justify-center">
-    <span className="px-3 py-1 md:px-4 md:py-1.5 rounded-md font-extrabold tracking-widest
-                     text-white/90 text-lg md:text-2xl bg-white/10 ring-1 ring-white/20 select-none">
-      VS
-    </span>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 md:gap-6 xl:gap-8">
+                            <PlayerBox name={A1?.name} club={A1?.club} className="sm:basis-[42%] flex-1 min-w-0" />
+                            <div className="flex-0 sm:flex-1 flex items-center justify-center">
+                <span className="px-3 py-1 md:px-4 md:py-1.5 rounded-md font-extrabold tracking-widest text-white/90 text-lg md:text-2xl bg-white/10 ring-1 ring-white/20 select-none">
+                  VS
+                </span>
                             </div>
-                            <PlayerBox name={A2?.name} club={A2?.club} className="basis-[42%]" />
+                            <PlayerBox name={A2?.name} club={A2?.club} className="sm:basis-[42%] flex-1 min-w-0" />
                         </div>
-
                     </div>
                 )}
 
@@ -436,23 +406,22 @@ function CourtCard({
     );
 }
 
-/** Oyuncu kartı (UPPERCASE isim + açık mavi kulüp) */
+/** Oyuncu kartı */
 function PlayerBox({ name, club, className = '' }: { name?: string; club?: string; className?: string }) {
-    const cleanedName = String(name || '')
-        .replace(/\bexample\b/ig, '')     // "example" kelimesini sil
-        .replace(/\s+/g, ' ')
-        .trim() || '—';
+    const cleanedName =
+        String(name || '')
+            .replace(/\bexample\b/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim() || '—';
 
     return (
-        <div className={`min-w-[180px] ${className}`}>
-            <div className="bg-[#3a404b] ring-1 ring-white/10 rounded-xl px-4 py-2.5 md:px-4 md:py-3 text-center shadow-sm">
-                <div className="font-extrabold uppercase tracking-wide text-white truncate
-                        text-[0.95rem] sm:text-[1.05rem] lg:text-[1.15rem] leading-tight">
+        <div className={`min-w-0 ${className}`}>
+            <div className="w-full bg-[#3a404b] ring-1 ring-white/10 rounded-xl px-3.5 py-2.5 md:px-4 md:py-3 text-center shadow-sm">
+                <div className="font-extrabold uppercase tracking-wide text-white truncate text-[0.95rem] sm:text-[1.05rem] lg:text-[1.15rem] leading-tight">
                     {cleanedName}
                 </div>
                 {club ? (
-                    <div className="mt-1 uppercase font-semibold truncate
-                          text-[11px] sm:text-xs md:text-sm text-sky-300/90">
+                    <div className="mt-1 uppercase font-semibold truncate text-[11px] sm:text-xs md:text-sm text-sky-300/90">
                         {club}
                     </div>
                 ) : (
@@ -463,12 +432,13 @@ function PlayerBox({ name, club, className = '' }: { name?: string; club?: strin
     );
 }
 
-
 function Row({ label, value, big = false }: { label: string; value: string; big?: boolean }) {
     return (
-        <div className="flex items-center justify-between gap-3">
-            <span className={`text-white/70 ${big ? 'text-base' : 'text-[0.9rem]'} font-medium`}>{label}</span>
-            <span className={`text-white/95 ${big ? 'text-base' : 'text-[0.95rem]'} font-semibold`}>{value}</span>
+        <div className="flex items-center gap-3 min-w-0">
+            <span className={`shrink-0 text-white/70 ${big ? 'text-base' : 'text-[0.9rem]'} font-medium`}>{label}</span>
+            <span className={`grow text-right text-white/95 ${big ? 'text-base' : 'text-[0.95rem]'} font-semibold truncate`}>
+        {value}
+      </span>
         </div>
     );
 }
