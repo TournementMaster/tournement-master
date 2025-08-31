@@ -915,35 +915,30 @@ export default memo(function InteractiveBracket() {
 
     // ✓ belirleme
     const setManualWinner = (r: number, m: number, idx: 0 | 1) => {
-        setRounds((prev) => {
-            const copy: Matrix = prev.map((rnd) =>
-                rnd.map((match) => ({
-                    players: match.players.map((p) => ({ ...p })),
-                    meta: match.meta ? { ...match.meta } : {},
-                }))
-            );
+        setRounds(prev => {
+            const copy = prev.map(rnd => rnd.map(match => ({
+                players: match.players.map(p => ({ ...p })),
+                meta: match.meta ? { ...match.meta } : {},
+            })));
             copy[r][m].meta = { ...(copy[r][m].meta ?? {}), manual: idx };
-            // üst turlardaki eski manuel sonuçları temizle
             clearUpstream(copy, r, m);
-            return propagate(copy);
+            return propagate(copy, { autoByes: startedRef.current }); // başlamadıysa BYE yok
         });
         setDirty(true);
     };
 
     // Reset – bağlı üst turları da temizle
     const resetMatch = (r: number, m: number) => {
-        setRounds((prev) => {
-            const copy: Matrix = prev.map((rnd) =>
-                rnd.map((match) => ({
-                    players: match.players.map((p) => ({ ...p })),
-                    meta: match.meta ? { ...match.meta } : {},
-                }))
-            );
+        setRounds(prev => {
+            const copy = prev.map(rnd => rnd.map(match => ({
+                players: match.players.map(p => ({ ...p })),
+                meta: match.meta ? { ...match.meta } : {},
+            })));
             (copy[r][m].meta ??= {});
             delete copy[r][m].meta!.manual;
             delete copy[r][m].meta!.scores;
             clearUpstream(copy, r, m);
-            return propagate(copy);
+            return propagate(copy, { autoByes: startedRef.current }); // başlamadıysa BYE yok
         });
         setDirty(true);
     };

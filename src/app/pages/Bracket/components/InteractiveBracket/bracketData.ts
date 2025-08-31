@@ -413,7 +413,7 @@ export function BackendBracketLoader({
                     Array.isArray(athRes.data) ? athRes.data : [],
                     Array.isArray(matchRes.data) ? matchRes.data : [],
                 );
-                onBuiltRef.current?.(propagate(built.matrix, { autoByes: true }), built.firstRound);
+                onBuiltRef.current?.(built.matrix, built.firstRound);
             } catch (e: unknown) {
                 const code = (e as { response?: { status?: number } })?.response?.status;
                 if (code) onAuthErrRef.current?.(code);
