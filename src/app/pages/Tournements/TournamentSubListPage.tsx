@@ -55,7 +55,7 @@ const PHASE_BADGE = {
 /* ──────────────────────────────────────────────────────────────────────────
    IMPORT MODAL (Scrollable + Sticky Footer + Spinner)
    ────────────────────────────────────────────────────────────────────────── */
-type ImportRow = { age: string; weight: string; key: string };
+type ImportRow = { age: string; weight: string; court: string; key: string };
 
 function ImportModal({
                          onClose,
@@ -68,17 +68,18 @@ function ImportModal({
 }) {
     const [file, setFile] = useState<File | null>(null);
     const [rows, setRows] = useState<ImportRow[]>([
-        { age: '12-15', weight: '10-15', key: safeUUID() },
-        { age: '15-18', weight: '15-20', key: safeUUID() },
-        { age: '12-15', weight: '20-35', key: safeUUID() },
+        { age: '12-15', weight: '10-15', court: '1', key: safeUUID() },
+        { age: '15-18', weight: '15-20', court: '1', key: safeUUID() },
+        { age: '12-15', weight: '20-35', court: '1', key: safeUUID() },
     ]);
     const [courtNo, setCourtNo] = useState('1');
     const [startFrom, setStartFrom] = useState('');
     const [useFuzzy, setUseFuzzy] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
+    const [result, setResult] = useState<any|null>(null);
 
-    function addRow() { setRows((r) => [...r, { age: '', weight: '', key: safeUUID() }]); }
+    function addRow() { setRows((r) => [...r, { age: '', weight: '', court: '', key: safeUUID() }]); }
     function removeRow(idx: number) { setRows((r) => r.filter((_, i) => i !== idx)); }
 
     function parseAge(s: string) {
@@ -110,8 +111,9 @@ function ImportModal({
             if (!r.age && !r.weight) continue;
             const age = parseAge(r.age);
             const w = parseWeight(r.weight);
-            if (!age || !w) { setMsg('Satırlardaki yaş/kilo alanlarını kontrol edin (örn. 12-15 ve 10-15 veya 45+).'); return; }
-            categories.push({ ...age, ...w });
+            if (!age || !w) { setMsg('...'); return; }
+            const perRowCourt = (r.court || courtNo || '1').trim();
+            categories.push({ ...age, ...w, court_no: Number(perRowCourt) });
         }
         if (!categories.length) { setMsg('En az bir siklet satırı girin.'); return; }
 
@@ -124,15 +126,12 @@ function ImportModal({
             if (startFrom.trim()) fd.append('start_from', startFrom.trim());
             if (useFuzzy) fd.append('use_fuzzy_club_merge', '1');
 
-            await api.post(
+            const { data } = await api.post(
                 `tournaments/${encodeURIComponent(publicSlug)}/import-subtournaments/`,
-                fd,
-                { headers: { 'Content-Type': 'multipart/form-data' } }
+                fd, { headers: { 'Content-Type': 'multipart/form-data' } }
             );
-
-            setMsg('İçe aktarma tamamlandı.');
-            onImported();
-            onClose();
+            setResult(data);
+            setMsg(null);
         } catch (e: any) {
             const d = e?.response?.data?.detail;
             setMsg(typeof d === 'string' ? d : 'İçe aktarma başarısız oldu.');
@@ -169,43 +168,19 @@ function ImportModal({
                             Gerekli sütunlar: Sicil, Ad/Soyad, Cinsiyet, Doğum Tarihi/Yılı, Kilo, Kulüp.
                         </div>
                     </div>
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <label className="space-y-1">
-                            <span className="text-sm text-gray-300">Kort No</span>
-                            <input
-                                value={courtNo}
-                                onChange={(e) => setCourtNo(e.target.value.replace(/\D/g, '') || '1')}
-                                className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                            />
-                        </label>
-                        <label className="space-y-1">
-                            <span className="text-sm text-gray-300">Maç No Başlangıcı (ops.)</span>
-                            <input
-                                value={startFrom}
-                                onChange={(e) => setStartFrom(e.target.value.replace(/\D/g, ''))}
-                                placeholder="örn. 2000"
-                                className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                            />
-                        </label>
-                        <label className="flex items-center gap-2 mt-6">
-                            <input type="checkbox" checked={useFuzzy} onChange={(e) => setUseFuzzy(e.target.checked)} />
-                            <span className="text-sm text-gray-300">Kulüplerde benzer isimleri birleştir (deneysel)</span>
-                        </label>
-                    </div>
-
                     <div>
                         <div className="text-sm text-gray-300 mb-2">Siklet Türleri</div>
                         <div className="rounded-xl border border-white/10 overflow-hidden">
-                            <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_56px] bg-black/20 text-xs text-gray-400 px-4 py-2">
+                            <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_110px_56px] bg-black/20 text-xs text-gray-400 px-4 py-2">
                                 <div>Yaş aralığı (örn. 12-15)</div>
                                 <div>Kilo aralığı (örn. 10-15 veya 45+)</div>
+                                <div>Kort</div>
                                 <div className="text-right pr-1">Sil</div>
                             </div>
 
                             <div className="divide-y divide-white/10">
                                 {rows.map((r, idx) => (
-                                    <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_56px] gap-2 px-4 py-3 items-center">
+                                    <div key={r.key} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_110px_56px] gap-2 px-4 py-3 items-center">
                                         <input
                                             placeholder="12-15"
                                             value={r.age}
@@ -216,6 +191,12 @@ function ImportModal({
                                             placeholder="10-15 veya 45+"
                                             value={r.weight}
                                             onChange={(e) => setRows((list) => list.map((x, i) => i === idx ? { ...x, weight: e.target.value } : x))}
+                                            className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                        />
+                                        <input
+                                            placeholder="1"
+                                            value={r.court}
+                                            onChange={(e)=> setRows(list => list.map((x,i)=> i===idx ? { ...x, court: e.target.value.replace(/\D/g,'') } : x))}
                                             className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
                                         />
                                         <div className="flex sm:justify-end">
@@ -236,6 +217,12 @@ function ImportModal({
                                     + Satır Ekle
                                 </button>
                             </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <label className="flex items-center gap-2 mt-6">
+                                <input type="checkbox" checked={useFuzzy} onChange={(e) => setUseFuzzy(e.target.checked)} />
+                                <span className="text-sm text-gray-300">Kulüplerde benzer isimleri birleştir (deneysel)</span>
+                            </label>
                         </div>
                     </div>
 
@@ -265,6 +252,51 @@ function ImportModal({
                 </div>
             </div>
 
+            {result && (
+                <div className="fixed inset-0 z-[95] flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/60" onClick={()=>setResult(null)} />
+                    <div className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#2a2f37] border border-white/10 p-6">
+                        <div className="text-lg font-semibold mb-3">İçe Aktarma Sonucu</div>
+                        <ul className="space-y-1 text-sm text-gray-200">
+                            <li>Alt turnuva: <b>{result.created_subtournaments}</b></li>
+                            <li>Maç oluşturuldu: <b>{result.created_matches}</b></li>
+                            <li>Renumbered: <b>{result.renumbered}</b></li>
+                            <li>Geçersiz lisans satırı: <b>{result.invalid_license_rows}</b></li>
+                            <li>Zorunlu eksik nedeniyle düşen: <b>{result.dropped_rows_missing_required}</b></li>
+                            <li>Kullanılan/Oluşturulan kulüp: <b>{result.clubs_created_or_used}</b></li>
+                        </ul>
+
+                        {/* Rapor indir */}
+                        {result.cleaning_report?.base64 && (
+                            <div className="mt-4">
+                                <button
+                                    onClick={()=>{
+                                        const b64 = result.cleaning_report.base64 as string;
+                                        const fname = result.cleaning_report.filename || 'import_cleaning_report.xlsx';
+                                        const bin = atob(b64);
+                                        const bytes = new Uint8Array(bin.length);
+                                        for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+                                        const blob = new Blob([bytes], { type: result.cleaning_report.content_type || 'application/octet-stream' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url; a.download = fname; a.click();
+                                        URL.revokeObjectURL(url);
+                                    }}
+                                    className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm"
+                                >
+                                    Temizlik Raporunu İndir (XLSX)
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button onClick={()=>{ setResult(null); onImported(); onClose(); }} className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253]">
+                                Tamam
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <style>{`
         @keyframes progress { 0%{transform:translateX(-120%)} 50%{transform:translateX(20%)} 100%{transform:translateX(120%)} }
       `}</style>
