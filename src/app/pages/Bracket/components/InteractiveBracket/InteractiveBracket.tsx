@@ -211,7 +211,7 @@ export default memo(function InteractiveBracket() {
     const [subDetail, setSubDetail] = useState<SubTournamentDetail | null>(null);
 
     const [shuffleOpen, setShuffleOpen] = useState(false);
-    const [shuffleCount, setShuffleCount] = useState(5);
+    const [shuffleCount, setShuffleCount] = useState(3);
     const shuffleTimerRef = useRef<number | null>(null);
     const ignoreNextEnterViewRef = useRef<boolean>(false);
 
@@ -543,9 +543,9 @@ export default memo(function InteractiveBracket() {
                 shuffleTimerRef.current = null;
             }
             setShuffleOpen(true);
-            setShuffleCount(5);
+            setShuffleCount(3);
 
-            let c = 5;
+            let c = 3;
             shuffleTimerRef.current = window.setInterval(() => {
                 c -= 1;
                 setShuffleCount(c);
