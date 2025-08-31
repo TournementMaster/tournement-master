@@ -1,5 +1,5 @@
 // src/app/pages/Bracket/components/InteractiveBracket/bracketData.ts
-import {useEffect, useRef} from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '../../../../lib/api';
 import type { Participant } from '../../../../hooks/usePlayers';
 import type { Palette } from '../../../../context/themePalettes';
@@ -25,7 +25,7 @@ export interface Match {
 }
 export type Matrix = Match[][];
 
-/* Backend DTOs (internal) */
+/* Backend DTOs */
 type ApiAthlete = {
     id: number;
     first_name: string;
@@ -33,8 +33,8 @@ type ApiAthlete = {
     birth_year: number;
     weight: string | number;
     gender: 'M' | 'F' | string;
-    club: number | null;          // (FK id – gerek kalmadı ama dursun)
-    club_name?: string | null;    // <<< BUNU KULLANACAĞIZ
+    club: number | null;
+    club_name?: string | null;
 };
 type ApiMatchSet = { id: number; set_no: number; a1_score: number; a2_score: number; match: number };
 type ApiMatch = {
@@ -51,21 +51,14 @@ type ApiMatch = {
     winner: number | null;
     match_no?: number | null;
 };
-type ClubRow = { id: number; name: string; city?: string };
 
-type LoaderProps = {
-    slug: string
-    enabled: boolean
-    refreshKey: number
-    onBuilt: (matrix: Matrix, firstRoundParticipants: Participant[]) => void
-    onAuthError?: (code: number) => void
-    pollMs?: number // varsayılan 15sn
-}
-
-/* -------------------------------- Helpers -------------------------------- */
+/* ------------------------------- Helpers --------------------------------- */
 export function blank(): Match {
     return { players: [{ seed: 0, name: '—' }, { seed: 0, name: '—' }] };
 }
+
+const cleanName = (s: string) =>
+    (s || '').replace(/\bExample\b/gi, '').replace(/\s+/g, ' ').trim();
 
 export function seedOrder(size: number): number[] {
     if (size < 2) return [1];
@@ -110,7 +103,11 @@ export function buildMatrix(
     const slotToPlayer = new Map<number, Player>();
     for (const p of participants) {
         const slotSeed = placementMap?.[p.seed] ?? p.seed;
-        slotToPlayer.set(slotSeed, { seed: p.seed, name: p.name, club: p.club });
+        slotToPlayer.set(slotSeed, {
+            seed: p.seed,
+            name: cleanName(p.name),
+            club: p.club,
+        });
     }
 
     const r0: Match[] = [];
@@ -129,42 +126,53 @@ export function buildMatrix(
     return rounds;
 }
 
-/* Kazananları sonraki tura taşı */
+/* Kazananları sonraki tura taşı – BYE sadece isim boş/“—” ise */
 export function propagate(matrix: Matrix, opts?: { autoByes?: boolean }): Matrix {
     const autoByes = opts?.autoByes ?? true;
 
-    // 1) Derin kopya + üst turların oyuncularını temizle
-    const mat: Matrix = matrix.map((r) =>
-        r.map((m) => ({
-            players: m.players.map((p) => ({ ...p })),
-            meta: m.meta
-                ? { ...m.meta, scores: m.meta.scores ? [...m.meta.scores] as [number, number][] : undefined }
-                : undefined,
-        }))
+    // güvenli derin kopya + her maçta 2 oyuncu
+    const safeCopy: Matrix = (matrix || []).map((round) =>
+        (round || []).map((m) => {
+            const p0 = m?.players?.[0] ?? { seed: 0, name: '—' };
+            const p1 = m?.players?.[1] ?? { seed: 0, name: '—' };
+            return {
+                players: [{ ...p0 }, { ...p1 }],
+                meta: m?.meta
+                    ? {
+                        ...m.meta,
+                        scores: Array.isArray(m.meta.scores)
+                            ? (m.meta.scores.map((s) => [s[0], s[1]]) as [number, number][])
+                            : undefined,
+                    }
+                    : undefined,
+            };
+        })
     );
-    for (let r = 1; r < mat.length; r++) {
-        for (let i = 0; i < mat[r].length; i++) {
-            mat[r][i].players = [{ seed: 0, name: '—' }, { seed: 0, name: '—' }];
-            mat[r][i].players[0].winner = undefined;
-            mat[r][i].players[1].winner = undefined;
+
+    // üst turları temizle
+    for (let r = 1; r < safeCopy.length; r++) {
+        for (let i = 0; i < safeCopy[r].length; i++) {
+            safeCopy[r][i].players = [{ seed: 0, name: '—' }, { seed: 0, name: '—' }];
         }
     }
 
-    // 2) Winner varsa üst tura yerleştir
-    for (let r = 0; r < mat.length; r++) {
-        mat[r].forEach((m, idx) => {
+    // kazananı belirle + üst tura taşı
+    for (let r = 0; r < safeCopy.length; r++) {
+        const round = safeCopy[r];
+        for (let idx = 0; idx < round.length; idx++) {
+            const m = round[idx];
             const [p1, p2] = m.players;
             let winner: 0 | 1 | undefined;
 
-            // Bye terfisi yalnızca autoByes açıkken
+            // BYE sadece 1. turda ve sadece isim boş/“—” ise
             if (autoByes && r === 0) {
-                const aBye = p1.seed === 0 || p1.name === '—';
-                const bBye = p2.seed === 0 || p2.name === '—';
+                const aBye = !p1?.name || p1.name === '—';
+                const bBye = !p2?.name || p2.name === '—';
                 if (aBye && !bBye) winner = 1;
                 else if (bBye && !aBye) winner = 0;
             }
 
-            if (winner == null && m.meta?.manual != null) winner = m.meta.manual;
+            if (winner == null && m.meta?.manual != null) winner = m.meta.manual as 0 | 1;
             if (winner == null && m.meta?.scores?.length) {
                 const [a, b] = m.meta.scores[0];
                 if (a !== b) winner = a > b ? 0 : 1;
@@ -174,23 +182,24 @@ export function propagate(matrix: Matrix, opts?: { autoByes?: boolean }): Matrix
                 m.players[winner] = { ...m.players[winner], winner: true };
                 m.players[1 - winner] = { ...m.players[1 - winner], winner: false };
 
-                if (r < mat.length - 1) {
-                    const next = mat[r + 1][Math.floor(idx / 2)];
+                if (r < safeCopy.length - 1) {
+                    const parent = safeCopy[r + 1][Math.floor(idx / 2)];
                     const moved = { ...m.players[winner] };
-                    delete (moved ).winner;
-                    next.players[idx % 2] = moved;
+                    delete (moved as Partial<Player>).winner;
+                    parent.players[idx % 2] = moved;
                 }
             } else {
                 m.players[0] = { ...m.players[0], winner: undefined };
                 m.players[1] = { ...m.players[1], winner: undefined };
             }
-        });
+        }
     }
-    return mat;
+
+    return safeCopy;
 }
 
 /* Tema anahtarı çözümle */
-export function resolveThemeKey(k: any): keyof Record<string, Palette> {
+export function resolveThemeKey(k: unknown): keyof Record<string, Palette> {
     switch (k) {
         case 'classic-dark':
         case 'classic-light':
@@ -225,7 +234,7 @@ export function resolveThemeKey(k: any): keyof Record<string, Palette> {
 export function toHHMM(iso: string | null | undefined): string | undefined {
     if (!iso) return undefined;
     const d = new Date(iso);
-    if (isNaN(d.getTime())) return undefined;
+    if (Number.isNaN(d.getTime())) return undefined;
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
     return `${hh}.${mm}`;
@@ -237,85 +246,115 @@ export function buildFromBackend(
     matches: ApiMatch[],
 ): { matrix: Matrix; firstRound: Participant[] } {
 
+    // athlete id → {name, club}
     const aMap = new Map<number, { name: string; club?: string }>();
     athletes.forEach((a) => {
-        const name =
-            (a.first_name || '').trim() ||
-            `${a.first_name} ${a.last_name}`.trim() ||
-            '—';
-        const club = (a.club_name || undefined) as string | undefined;
+        const first = (a.first_name ?? '').trim();
+        const last  = (a.last_name  ?? '').trim();
+        const raw   = `${first} ${last}`.trim() || first || '—';
+        const name  = cleanName(raw) || '—';
+        const club  = (a.club_name || undefined) as string | undefined;
         aMap.set(a.id, { name, club });
     });
 
-    const maxRound = matches.length ? Math.max(...matches.map((m) => m.round_no)) : 0;
-    const matrix: Matrix = maxRound ? Array.from({ length: maxRound }, () => []) : [];
+    // round → matches
+    const byRound = new Map<number, ApiMatch[]>();
+    for (const m of matches) {
+        const arr = byRound.get(m.round_no) ?? [];
+        arr.push(m);
+        byRound.set(m.round_no, arr);
+    }
+    const maxRound = byRound.size ? Math.max(...byRound.keys()) : 0;
 
+    // her tur için kutu sayısı
+    const counts: number[] = Array.from({ length: maxRound }, () => 0);
     for (let r = 1; r <= maxRound; r++) {
-        const inRound = matches.filter((m) => m.round_no === r);
+        const inR = byRound.get(r) ?? [];
+        const posMax = inR.length ? Math.max(...inR.map((x) => x.position)) : 0;
+        counts[r - 1] = Math.max(counts[r - 1], posMax);
+    }
+    // bir sonraki turun 2 katı kuralı
+    for (let r = maxRound - 2; r >= 0; r--) {
+        counts[r] = Math.max(counts[r], counts[r + 1] * 2);
+    }
+    // 1. tur: sporcu sayısına göre minimum
+    if (maxRound >= 1) {
+        const expectedFirst = Math.max(
+            counts[0],
+            athletes.length ? nextPowerOfTwo(athletes.length) / 2 : 0
+        );
+        counts[0] = Math.max(counts[0], expectedFirst);
+    }
 
-        // Aynı (round, position) için EN SON id'li kaydı tut
+    // matris iskeleti
+    const matrix: Matrix = counts.length
+        ? counts.map((n) => Array.from({ length: n || 1 }, blank))
+        : [];
+
+    // verileri pozisyonlara yerleştir
+    for (let r = 1; r <= maxRound; r++) {
+        const inRound = byRound.get(r) ?? [];
+
+        // aynı (round, position) için en son id'li kaydı tut
         const latestByPos = new Map<number, ApiMatch>();
         for (const m of inRound) {
             const prev = latestByPos.get(m.position);
             if (!prev || (m.id ?? 0) > (prev.id ?? 0)) latestByPos.set(m.position, m);
         }
 
-        const positions = [...latestByPos.keys()];
-        const maxPos = positions.length ? Math.max(...positions) : 0;
-        matrix[r - 1] = Array.from({ length: maxPos }, () => blank());
+        const posList = [...latestByPos.keys()].sort((a, b) => a - b);
+        for (const pos of posList) {
+            const m = latestByPos.get(pos)!;
 
-        // pozisyona göre sırala ve doldur
-        positions
-            .sort((a, b) => a - b)
-            .forEach((pos) => {
-                const m = latestByPos.get(pos)!;
+            const p1s = m.athlete1 ? aMap.get(m.athlete1) ?? { name: '—' } : { name: '—' };
+            const p2s = m.athlete2 ? aMap.get(m.athlete2) ?? { name: '—' } : { name: '—' };
 
-                const p1 = m.athlete1 ? aMap.get(m.athlete1) ?? { name: '—' } : { name: '—' };
-                const p2 = m.athlete2 ? aMap.get(m.athlete2) ?? { name: '—' } : { name: '—' };
+            const players: Player[] = [
+                { seed: 0, name: p1s.name, club: p1s.club, athleteId: m.athlete1 ?? null },
+                { seed: 0, name: p2s.name, club: p2s.club, athleteId: m.athlete2 ?? null },
+            ];
 
-                const players: Player[] = [
-                    { seed: 0, name: p1.name, club: p1.club, athleteId: m.athlete1 ?? null },
-                    { seed: 0, name: p2.name, club: p2.club, athleteId: m.athlete2 ?? null },
-                ];
+            const meta: Meta = {};
+            if (Array.isArray(m.sets) && m.sets.length)
+                meta.scores = m.sets.map((s) => [s.a1_score, s.a2_score]);
+            const t = toHHMM(m.scheduled_at);
+            if (t) meta.time = t;
+            if (m.court_no != null) meta.court = String(m.court_no);
+            if (typeof m.match_no === 'number' && Number.isFinite(m.match_no))
+                meta.matchNo = m.match_no;
 
-                const meta: Meta = {};
-                if (Array.isArray(m.sets) && m.sets.length)
-                    meta.scores = m.sets.map((s) => [s.a1_score, s.a2_score]);
-
-                const t = toHHMM(m.scheduled_at);
-                if (t) meta.time = t;
-                if (m.court_no != null) meta.court = String(m.court_no);
-                if (typeof m.match_no === 'number' && Number.isFinite(m.match_no))
-                    meta.matchNo = m.match_no;
-
-                if (m.winner != null) {
-                    if (m.winner === m.athlete1) {
-                        players[0] = { ...players[0], winner: true };
-                        players[1] = { ...players[1], winner: false };
-                        meta.manual = 0;
-                    } else if (m.winner === m.athlete2) {
-                        players[1] = { ...players[1], winner: true };
-                        players[0] = { ...players[0], winner: false };
-                        meta.manual = 1;
-                    }
+            if (m.winner != null) {
+                if (m.winner === m.athlete1) {
+                    players[0] = { ...players[0], winner: true };
+                    players[1] = { ...players[1], winner: false };
+                    meta.manual = 0;
+                } else if (m.winner === m.athlete2) {
+                    players[1] = { ...players[1], winner: true };
+                    players[0] = { ...players[0], winner: false };
+                    meta.manual = 1;
                 }
+            }
 
-                matrix[r - 1][pos - 1] = { players, meta };
-            });
+            // güvenli yerleştir
+            if (!matrix[r - 1]) matrix[r - 1] = Array.from({ length: Math.max(1, pos) }, blank);
+            while (matrix[r - 1].length < pos) matrix[r - 1].push(blank());
+            matrix[r - 1][pos - 1] = { players, meta };
+        }
     }
 
+    // 1. tur katılımcıları
     const firstRound: Participant[] = (matrix[0] ?? []).flatMap((m, idx) => {
         const out: Participant[] = [];
-        if (m.players[0]?.name && m.players[0].name !== '—')
-            out.push({ name: m.players[0].name, club: m.players[0].club, seed: idx * 2 + 1 });
-        if (m.players[1]?.name && m.players[1].name !== '—')
-            out.push({ name: m.players[1].name, club: m.players[1].club, seed: idx * 2 + 2 });
+        const p0 = m.players?.[0]; const p1 = m.players?.[1];
+        if (p0?.name && p0.name !== '—') out.push({ name: cleanName(p0.name), club: p0.club, seed: idx * 2 + 1 });
+        if (p1?.name && p1.name !== '—') out.push({ name: cleanName(p1.name), club: p1.club, seed: idx * 2 + 2 });
         return out;
     });
 
+    // hiç match yoksa ama athlete varsa → yerelden kur
     if (!matrix.length && athletes.length) {
         const fallbackParticipants: Participant[] = athletes.map((a, i) => ({
-            name: (a.first_name || '').trim() || `${a.first_name} ${a.last_name}`.trim() || '—',
+            name: cleanName(`${(a.first_name || '').trim()} ${(a.last_name || '').trim()}`) || '—',
             club: (a.club_name || undefined) as string | undefined,
             seed: i + 1,
         }));
@@ -342,11 +381,11 @@ export function BackendBracketLoader({
     pollMs?: number;
     onAuthError?: (code: number) => void;
 }) {
-    // callback'leri ref'e al — efektin dependency’sini daralt
+    // callback'leri ref'e al — efekt dependency’sini daralt
     const onBuiltRef = useRef(onBuilt);
     const onAuthErrRef = useRef(onAuthError);
-    useEffect(() => { onBuiltRef.current = onBuilt }, [onBuilt]);
-    useEffect(() => { onAuthErrRef.current = onAuthError }, [onAuthError]);
+    useEffect(() => { onBuiltRef.current = onBuilt; }, [onBuilt]);
+    useEffect(() => { onAuthErrRef.current = onAuthError; }, [onAuthError]);
 
     // Tek interval + overlap koruması
     useEffect(() => {
@@ -375,8 +414,8 @@ export function BackendBracketLoader({
                     Array.isArray(matchRes.data) ? matchRes.data : [],
                 );
                 onBuiltRef.current?.(propagate(built.matrix, { autoByes: true }), built.firstRound);
-            } catch (e: any) {
-                const code = e?.response?.status;
+            } catch (e: unknown) {
+                const code = (e as { response?: { status?: number } })?.response?.status;
                 if (code) onAuthErrRef.current?.(code);
             } finally {
                 inflightRef.current = false;
@@ -385,7 +424,7 @@ export function BackendBracketLoader({
 
         // hemen bir kez çek
         void fetchAll();
-        // 15 sn’de bir
+        // periyodik
         timer = window.setInterval(fetchAll, pollMs);
         // görünürlük değişince görünür olduğunda bir kez daha çek
         const onVis = () => { if (!document.hidden) void fetchAll(); };

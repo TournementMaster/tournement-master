@@ -213,6 +213,7 @@ export default memo(function InteractiveBracket() {
     const [shuffleOpen, setShuffleOpen] = useState(false);
     const [shuffleCount, setShuffleCount] = useState(5);
     const shuffleTimerRef = useRef<number | null>(null);
+    const ignoreNextEnterViewRef = useRef<boolean>(false);
 
 
     const [isReferee, setIsReferee] = useState<boolean>(false);
@@ -279,10 +280,12 @@ export default memo(function InteractiveBracket() {
     const handleBuilt = useCallback(
         (matrix: Matrix, firstRoundParticipants: Participant[]) => {
             backendMatrixRef.current = matrix;
+            const viewMat = startedRef.current ? safePropagate(matrix) : matrix;
+
 
             // 1) İlk backend cevabını MOD ne olursa olsun ekrana yaz
             if (acceptBackendOnceRef.current) {
-                setRounds(matrix);
+                setRounds(viewMat);
                 acceptBackendOnceRef.current = false;
 
                 // Lokal kurulum tetikleyicilerini "backend tabanlı" baseline'a sabitle
@@ -295,9 +298,8 @@ export default memo(function InteractiveBracket() {
                 editPlayersSnapshotRef.current = basePlayers.map(p => ({ name: p.name, club: p.club, seed: p.seed }));
                 lastPlacementRef.current = settings.placementMap ?? null; // (genelde null)
             } else {
-                // 2) Sonrakiler mevcut kuralı izlesin
-                if (mode === 'view') setRounds(matrix);
-                else if (!rounds.length) setRounds(matrix);
+                if (mode === 'view') setRounds(startedRef.current ? propagate(matrix) : matrix);
+                else if (!rounds.length) setRounds(startedRef.current ? propagate(matrix) : matrix);
             }
 
             // 3) players boşsa, backend’den türeyeni yaz (mevcut davranış)
@@ -322,10 +324,17 @@ export default memo(function InteractiveBracket() {
             setRounds(players.length ? buildMatrix(players, settings.placementMap) : []);
             setSaveMsg('Şablon başlangıç hâline alındı.');
             setTimeout(() => setSaveMsg(null), 1200);
+
+            // ⬇️ EKLE: reset sonrası yetkisi olan kullanıcıyı edit modunda tut
+            if (canEdit || isReferee) {
+                ignoreNextEnterViewRef.current = true; // bir sonraki enter-view event’ini yut
+                setMode('edit');
+            }
         };
         window.addEventListener('bracket:hard-reset', hardReset);
         return () => window.removeEventListener('bracket:hard-reset', hardReset);
-    }, [players, settings.placementMap]);
+    }, [players, settings.placementMap, canEdit, isReferee]);
+
 
     useEffect(() => {
         window.dispatchEvent(
@@ -437,29 +446,42 @@ export default memo(function InteractiveBracket() {
     /* Bracket kaynağı seçimi */
     useEffect(() => {
         const placement = settings.placementMap;
+
+        const withByeAdvance = (m: Matrix) => (startedRef.current ? safePropagate(m) : m);
+
+
         if (mode === 'edit') {
             if (startedRef.current) {
-                // Başladıysa artık server kaynağına göre göster
-                setRounds(backendMatrixRef.current);
+                const m = backendMatrixRef.current;
+                setRounds(m.length ? withByeAdvance(m) : m);
                 return;
             }
             if (acceptBackendOnceRef.current) return;
+
             // Başlamadan önce: BYE auto-advance YAPMA (propagate yok)
             const snap = editPlayersSnapshotRef.current;
             const now = players.map((p) => ({ name: p.name, club: p.club, seed: p.seed }));
             const placementChanged = lastPlacementRef.current !== placement;
             if (!snap || !samePlayersList(snap, now) || placementChanged) {
-                setRounds(players.length ? buildMatrix(players, placement) : []);
+                const base = players.length ? buildMatrix(players, placement) : [];
+                setRounds(base);
                 editPlayersSnapshotRef.current = now;
                 lastPlacementRef.current = placement;
             }
             return;
         }
-        // VIEW: varsa backend, yoksa local propagate
-        if (backendMatrixRef.current.length) setRounds(backendMatrixRef.current);
-        else if (players.length) setRounds(propagate(buildMatrix(players, placement)));
-        else setRounds([]);
+
+        // VIEW
+        if (backendMatrixRef.current.length) {
+            setRounds(withByeAdvance(backendMatrixRef.current));
+        } else if (players.length) {
+            const base = buildMatrix(players, placement);
+            setRounds(withByeAdvance(base)); // (buildMatrix sağlam ama tutarlılık için aynı sarmalayıcı)
+        } else {
+            setRounds([]);
+        }
     }, [mode, players, settings.placementMap, settings.version, started]);
+
 
     useEffect(() => {
         if (mode !== 'edit') return;
@@ -475,9 +497,7 @@ export default memo(function InteractiveBracket() {
         const enterEdit = () => {
             if (!(canEdit || isReferee)) return;
             editPlayersSnapshotRef.current = players.map((p) => ({
-                name: p.name,
-                club: p.club,
-                seed: p.seed,
+                name: p.name, club: p.club, seed: p.seed,
             }));
             setMode('edit');
             setRounds(() =>
@@ -488,13 +508,21 @@ export default memo(function InteractiveBracket() {
                         : []
             );
         };
+
+        // ⬇️ DEĞİŞTİRİLEN KISIM
         const enterView = () => {
+            // Hard reset sonrasında gelebilecek tek seferlik enter-view event’ini yut
+            if (ignoreNextEnterViewRef.current) {
+                ignoreNextEnterViewRef.current = false;
+                return;
+            }
             if (mode === 'edit' && dirty) setShowExitConfirm(true);
             else {
                 setMode('view');
                 editPlayersSnapshotRef.current = null;
             }
         };
+
         const refresh = () => setRefreshKey((k) => k + 1);
         window.addEventListener('bracket:enter-edit', enterEdit);
         window.addEventListener('bracket:enter-view', enterView);
@@ -504,7 +532,8 @@ export default memo(function InteractiveBracket() {
             window.removeEventListener('bracket:enter-view', enterView);
             window.removeEventListener('bracket:refresh', refresh);
         };
-    }, [canEdit, mode, dirty, players, settings.placementMap]);
+    }, [canEdit, isReferee, mode, dirty, players, settings.placementMap]);
+
     // "Karıştır" isteği geldiğinde 5-4-3-2-1 geri sayımı yap, bitince karıştırmayı tetikle
     useEffect(() => {
         const onRequestShuffle = () => {
@@ -566,6 +595,27 @@ export default memo(function InteractiveBracket() {
             pos = parentIdx;
         }
     };
+
+    // BYE/eksik oyuncu durumlarında backend matrisini güvenli hale getirip propagate eden sarmalayıcı
+    const safePropagate = (mat: Matrix): Matrix => {
+        const norm: Matrix = (mat || []).map((round) =>
+            (round || []).map((m) => ({
+                players: [
+                    (m?.players && m.players[0]) ? { ...m.players[0] } : ({} as Player),
+                    (m?.players && m.players[1]) ? { ...m.players[1] } : ({} as Player),
+                ],
+                meta: m?.meta ? { ...m.meta } : {},
+            }))
+        );
+
+        try {
+            return propagate(norm);
+        } catch {
+            // propagate içerisinde beklenmedik bir hata olursa en azından uygulamayı düşürmeyelim
+            return norm;
+        }
+    };
+
 
     /* Kaydet */
     const timeToISO = (t?: string): string | null => {
@@ -968,7 +1018,7 @@ export default memo(function InteractiveBracket() {
             await api.patch(`subtournaments/${slug}/`, { started: true });
             setStarted(true);
             // BYE’ları başlatma anında üst tura taşı
-            setRounds((prev) => (prev.length ? propagate(prev) : prev));
+            setRounds((prev) => (prev.length ? safePropagate(prev) : prev));
             window.dispatchEvent(new CustomEvent('bracket:players-locked', { detail: { value: true } }));
             setSaveMsg('Maç başlatıldı.');
             setTimeout(() => setSaveMsg(null), 1500);
