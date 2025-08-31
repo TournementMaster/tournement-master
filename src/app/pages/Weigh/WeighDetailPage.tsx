@@ -169,8 +169,13 @@ export default function WeighDetailPage() {
     const stats = useMemo(() => {
         const actives = appointments.filter((a) => !a.cancelled_at);
         const totalHead = actives.reduce((s, a) => s + (Number(a.headcount) || 0), 0);
-        const clubCount = actives.filter((a) => a.is_club).length;
-        const individualCount = actives.length - clubCount;
+        const clubSet = new Set(
+            actives
+                .filter(a => a.is_club)
+                .map(a => (a.club_name || '').trim().toLocaleLowerCase('tr-TR'))
+        );
+        const clubCount = clubSet.size;
+        const individualCount = actives.filter(a => !a.is_club).length;
         const cancelledCount = appointments.length - actives.length;
 
         const maleAct = actives.filter((a) => a.gender === 'M');

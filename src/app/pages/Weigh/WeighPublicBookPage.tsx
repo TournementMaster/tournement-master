@@ -301,7 +301,8 @@ export default function WeighPublicBookPage() {
        Confirm modal (perform action with sms_code)
        ──────────────────────────────────────────────────────────────── */
     async function confirmModal() {
-        if (!weighIn || smsCode.trim().length !== 6) return;
+        // if (!weighIn || smsCode.trim().length !== 6) return;
+        if (!weighIn) return;
         setBusy(true);
         setSmsErr(null);
 
@@ -317,14 +318,14 @@ export default function WeighPublicBookPage() {
                         club_name: isClub ? (clubName.trim() || null) : null,
                         gender: item.gender,
                         headcount: item.headcount,
-                        sms_code: smsCode.trim(),
+                        sms_code: '000000',
                     });
                 }
                 setMsg({ tone: 'ok', text: 'Randevu(lar)ınız oluşturuldu.' });
             } else if (modalMode === 'cancel' && pendingCancelId) {
                 await api.post<AppointmentDTO>(`appointments/${pendingCancelId}/cancel/`, {
                     phone,
-                    sms_code: smsCode.trim(),
+                    sms_code: '000000',
                 });
                 setMsg({ tone: 'ok', text: 'Randevu iptal edildi.' });
             }
@@ -614,7 +615,7 @@ export default function WeighPublicBookPage() {
                             </button>
                         </div>
                         <p className="text-xs text-gray-400 -mt-2">
-                            Mevcut randevular <b>güncellenemez</b>. Değişiklik için iptal &rarr; yeniden alın.
+                            Mevcut randevular <b>güncellenemez</b>. Değişiklik için iptal edip yeniden almanız gerekir. Bu durumda sıra numaranızı kaybedersiniz.
                         </p>
 
                         <div className="grid sm:grid-cols-2 gap-5">
@@ -638,7 +639,7 @@ export default function WeighPublicBookPage() {
                             {/* Info bubble */}
                             <div className="rounded-xl border border-white/10 bg-[#151922] p-3">
                                 <div className="text-sm text-gray-200">
-                                    Cinsiyet kuyrukları ayrı ilerler. Kulüp randevusunda her cinsiyet için ayrı sıra numarası verilir.
+                                    Her cinsiyet sırası ayrı ilerler. Kulüp randevusunda her cinsiyet için ayrı sıra numarası verilir.
                                 </div>
                             </div>
 
@@ -810,87 +811,122 @@ export default function WeighPublicBookPage() {
                         {/* CODE CONTENT */}
                         {modalMode !== 'notice' && (
                             <>
-                                <p className="text-sm text-gray-300 mt-2">Telefonunuza gönderilen <b>6 haneli</b> kodu girin.</p>
+                                <p className="text-sm text-gray-300 mt-2">
+                                    {modalMode === 'create'
+                                        ? 'Randevuyu oluşturmak istediğinize emin misiniz?'
+                                        : 'Randevuyu iptal etmek istediğinize emin misiniz?'}
+                                </p>
 
-                                {/* Fancy 6-box input (single hidden input drives UI) */}
-                                <div className="mt-4" onClick={() => hiddenCodeInputRef.current?.focus()}>
-                                    <input
-                                        ref={hiddenCodeInputRef}
-                                        value={smsCode}
-                                        onChange={(e) => {
-                                            const v = e.target.value.replace(/\D/g, '').slice(0, 6);
-                                            setSmsCode(v);
-                                            setSmsErr(null);
-                                        }}
-                                        inputMode="numeric"
-                                        className="absolute opacity-0 pointer-events-none"
-                                    />
-                                    <div className="grid grid-cols-6 gap-2">
-                                        {Array.from({ length: 6 }).map((_, i) => {
-                                            const ch = smsCode[i] ?? '';
-                                            const filled = ch !== '';
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    className={clsx(
-                                                        'h-12 rounded-xl border flex items-center justify-center text-xl font-semibold shadow-sm',
-                                                        filled ? 'border-emerald-500/40 bg-emerald-500/10 text-white' : 'border-white/15 bg-[#1b1f26] text-white/60'
-                                                    )}
-                                                >
-                                                    {ch || '•'}
-                                                </div>
-                                            );
-                                        })}
+                                {smsErr && (
+                                    <div className="mt-3 text-sm rounded-lg px-3 py-2 border border-red-400/30 bg-red-500/10 text-red-200">
+                                        {smsErr}
                                     </div>
-                                    {smsErr && (
-                                        <div className="mt-3 text-sm rounded-lg px-3 py-2 border border-red-400/30 bg-red-500/10 text-red-200">
-                                            {smsErr}
-                                        </div>
-                                    )}
-                                </div>
+                                )}
 
-                                <div className="mt-5 flex items-center justify-between">
+                                <div className="mt-5 flex items-center justify-end gap-2">
                                     <button
-                                        onClick={async () => {
-                                            if (!weighIn) return;
-                                            try {
-                                                await api.post('appointments/sms/send/', {
-                                                    phone,
-                                                    weigh_in: weighIn.id,
-                                                    action: modalMode === 'create' ? 'create' : 'cancel',
-                                                });
-                                                setSmsErr(null);
-                                            } catch {
-                                                setSmsErr('Kod tekrar gönderilemedi.');
-                                            }
-                                        }}
-                                        className="text-sm text-blue-300 hover:underline"
+                                        onClick={closeCodeModal}
+                                        className="px-3 py-2 rounded-lg bg-[#1f2229] border border-white/10 text-sm text-gray-200"
                                     >
-                                        Kodu tekrar gönder
+                                        Vazgeç
                                     </button>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={closeCodeModal}
-                                            className="px-3 py-2 rounded-lg bg-[#1f2229] border border-white/10 text-sm text-gray-200"
-                                        >
-                                            İptal
-                                        </button>
-                                        <button
-                                            onClick={confirmModal}
-                                            disabled={busy || smsCode.length !== 6}
-                                            className={clsx(
-                                                'px-4 py-2 rounded-lg font-medium shadow text-sm',
-                                                busy || smsCode.length !== 6
-                                                    ? 'bg-gray-600 text-white/80 cursor-not-allowed'
-                                                    : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white'
-                                            )}
-                                        >
-                                            Onayla
-                                        </button>
-                                    </div>
+                                    <button
+                                        onClick={confirmModal}
+                                        disabled={busy}
+                                        className="px-4 py-2 rounded-lg font-medium shadow text-sm
+                   bg-gradient-to-r from-emerald-600 to-teal-600
+                   hover:from-emerald-500 hover:to-teal-500 text-white"
+                                    >
+                                        Onayla
+                                    </button>
                                 </div>
                             </>
                         )}
+                        {/*{modalMode !== 'notice' && (*/}
+                        {/*    <>*/}
+                        {/*        <p className="text-sm text-gray-300 mt-2">Telefonunuza gönderilen <b>6 haneli</b> kodu*/}
+                        {/*            girin.</p>*/}
+
+                        {/*        /!* Fancy 6-box input (single hidden input drives UI) *!/*/}
+                        {/*        <div className="mt-4" onClick={() => hiddenCodeInputRef.current?.focus()}>*/}
+                        {/*            <input*/}
+                        {/*                ref={hiddenCodeInputRef}*/}
+                        {/*                value={smsCode}*/}
+                        {/*                onChange={(e) => {*/}
+                        {/*                    const v = e.target.value.replace(/\D/g, '').slice(0, 6);*/}
+                        {/*                    setSmsCode(v);*/}
+                        {/*                    setSmsErr(null);*/}
+                        {/*                }}*/}
+                        {/*                inputMode="numeric"*/}
+                        {/*                className="absolute opacity-0 pointer-events-none"*/}
+                        {/*            />*/}
+                        {/*            <div className="grid grid-cols-6 gap-2">*/}
+                        {/*                {Array.from({length: 6}).map((_, i) => {*/}
+                        {/*                    const ch = smsCode[i] ?? '';*/}
+                        {/*                    const filled = ch !== '';*/}
+                        {/*                    return (*/}
+                        {/*                        <div*/}
+                        {/*                            key={i}*/}
+                        {/*                            className={clsx(*/}
+                        {/*                                'h-12 rounded-xl border flex items-center justify-center text-xl font-semibold shadow-sm',*/}
+                        {/*                                filled ? 'border-emerald-500/40 bg-emerald-500/10 text-white' : 'border-white/15 bg-[#1b1f26] text-white/60'*/}
+                        {/*                            )}*/}
+                        {/*                        >*/}
+                        {/*                            {ch || '•'}*/}
+                        {/*                        </div>*/}
+                        {/*                    );*/}
+                        {/*                })}*/}
+                        {/*            </div>*/}
+                        {/*            {smsErr && (*/}
+                        {/*                <div*/}
+                        {/*                    className="mt-3 text-sm rounded-lg px-3 py-2 border border-red-400/30 bg-red-500/10 text-red-200">*/}
+                        {/*                    {smsErr}*/}
+                        {/*                </div>*/}
+                        {/*            )}*/}
+                        {/*        </div>*/}
+
+                        {/*        <div className="mt-5 flex items-center justify-between">*/}
+                        {/*            <button*/}
+                        {/*                onClick={async () => {*/}
+                        {/*                    if (!weighIn) return;*/}
+                        {/*                    try {*/}
+                        {/*                        await api.post('appointments/sms/send/', {*/}
+                        {/*                            phone,*/}
+                        {/*                            weigh_in: weighIn.id,*/}
+                        {/*                            action: modalMode === 'create' ? 'create' : 'cancel',*/}
+                        {/*                        });*/}
+                        {/*                        setSmsErr(null);*/}
+                        {/*                    } catch {*/}
+                        {/*                        setSmsErr('Kod tekrar gönderilemedi.');*/}
+                        {/*                    }*/}
+                        {/*                }}*/}
+                        {/*                className="text-sm text-blue-300 hover:underline"*/}
+                        {/*            >*/}
+                        {/*                Kodu tekrar gönder*/}
+                        {/*            </button>*/}
+                        {/*            <div className="flex items-center gap-2">*/}
+                        {/*                <button*/}
+                        {/*                    onClick={closeCodeModal}*/}
+                        {/*                    className="px-3 py-2 rounded-lg bg-[#1f2229] border border-white/10 text-sm text-gray-200"*/}
+                        {/*                >*/}
+                        {/*                    İptal*/}
+                        {/*                </button>*/}
+                        {/*                <button*/}
+                        {/*                    onClick={confirmModal}*/}
+                        {/*                    disabled={busy || smsCode.length !== 6}*/}
+                        {/*                    className={clsx(*/}
+                        {/*                        'px-4 py-2 rounded-lg font-medium shadow text-sm',*/}
+                        {/*                        busy || smsCode.length !== 6*/}
+                        {/*                            ? 'bg-gray-600 text-white/80 cursor-not-allowed'*/}
+                        {/*                            : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white'*/}
+                        {/*                    )}*/}
+                        {/*                >*/}
+                        {/*                    Onayla*/}
+                        {/*                </button>*/}
+                        {/*            </div>*/}
+                        {/*        </div>*/}
+                        {/*    </>*/}
+                        {/*)}*/}
                     </div>
                 </div>
             )}
