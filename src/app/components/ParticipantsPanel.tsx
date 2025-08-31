@@ -5,7 +5,6 @@ import ClubSelect from './ClubSelect';
 export default function ParticipantsPanel() {
     const { players, setPlayers } = usePlayers();
 
-    // View kilidi (mode === 'view' veya turnuva başladıysa)
     const [viewOnly, setViewOnly] = useState<boolean>(() => {
         const v = localStorage.getItem('bracket.viewOnly');
         return v ? JSON.parse(v) : false;
@@ -27,7 +26,6 @@ export default function ParticipantsPanel() {
     }, []);
     const readOnly = viewOnly || locked;
 
-    // form state
     const [inputName, setInputName] = useState('');
     const [club, setClub] = useState('');
 
@@ -47,7 +45,6 @@ export default function ParticipantsPanel() {
         setPlayers(reseeded);
     };
 
-    // 🔎 Arama (listenin ALTINDA durur, brakette highlight olayı gönderir)
     const [q, setQ] = useState('');
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('bracket:highlight', { detail: { name: q } }));
@@ -58,7 +55,6 @@ export default function ParticipantsPanel() {
         : players;
 
     return (
-        // ✅ Tam boy kolon; içindeki liste bölümü kendi içinde scroll olur
         <div className="flex flex-col h-full">
             <h3 className="font-semibold mb-2">Katılımcılar</h3>
 
@@ -98,17 +94,19 @@ export default function ParticipantsPanel() {
                 )}
             </form>
 
-            {/* ✅ LİSTE — sadece bu alan scroll olur (max 8 satır görünür) */}
+            {/* LİSTE */}
             <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 mt-3 max-h-[calc(8*2.5rem+7*0.25rem)]">
                 {shown.map((p, i) => (
                     <div
                         key={`${p.name}-${p.seed}`}
                         className="flex h-10 items-center justify-between bg-[#14161c] px-3 rounded"
                     >
-      <span className="team-text">
-        #{p.seed} — {p.name}
-          {p.club ? <em className="text-gray-400"> · {p.club}</em> : null}
-      </span>
+                        <div className="flex-1 min-w-0 pr-2">
+        <span className="block truncate" title={`#${p.seed} — ${p.name}${p.club ? ' · ' + p.club : ''}`}>
+          #{p.seed} — {p.name}
+            {p.club ? <em className="text-gray-400"> · {p.club}</em> : null}
+        </span>
+                        </div>
                         {!readOnly && (
                             <button
                                 onClick={() => removeAt(i)}
@@ -119,13 +117,12 @@ export default function ParticipantsPanel() {
                             </button>
                         )}
                     </div>
-
                 ))}
                 {players.length === 0 && <p className="text-sm text-gray-500">Henüz sporcu eklenmedi.</p>}
                 {players.length > 0 && shown.length === 0 && <p className="text-sm text-gray-500">Eşleşen sporcu yok.</p>}
             </div>
 
-            {/* ✅ ARAMA — listenin ALTINDA */}
+            {/* ARAMA */}
             <div className="pt-3 mt-3 border-t border-white/10">
                 <input
                     className="w-full bg-[#111318] rounded px-3 py-2"
