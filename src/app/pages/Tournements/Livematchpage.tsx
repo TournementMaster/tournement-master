@@ -25,6 +25,16 @@ type Match = {
 
 type AthleteLite = { id: number; name: string; club?: string };
 type ResolvedKind = 'unknown' | 'sub' | 'tournament';
+type LiveBundle = {
+    scope: 'sub' | 'tournament';
+    subs: Record<string, SubTournament>;
+    matches: Record<string, Match[]>;
+    athletes: Record<string, Record<number, AthleteLite>>;
+};
+
+const fetchLiveBundle = (slug: string) =>
+    api.get<LiveBundle>(`live/${slug}/`).then(r => r.data);
+
 
 const gLabel = (g?: string) => (g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : '—');
 const roundLabel = (r: number, maxR: number) => {
@@ -80,125 +90,55 @@ export default function LiveMatchPage() {
         return results;
     };
 
-    /* ───────── 1) SLUG çözümleme ───────── */
+    // Tek seferde hepsini alan akış (+ polling)
     useEffect(() => {
         if (!slug) return;
-        let cancelled = false;
-
-        setResolved('unknown');
-        setSubs({});
-        setMatches({});
-        setError(null);
-
-        (async () => {
-            try {
-                const bundles = await fetchAsTournament(slug);
-                if (!cancelled && bundles.length > 0) {
-                    const nextSubs: Record<string, SubTournament> = {};
-                    const nextMatches: Record<string, Match[]> = {};
-                    bundles.forEach(({ sub, matches }) => {
-                        nextSubs[sub.public_slug] = sub;
-                        nextMatches[sub.public_slug] = matches;
-                    });
-                    setResolved('tournament');
-                    setSubs(nextSubs);
-                    setMatches(nextMatches);
-                    return;
-                }
-            } catch {}
-
-            try {
-                const asSub = await fetchAsSub(slug);
-                if (cancelled) return;
-                setResolved('sub');
-                setSubs({ [asSub.sub.public_slug]: asSub.sub });
-                setMatches({ [asSub.sub.public_slug]: asSub.matches });
-            } catch {
-                if (!cancelled) setError('Alt turnuva veya turnuva bulunamadı.');
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [slug]);
-
-    /* ───────── 2) Polling ───────── */
-    useEffect(() => {
-        if (!slug || resolved === 'unknown') return;
         let stop = false;
         let timer: any;
 
+        const prime = async () => {
+            try {
+                refreshingRef.current = true;
+                const b = await fetchLiveBundle(slug);
+                if (stop) return;
+                setResolved(b.scope);
+                setSubs(b.subs || {});
+                setMatches(b.matches || {});
+                setAthletesBySub(b.athletes || {});
+            } catch (e: any) {
+                if (!stop) setError('Veri yüklenemedi.');
+            } finally {
+                refreshingRef.current = false;
+            }
+        };
+
         const poll = async () => {
             if (stop) return;
-            refreshingRef.current = true;
             try {
-                if (resolved === 'sub') {
-                    const key = Object.keys(subs)[0] || slug;
-                    const [detail, m] = await Promise.all([
-                        fetchSubDetail(key).catch(() => subs[key]),
-                        fetchSubMatches(key).catch(() => matches[key] || []),
-                    ]);
-                    if (stop) return;
-                    setSubs({ [detail.public_slug]: detail });
-                    setMatches({ [detail.public_slug]: m });
-                } else {
-                    const keys = Object.keys(subs);
-                    if (!keys.length) return;
-                    const refreshed = await Promise.all(
-                        keys.map((k) => fetchSubMatches(k).catch(() => matches[k] || []))
-                    );
-                    if (stop) return;
-                    const next: Record<string, Match[]> = {};
-                    keys.forEach((k, i) => (next[k] = refreshed[i]));
-                    setMatches(next);
-                }
+                refreshingRef.current = true;
+                const b = await fetchLiveBundle(slug);
+                if (stop) return;
+                setResolved(b.scope);
+                setSubs(b.subs || {});
+                setMatches(b.matches || {});
+                setAthletesBySub(b.athletes || {});
             } finally {
                 refreshingRef.current = false;
                 if (!stop) timer = setTimeout(poll, 15000);
             }
         };
 
-        timer = setTimeout(poll, 15000);
+        // ilk yükleme + periyodik polling
+        prime().then(() => {
+            if (!stop) timer = setTimeout(poll, 15000);
+        });
+
         return () => {
             stop = true;
             clearTimeout(timer);
         };
-    }, [slug, resolved, subs, matches]);
+    }, [slug]);
 
-    /* Sporcuları cache’le */
-    useEffect(() => {
-        const slugs = Object.keys(subs || {});
-        if (!slugs.length) return;
-        let cancelled = false;
-
-        (async () => {
-            await Promise.all(
-                slugs.map(async (s) => {
-                    if (athletesBySub[s]) return;
-                    try {
-                        const { data } = await api.get(`subtournaments/${s}/athletes/`);
-                        if (cancelled) return;
-                        const map: Record<number, AthleteLite> = {};
-                        (Array.isArray(data) ? data : []).forEach((a: any) => {
-                            const fn = String(a.first_name || '');
-                            const ln = String(a.last_name || '');
-                            const cleaned = `${fn} ${ln}`
-                                .replace(/\bexample\b/gi, '')
-                                .replace(/\s+/g, ' ')
-                                .trim();
-                            map[a.id] = { id: a.id, name: cleaned, club: a.club_name || undefined };
-                        });
-                        setAthletesBySub((prev) => ({ ...prev, [s]: map }));
-                    } catch {}
-                })
-            );
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [subs, athletesBySub]);
 
     /** Kart verileri — COURT bazında tek kart + sıradaki maç (playable mantığı) */
     const cards = useMemo(() => {
