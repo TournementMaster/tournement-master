@@ -214,6 +214,17 @@ export default memo(function InteractiveBracket() {
     const [shuffleCount, setShuffleCount] = useState(3);
     const shuffleTimerRef = useRef<number | null>(null);
     const ignoreNextEnterViewRef = useRef<boolean>(false);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight || 0 });
+        update();
+        const ro = new ResizeObserver(update);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
 
     const [isReferee, setIsReferee] = useState<boolean>(false);
@@ -892,15 +903,57 @@ export default memo(function InteractiveBracket() {
     const stageW = svgWidth + STAGE_PAD * 2;
     const stageH = svgHeight + STAGE_PAD * 2;
 
+
+// container'a sığdır
+    const fitToContainer = useCallback((instant = false) => {
+        if (!twRef.current || !containerRef.current) return;
+        const cw = containerRef.current.clientWidth;
+        const ch = containerRef.current.clientHeight || 0;
+        const sx = (cw - 24) / (svgWidth + 360);
+        const sy = ch ? (ch - 24) / (svgHeight + 360) : 1;
+        const scale = Math.max(0.35, Math.min(1, Math.min(sx, sy)));
+        const left = Math.max(12, (cw - svgWidth * scale) / 2);
+        const top  = Math.max(12, (ch - svgHeight * scale) / 2);
+        const x = -(STAGE_PAD - left);
+        const y = -(STAGE_PAD - top);
+        twRef.current.setTransform(x, y, scale, instant ? 0 : 260);
+    }, [svgWidth, svgHeight]);
+
     const INITIAL_POS = { left: 320, top: 120, scale: 1 };
-    const applied = useRef(false);
+    const fitOnceAppliedRef = useRef(false);
     useEffect(() => {
-        if (!twRef.current || applied.current) return;
-        const x = -(STAGE_PAD - INITIAL_POS.left);
-        const y = -(STAGE_PAD - INITIAL_POS.top);
-        twRef.current.setTransform(x, y, INITIAL_POS.scale, 0);
-        applied.current = true;
-    }, [stageW, stageH]);
+        if (!twRef.current || fitOnceAppliedRef.current) return;
+        if (containerSize.w && containerSize.w < 1024) {
+            fitToContainer(true); // dar ekranda sığdır
+        } else {
+            const x = -(STAGE_PAD - INITIAL_POS.left);
+            const y = -(STAGE_PAD - INITIAL_POS.top);
+            twRef.current.setTransform(x, y, INITIAL_POS.scale, 0);
+        }
+        fitOnceAppliedRef.current = true;
+    }, [stageW, stageH, containerSize.w, fitToContainer]);
+
+
+
+    // Sidebar'ı tamamen kapat/aç (global)
+    useEffect(() => {
+        const KEY = 'tm.sidebar.collapsed';
+        const apply = (collapsed: boolean) => {
+            document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
+            document.documentElement.classList.toggle('sidebar-open', !collapsed);
+        };
+        const s = localStorage.getItem(KEY);
+        if (s != null) apply(s === '1');
+
+        const onToggle = () => {
+            const collapsedNow = !document.documentElement.classList.contains('sidebar-collapsed');
+            apply(collapsedNow);
+            localStorage.setItem(KEY, collapsedNow ? '1' : '0');
+        };
+        window.addEventListener('layout:sidebar-toggle', onToggle);
+        return () => window.removeEventListener('layout:sidebar-toggle', onToggle);
+    }, []);
+
 
     // ✓ seçimi – başlatılmadıysa confirm çıkar
     const onSelectMatch = (r: number, m: number) => {
@@ -945,6 +998,10 @@ export default memo(function InteractiveBracket() {
 
     const resetView = () => {
         if (!twRef.current) return;
+        if (containerSize.w && containerSize.w < 1024) {
+            fitToContainer(false);
+            return;
+        }
         const x = -(STAGE_PAD - INITIAL_POS.left);
         const y = -(STAGE_PAD - INITIAL_POS.top);
         twRef.current.setTransform(x, y, INITIAL_POS.scale, 300);
@@ -1193,7 +1250,7 @@ export default memo(function InteractiveBracket() {
         return () => window.removeEventListener('bracket:print', onPrint);
     }, [rounds]);
     return (
-        <div className="relative h-[calc(100vh-64px)] overflow-hidden">
+        <div ref={containerRef} className="relative h-[calc(100vh-64px)] overflow-hidden">
             {/* 401 overlay */}
             {authErr === 401 ? (
                 <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/50">
@@ -1235,7 +1292,7 @@ export default memo(function InteractiveBracket() {
 
             <TransformWrapper
                 ref={twRef}
-                minScale={0.4}
+                minScale={0.35}
                 maxScale={3.5}
                 limitToBounds={false}
                 centerOnInit={false}
@@ -1248,7 +1305,7 @@ export default memo(function InteractiveBracket() {
                     wrapperStyle={{ width: '100%', height: '100%', minHeight: '100%', overflow: 'visible' }}
                     contentStyle={{ overflow: 'visible' }}
                 >
-                    <div style={{ width: svgWidth + 800, height: svgHeight + 800, position: 'relative' }}>
+                    <div className="bracket-stage" style={{ width: svgWidth + 800, height: svgHeight + 800, position: 'relative' }}>
                         {!!rounds?.length && (
                             <BracketCanvas
                                 rounds={rounds}
@@ -1265,8 +1322,9 @@ export default memo(function InteractiveBracket() {
                 </TransformComponent>
             </TransformWrapper>
 
+
             {/* Header’ın altında sabit statü rozeti (HER ZAMAN görünür) */}
-            <div className="fixed right-3 top-[84px] z-[100] select-none">
+            <div className="fixed right-3 top-[132px] md:top-[84px] z-[100] select-none">
   <span className={`px-2 py-1 rounded text-xs border ${statusBadge.cls}`}>
     {statusBadge.label}
   </span>

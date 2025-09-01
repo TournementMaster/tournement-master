@@ -116,7 +116,7 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                 return
             }
             setPlayers(out)
-            window.dispatchEvent(new CustomEvent('bracket:enter-edit'))
+            window.dispatchEvent(new CustomEvent('layout:sidebar-toggle'))
         } catch (e) {
             console.error(e)
             alert('Import için "xlsx" paketi gerekli veya dosya okunamadı.')

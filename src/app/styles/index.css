@@ -61,3 +61,11 @@
   background-size: 26px 26px, 18px 18px;
   background-position: 0 0, 8px 10px;
 }
+/* Sidebar tamamen kapat/aç */
+.sidebar-collapsed .sidebar { display: none; }
+
+/* Mobilde sidebar açık/kapalı görünürlüğü */
+@media (max-width: 1024px) {
+  .sidebar-open  .bracket-stage { display: none !important; }
+  .sidebar-collapsed .bracket-stage { display: block !important; }
+}

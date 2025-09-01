@@ -25,6 +25,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const [canCreateSub, setCanCreateSub] = useState(false);
 
     const [headerText, setHeaderText] = useState<string>('');
+    const [headerTextNoGender, setHeaderTextNoGender] = useState<string>('');
     const [paletteOnly, setPaletteOnly] = useState(false);
 
     // dashboard’dayken admin mi?
@@ -74,16 +75,23 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 if (cancelled || !data) return;
 
                 const g = (data.gender || '').toUpperCase();
-                const genderLabel = g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : 'Karma';
+                const genderLabel = g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : g ? 'Karma' : '';
                 const wMin = (data.weight_min ?? '').toString().trim();
                 const wMax = (data.weight_max ?? '').toString().trim();
                 const weight = wMin || wMax ? `${wMin || '?'}–${wMax || '?'} kg` : '';
                 const title = (data.title || sp.get('title') || '').toString().trim();
+                const titleLc = title.toLocaleLowerCase('tr');
+                const titleHasGender = ['kadın','erkek','karma','women','men','female','male']
+                    .some(k => titleLc.includes(k));
 
-                setHeaderText([title, genderLabel, weight].filter(Boolean).join(' · '));
+                setHeaderText([title, !titleHasGender ? genderLabel : '', weight].filter(Boolean).join(' · '));
+
+// Mobil varyant zaten cinsiyet içermiyor
+                setHeaderTextNoGender([title, weight].filter(Boolean).join(' · '));
             } catch {
                 const t = sp.get('title') || '';
                 setHeaderText(t);
+                setHeaderTextNoGender(t);
             }
         })();
         return () => { cancelled = true; };
@@ -173,7 +181,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <Link
                     to="/"
-                    className="text-2xl font-extrabold text-white truncate max-w-[48vw] sm:max-w-none"
+                    className="hidden md:inline-block text-2xl font-extrabold text-white truncate max-w-[48vw] sm:max-w-none"
                     title="Easy Tournament"
                 >
                     Easy Tournament
@@ -192,12 +200,25 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
             </div>
 
             {/* ORTA: Bracket başlığı */}
-            {isBracket && !!headerText && (
-                <div className="absolute inset-x-0 flex justify-center pointer-events-none">
-                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[70vw] sm:max-w-[50vw]">
-                        {headerText}
-                    </div>
-                </div>
+            {isBracket && (
+                <>
+                    {/* Mobil: cinsiyet yok */}
+                    {!!headerTextNoGender && (
+                        <div className="absolute inset-x-0 flex md:hidden justify-center pointer-events-none">
+                            <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[80vw]">
+                                {headerTextNoGender}
+                            </div>
+                        </div>
+                    )}
+                    {/* Desktop: tam metin (cinsiyet dahil) */}
+                    {!!headerText && (
+                        <div className="absolute inset-x-0 hidden md:flex justify-center pointer-events-none">
+                            <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[50vw]">
+                                {headerText}
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
 
             {/* SAĞ: Aksiyonlar + Avatar */}
@@ -228,8 +249,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                             )}
                             {isBracket && (
                                 <>
-                                    <button onClick={() => { setMobileMenuOpen(false); onShare(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">↗ Paylaş</button>
-                                    <button onClick={() => { setMobileMenuOpen(false); onPrint(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">🖨 Yazdır</button>
+
                                     {isAuth && !paletteOnly && (
                                         <button onClick={() => { setMobileMenuOpen(false); onSave(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">💾 Kaydet</button>
                                     )}
