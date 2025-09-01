@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { api } from '../lib/api';
@@ -27,6 +28,31 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const [headerText, setHeaderText] = useState<string>('');
     const [headerTextNoGender, setHeaderTextNoGender] = useState<string>('');
     const [paletteOnly, setPaletteOnly] = useState(false);
+
+    const [shareOpen, setShareOpen] = useState(false);
+    const shareInputRef = useRef<HTMLInputElement>(null);
+
+    const doCopy = async () => {
+        const url = window.location.href;
+        try {
+            await navigator.clipboard.writeText(url);
+            showFlash('Bağlantı kopyalandı.');
+        } catch {
+            try {
+                const el = shareInputRef.current;
+                if (el) {
+                    el.focus();
+                    el.select();
+                    document.execCommand('copy');
+                    showFlash('Bağlantı kopyalandı.');
+                } else {
+                    showFlash('Kopyalama başarısız. URL’i elle kopyalayın.');
+                }
+            } catch {
+                showFlash('Kopyalama başarısız. URL’i elle kopyalayın.');
+            }
+        }
+    };
 
     // dashboard’dayken admin mi?
     useEffect(() => {
@@ -146,16 +172,7 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     };
 
     const onShare = async () => {
-        const url = window.location.href;
-        const title = headerText || 'Bracket';
-        try {
-            if ((navigator as any).share) {
-                await (navigator as any).share({ title, url });
-            } else {
-                await navigator.clipboard.writeText(url);
-                showFlash('Bağlantı kopyalandı.');
-            }
-        } catch {}
+        setShareOpen(true);
     };
 
     // Yazdırma: özel olaya devret
@@ -168,11 +185,11 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
     const onSave = () => window.dispatchEvent(new CustomEvent('bracket:save'));
 
     return (
+        <>
         <header
             className="relative z-50 h-16 px-3 sm:px-6 flex items-center"
             style={{
-                background:
-                    'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
+                background: 'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
                 backdropFilter: 'blur(2px)',
                 WebkitBackdropFilter: 'blur(2px)',
             }}
@@ -249,7 +266,13 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                             )}
                             {isBracket && (
                                 <>
-
+                                    <button
+                                        onClick={() => { setMobileMenuOpen(false); setShareOpen(true); }}
+                                        className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white"
+                                        type="button"
+                                    >
+                                        🔗 Paylaş
+                                    </button>
                                     {isAuth && !paletteOnly && (
                                         <button onClick={() => { setMobileMenuOpen(false); onSave(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">💾 Kaydet</button>
                                     )}
@@ -279,6 +302,24 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                         </div>
                     )}
                 </div>
+
+                {/* Mobil: bracket sayfasında görünen paylaş butonu */}
+                {isBracket && (
+                    <button
+                        onClick={onShare}
+                        className="sm:hidden inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/10 hover:bg-white/15 text-white"
+                        aria-label="Paylaş"
+                        title="Paylaş"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="18" cy="5" r="3" />
+                            <circle cx="6" cy="12" r="3" />
+                            <circle cx="18" cy="19" r="3" />
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                    </button>
+                )}
 
                 {/* Desktop: ayrı aksiyon butonları */}
                 {isBracket && (
@@ -373,5 +414,90 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 </div>
             )}
         </header>
+
+        {/* ☝️ header dışına taşındı; artık tüm ekranı kaplar */}
+        <ShareModal
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            url={window.location.href}
+            onCopied={() => showFlash('Bağlantı kopyalandı.')}
+        />
+        </>
+    );
+}
+
+
+function ShareModal({
+                        open,
+                        onClose,
+                        url,
+                        onCopied,
+                    }: {
+    open: boolean;
+    onClose: () => void;
+    url: string;
+    onCopied: () => void;
+}) {
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // body scroll kilidi
+    useEffect(() => {
+        if (!open) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    }, [open]);
+
+    // açılınca input’u seç
+    useEffect(() => {
+        if (open) setTimeout(() => inputRef.current?.select(), 0);
+    }, [open]);
+
+    if (!open) return null;
+
+    const doCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(url);
+            onCopied();
+        } catch {
+            // eski tarayıcılar için fallback
+            const el = inputRef.current;
+            if (el) {
+                el.focus(); el.select();
+                document.execCommand?.('copy');
+                onCopied();
+            }
+        }
+    };
+
+    return createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+            <div className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#1c222b] border border-white/10 p-5 shadow-2xl">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="text-white font-semibold text-lg">Bağlantıyı Paylaş</div>
+                    <button onClick={onClose} className="text-gray-300 hover:text-white" aria-label="Kapat">✕</button>
+                </div>
+
+                <label className="block text-sm text-gray-300 mb-2">Sayfa Bağlantısı</label>
+                <input
+                    ref={inputRef}
+                    readOnly
+                    value={url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full bg-[#0f141a] border border-white/10 rounded px-3 py-2 text-sm text-white"
+                />
+
+                <div className="flex items-center justify-end gap-2 mt-4">
+                    <button onClick={onClose} className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253] text-white/90" type="button">
+                        Kapat
+                    </button>
+                    <button onClick={doCopy} className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium" type="button">
+                        Kopyala
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
     );
 }
