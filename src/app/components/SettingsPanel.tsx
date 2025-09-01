@@ -120,7 +120,7 @@ function reduceClubClashesMapping(
 
 export default function SettingsPanel() {
     const { settings, set } = useSettings();
-    const { players, setPlayers } = usePlayers();
+    const { players } = usePlayers();
     const [confirmOpen, setConfirmOpen] = useState(false);
 
     const [started, setStarted] = useState(false);
