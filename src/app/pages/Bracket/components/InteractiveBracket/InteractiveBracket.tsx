@@ -415,8 +415,33 @@ export default memo(function InteractiveBracket() {
             setSelected(null);
             setStarted(false);
             setDirty(true); // kullanıcı isterse “Kaydet” ile backend’e yazar
-            // Başlangıç görünümü: mevcut oyuncular + mevcut placement ile ilk turu yeniden kur
-            setRounds(players.length ? buildMatrix(players, settings.placementMap) : []);
+            // Eşleşmeleri KORU, sadece kazanan/manual/scores bayraklarını temizle ve
+// başlamamış gibi propagate et (autoByes: false).
+            setRounds(prev => {
+                if (!prev.length) return prev;
+
+                const cleared = prev.map(round =>
+                    round.map(m => ({
+                        players: [
+                            m.players[0] ? { ...m.players[0], winner: undefined } : ({} as Player),
+                            m.players[1] ? { ...m.players[1], winner: undefined } : ({} as Player),
+                        ],
+                        meta: (() => {
+                            const nm = { ...(m.meta ?? {}) } as any;
+                            delete nm.manual;
+                            delete nm.scores;
+                            return nm;
+                        })(),
+                    }))
+                );
+
+                return propagate(cleared, { autoByes: false });
+            });
+            // edit-effect'in yeniden buildMatrix çalıştırmasını engelle
+            editPlayersSnapshotRef.current = players.map(p => ({
+                name: p.name, club: p.club, seed: p.seed,
+            }));
+            lastPlacementRef.current = settings.placementMap ?? null;
             setSaveMsg('Şablon başlangıç hâline alındı.');
             setTimeout(() => setSaveMsg(null), 1200);
 
