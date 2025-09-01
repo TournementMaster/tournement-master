@@ -1408,7 +1408,7 @@ export default memo(function InteractiveBracket() {
 
 
             {/* Header’ın altında sabit statü rozeti (HER ZAMAN görünür) */}
-            <div className="fixed right-3 top-[132px] md:top-[84px] z-[100] select-none">
+            <div className="fixed right-3 top-[132px] md:top-[84px] z-[0] select-none">
   <span className={`px-2 py-1 rounded text-xs border ${statusBadge.cls}`}>
     {statusBadge.label}
   </span>

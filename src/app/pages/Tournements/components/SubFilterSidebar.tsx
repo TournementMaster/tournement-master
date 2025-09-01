@@ -3,20 +3,28 @@ import { Link } from 'react-router-dom';
 export type SubFilters = {
     status: 'all' | 'pending' | 'in_progress' | 'completed';
     gender: 'all' | 'M' | 'F';
-    ageMin: string;
-    ageMax: string;
+    ageCategory: 'all' | 'kucukler' | 'minikler' | 'yildizlar' | 'gencler' | 'umitler' | 'buyukler';
     weightMin: string;
     weightMax: string;
 };
-
 const DEFAULTS: SubFilters = {
     status: 'all',
     gender: 'all',
-    ageMin: '',
-    ageMax: '',
+    ageCategory: 'all',
     weightMin: '',
     weightMax: '',
 };
+
+const CAT_OPTIONS = [
+    ['all',      'Tümü'],
+    ['kucukler', 'Küçükler'],
+    ['minikler', 'Minikler'],
+    ['yildizlar','Yıldızlar'],
+    ['gencler',  'Gençler'],
+    ['umitler',  'Ümitler'],
+    ['buyukler', 'Büyükler'],
+] as const;
+
 
 export default function SubFilterSidebar({
                                              filters,
@@ -71,26 +79,20 @@ export default function SubFilterSidebar({
                     ))}
                 </div>
 
-                {/* YAŞ */}
+                {/* YAŞ KATEGORİSİ */}
                 <div>
-                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">YAŞ ARALIĞI</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                        <input
-                            value={filters.ageMin}
-                            onChange={(e) => set({ ageMin: e.target.value.replace(/\D/g, '').slice(0, 2) })}
-                            placeholder="Min"
-                            inputMode="numeric"
+                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">YAŞ KATEGORİSİ</h3>
+                    <div className="grid grid-cols-1 gap-2">
+                        <select
+                            value={filters.ageCategory}
+                            onChange={(e)=> set({ ageCategory: e.target.value as SubFilters['ageCategory'] })}
                             className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
-                        />
-                        <input
-                            value={filters.ageMax}
-                            onChange={(e) => set({ ageMax: e.target.value.replace(/\D/g, '').slice(0, 2) })}
-                            placeholder="Max"
-                            inputMode="numeric"
-                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
-                        />
+                        >
+                            {CAT_OPTIONS.map(([k, lbl]) => <option key={k} value={k}>{lbl}</option>)}
+                        </select>
                     </div>
                 </div>
+
 
                 {/* KİLO */}
                 <div>

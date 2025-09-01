@@ -8,6 +8,24 @@ export type Mode = 'main' | 'sub'
 export type Editor = { id: number; username: string }
 export type Referee = { id: number; username: string };
 
+// ── YAŞ KATEGORİLERİ ────────────────────────────────────────────────────────
+type AgeCatKey = 'kucukler' | 'minikler' | 'yildizlar' | 'gencler' | 'umitler' | 'buyukler';
+const AGE_CATEGORIES: Record<AgeCatKey, { label: string; min: number; max: number | null }> = {
+    kucukler: { label: 'Küçükler',  min: 0,  max: 10 },
+    minikler: { label: 'Minikler', min: 10, max: 13 },
+    yildizlar:{ label: 'Yıldızlar',min: 13, max: 15 },
+    gencler:  { label: 'Gençler',  min: 15, max: 18 },
+    umitler:  { label: 'Ümitler',  min: 18, max: 20 },
+    buyukler: { label: 'Büyükler',   min: 18, max: null }, // null = üst sınır yok
+};
+const categoryFromRange = (lo?: number | null, hi?: number | null): AgeCatKey | '' => {
+    const l = Number.isFinite(lo as number) ? Number(lo) : undefined;
+    const h = Number.isFinite(hi as number) ? Number(hi) : null;
+    const entry = (Object.entries(AGE_CATEGORIES) as [AgeCatKey, {min:number;max:number|null}][])
+        .find(([,v]) => v.min === (l ?? NaN) && v.max === (h ?? null));
+    return entry ? entry[0] : '';
+};
+
 
 export default function TournamentWizard({
                                              mode: initialMode,
@@ -180,8 +198,7 @@ export default function TournamentWizard({
     // ───── ALT TURNUVA ALANLARI ─────
     const [subTitle, setSubTitle] = useState('')
     const [subDesc, setSubDesc] = useState('')
-    const [ageMin, setAgeMin] = useState('')
-    const [ageMax, setAgeMax] = useState('')
+    const [ageCat, setAgeCat] = useState<AgeCatKey | ''>('')
     const [weightMin, setWeightMin] = useState('')
     const [weightMax, setWeightMax] = useState('')
     const [gender, setGender] = useState<'M' | 'F' | 'O'>('M')
@@ -196,8 +213,9 @@ export default function TournamentWizard({
                 const { data } = await api.get(`subtournaments/${encodeURIComponent(editSlug)}/`)
                 setSubTitle(data.title ?? '')
                 setSubDesc(data.description ?? '')
-                setAgeMin(Number.isFinite(data.age_min as never) ? String(data.age_min) : '')
-                setAgeMax(Number.isFinite(data.age_max as never) ? String(data.age_max) : '')
+                const lo = Number.isFinite(data.age_min as never) ? Number(data.age_min) : undefined;
+                const hi = Number.isFinite(data.age_max as never) ? Number(data.age_max) : null;
+                setAgeCat(categoryFromRange(lo, hi));
                 setWeightMin((data.weight_min ?? '').toString())
                 setWeightMax((data.weight_max ?? '').toString())
                 setGender((data.gender as never) || 'M')
@@ -249,14 +267,12 @@ export default function TournamentWizard({
             return datesOk
         }
         if (mode === 'sub' && steps[step] === 'Genel Bilgiler') {
-            const vTitle = subTitle.trim().length >= 3
-            const m = Number(ageMin) || undefined
-            const M = Number(ageMax) || undefined
-            const ageOK = m == null || M == null || m <= M
-            return vTitle && ageOK && (!!subParentId || !!editSlug)
+            const vTitle = subTitle.trim().length >= 3;
+            const vAge = !!ageCat; // kategori seçilmiş olmalı
+            return vTitle && vAge && (!!subParentId || !!editSlug);
         }
         return true
-    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageMin, ageMax, subParentId, editSlug, weighEnabled, weighDate, weighStart, weighEnd])
+    }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageCat, subParentId, editSlug, weighEnabled, weighDate, weighStart, weighEnd])
 
     async function save() {
         if (mode === 'main') {
@@ -347,8 +363,10 @@ export default function TournamentWizard({
                 await api.patch(`subtournaments/${encodeURIComponent(editSlug)}/`, {
                     title: subTitle,
                     description: subDesc,
-                    age_min: Number(ageMin) || 0,
-                    age_max: Number(ageMax) || 0,
+                    ...( (() => {
+                        const c = ageCat ? AGE_CATEGORIES[ageCat] : null;
+                        return c ? { age_min: c.min, age_max: (c.max ?? 999) } : {};
+                    })() ),
                     weight_min: weightMin,
                     weight_max: weightMax,
                     gender,
@@ -374,8 +392,10 @@ export default function TournamentWizard({
                 tournament: subParentId,
                 title: subTitle,
                 description: subDesc,
-                age_min: Number(ageMin) || 0,
-                age_max: Number(ageMax) || 0,
+                ...( (() => {
+                    const c = ageCat ? AGE_CATEGORIES[ageCat] : null;
+                    return c ? { age_min: c.min, age_max: (c.max ?? 999) } : {};
+                })() ),
                 weight_min: weightMin,
                 weight_max: weightMax,
                 gender,
@@ -515,10 +535,14 @@ export default function TournamentWizard({
                             <Labeled label="Alt Turnuva Başlığı" value={subTitle} set={setSubTitle} />
                             <LabeledSelect label="Cinsiyet" value={gender} set={setGender} options={{ M: 'Erkek', F: 'Kadın', O: 'Karma' }} />
                             <TextArea label="Açıklama" value={subDesc} set={setSubDesc} />
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <Labeled label="Yaş Min" type="number" value={ageMin} set={setAgeMin} />
-                                <Labeled label="Yaş Max" type="number" value={ageMax} set={setAgeMax} />
-                            </div>
+                            <LabeledSelect
+                                label="Yaş Kategorisi"
+                                value={ageCat || 'kucukler'}
+                                set={(v)=> setAgeCat(v as AgeCatKey)}
+                                options={
+                                    Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label])) as Record<AgeCatKey, string>
+                                }
+                            />
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled
                                     label="Kilo Min (kg)"
@@ -594,7 +618,8 @@ export default function TournamentWizard({
                         <SummaryCard
                             mode={mode}
                             propsMain={{ title, seasonYear, city, venue, startDate, endDate, isPublic, editors }}
-                            propsSub={{ subTitle, gender, ageMin, ageMax, weightMin, weightMax, subPublic }}
+                            propsSub={{ subTitle, gender, ageLabel: ageCat ? AGE_CATEGORIES[ageCat].label : '—', weightMin, weightMax, subPublic }}
+
                         />
                     )}
 
@@ -689,12 +714,12 @@ function SummaryCard({
         startDate: string; endDate: string; isPublic: boolean; editors: Editor[]
     }
     propsSub: {
-        subTitle: string; gender: 'M'|'F'|'O'; ageMin: string; ageMax: string;
+        subTitle: string; gender: 'M'|'F'|'O'; ageLabel: string;
         weightMin: string; weightMax: string; subPublic: boolean
     }
 }) {
     const { title, seasonYear, city, venue, startDate, endDate, isPublic, editors } = propsMain
-    const { subTitle, gender, ageMin, ageMax, weightMin, weightMax, subPublic } = propsSub
+    const { subTitle, gender, ageLabel, weightMin, weightMax, subPublic } = propsSub
     return (
         <div className="space-y-4 text-sm">
             {mode === 'main' ? (
@@ -712,7 +737,7 @@ function SummaryCard({
                 <div className="grid gap-4 md:grid-cols-2">
                     <div><b>Başlık:</b> {subTitle}</div>
                     <div><b>Cinsiyet:</b> {gender === 'M' ? 'Erkek' : gender === 'F' ? 'Kadın' : 'Karma'}</div>
-                    <div><b>Yaş:</b> {(ageMin || '?') + '–' + (ageMax || '?')}</div>
+                    <div><b>Yaş:</b> {ageLabel}</div>
                     <div><b>Kilo:</b> {(weightMin || '?') + '–' + (weightMax || '?')} kg</div>
                     <div><b>Herkes:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
                 </div>
