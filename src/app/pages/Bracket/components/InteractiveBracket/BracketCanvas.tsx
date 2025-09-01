@@ -19,6 +19,52 @@ type Props = {
 
 const cut = (s = '', n = 22) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
+// TR i-dot normalize ("i̇" → "i", "İ" → "İ")
+const fixTurkishIDot = (s: string) =>
+    (s || '').normalize('NFKC')
+        .replace(/\u0049\u0307/g, 'İ') // "İ"
+        .replace(/\u0069\u0307/g, 'i'); // "i̇"
+
+// "Muhammed/Muhammet" → "M."
+const abbreviateGivenNames = (fullName?: string) => {
+    const s = fixTurkishIDot((fullName || '').trim().replace(/\s+/g, ' '));
+    if (!s) return s;
+    const parts = s.split(' ');
+    if (parts.length === 1) return s;
+    const last = parts[parts.length - 1];
+    const given = parts.slice(0, -1).map(w => {
+        const lw = w.toLocaleLowerCase('tr');
+        if (lw === 'muhammed' || lw === 'muhammet') return 'M.';
+        return w;
+    });
+    return [...given, last].join(' ');
+};
+
+// "Spor Kulübü" → "SK", "Spor" → "S.", "Kulübü/Kulubu" → "Klb."
+const abbreviateClub = (club?: string) => {
+    const c = fixTurkishIDot((club || '').trim());
+    if (!c) return '';
+    return c
+        .replace(/\bSpor Kul(ü|u)b(ü|u)\b/gi, 'SK')
+        .replace(/\bSpor\b/gi, 'S.')
+        .replace(/\bKul(ü|u)b(ü|u)\b/gi, 'Klb.');
+};
+
+// Görünecek etiket
+const formatLabel = (name?: string, club?: string) => {
+    const n = abbreviateGivenNames(name);
+    const k = abbreviateClub(club);
+    return k ? `${n} (${k})` : n;
+};
+
+// SVG metnini kutuya sığdırmak için yaklaşık genişlik kesmesi
+const cutFit = (s: string, pxWidth: number, fontPx: number) => {
+    // Ortalama karakter genişliği ~ 0.58 * font
+    const approxCharW = fontPx * 0.58;
+    const maxChars = Math.max(4, Math.floor(pxWidth / approxCharW));
+    return s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s;
+};
+
 /** Hex rengin parlaklığını kaba hesapla (0..255). Hex değilse koyu varsay */
 function luminance(c: string): number {
     const m = /^#([0-9a-f]{6})$/i.exec((c || '').trim());
@@ -172,13 +218,23 @@ export default memo(function BracketCanvas({
 
                             {m.players.map((p, idx) => {
                                 const y = mid + (idx ? 22 : -22);
-                                const club = (p?.club || '').trim();
-                                const clubShort = club ? ` (${cut(club, 18)})` : '';
-                                const label = (p?.name || '—') + clubShort;
-                                const isHL =
-                                    !!highlight &&
-                                    (p?.name?.toLowerCase()?.includes(highlight.toLowerCase()) ||
-                                        club?.toLowerCase()?.includes(highlight.toLowerCase()));
+                                const clubRaw = (p?.club || '').trim();
+
+// Görsel etiket (i-dot fix + kısaltmalar)
+                                const labelRaw = formatLabel(p?.name, clubRaw) || '—';
+
+// SVG içinde taşmayı engelle (kutu içi kullanılabilir genişlik)
+                                const avail = BOX_W - 28; // solda 18 padding + biraz sağ boşluk
+                                const label = cutFit(labelRaw, avail, MAIN_FONT);
+
+// Highlight kontrolü (TR lowercase)
+                                const q = (highlight || '').toLocaleLowerCase('tr');
+                                const isHL = !!q && (
+                                    (p?.name || '').toLocaleLowerCase('tr').includes(q) ||
+                                    clubRaw.toLocaleLowerCase('tr').includes(q) ||
+                                    label.toLocaleLowerCase('tr').includes(q)
+                                );
+
                                 return (
                                     <g key={idx}>
                                         <text className={`txt ${isHL ? 'hl' : ''}`} x={x0 + 18} y={y}>

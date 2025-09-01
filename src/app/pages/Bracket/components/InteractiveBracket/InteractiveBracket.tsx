@@ -37,6 +37,41 @@ const CORNER = 10;
 
 type Pos = { mid:number; y1:number; y2:number };
 
+// --- Lightbox etiket formatı (BracketCanvas ile tutarlı) ---
+const fixTurkishIDot = (s: string) =>
+    (s || '').normalize('NFKC')
+        .replace(/\u0049\u0307/g, 'İ')
+        .replace(/\u0069\u0307/g, 'i');
+
+const abbreviateGivenNames = (fullName?: string) => {
+    const s = fixTurkishIDot((fullName || '').trim().replace(/\s+/g, ' '));
+    if (!s) return s;
+    const parts = s.split(' ');
+    if (parts.length === 1) return s;
+    const last = parts[parts.length - 1];
+    const given = parts.slice(0, -1).map(w => {
+        const lw = w.toLocaleLowerCase('tr');
+        if (lw === 'muhammed' || lw === 'muhammet') return 'M.';
+        return w;
+    });
+    return [...given, last].join(' ');
+};
+
+const abbreviateClub = (club?: string) => {
+    const c = fixTurkishIDot((club || '').trim());
+    if (!c) return '';
+    return c
+        .replace(/\bSpor Kul(ü|u)b(ü|u)\b/gi, 'SK')
+        .replace(/\bSpor\b/gi, 'S.')
+        .replace(/\bKul(ü|u)b(ü|u)\b/gi, 'Klb.');
+};
+
+const formatLabel = (name?: string, club?: string) => {
+    const n = abbreviateGivenNames(name);
+    const k = abbreviateClub(club);
+    return k ? `${n}\u2002(${k})` : (n || '—');
+};
+
 /* ----------------------------- Winner Modal ------------------------------ */
 function BigTick({ checked, onClick, title }: { checked: boolean; onClick: () => void; title?: string }) {
     return (
@@ -83,10 +118,32 @@ function WinnerModal({
                     {players.map((p, idx) => (
                         <div key={idx} className="flex items-center gap-3">
                             <div className="text-white/70 w-6 text-right">{idx === 0 ? '1' : '2'}</div>
-                            <div className="flex-1">
-                                <div className="w-full h-10 rounded-md bg-[#1f2229] text-white/90 flex items-center px-4 select-none">
-                                    {p?.name ?? '—'}
-                                </div>
+                            <div className="flex-1 min-w-0">
+                                {(() => {
+                                    const full = formatLabel(p?.name, p?.club) || '—';
+                                    const m = full.match(/\(([^()]*)\)\s*$/); // sondaki "(Kulüp)" kısmını yakala
+                                    const nameText = m ? full.slice(0, m.index).trimEnd() : full;
+                                    const clubText = m ? m[1] : '';
+
+                                    return (
+                                        <div
+                                            className="w-full h-10 rounded-md bg-[#1f2229] text-white/90 flex items-center px-4 select-none truncate"
+                                            title={full}
+                                        >
+      <span className="truncate">
+        {nameText}
+          {clubText && (
+                 <span className="ml-2 text-white/95">
+     <span className="font-black">(</span>
+     <span className="font-semibold">{clubText}</span>
+     <span className="font-black">)</span>
+    </span>
+               )}
+      </span>
+                                        </div>
+                                    );
+                                })()}
+
                             </div>
                             <BigTick
                                 checked={winnerIdx === idx}
