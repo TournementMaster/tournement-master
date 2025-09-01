@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-    baseURL: 'http://93.183.74.124:8000/api/',
+    baseURL: 'https://api.turnuvaist.com/api/',
     // headers, interceptors vb. ekleyebilirsiniz
 });
 

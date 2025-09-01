@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import type { SubTournament } from '../hooks/useSubTournaments';
 type WhoAmI = { id:number; username:string; is_admin:boolean };
 
-export default function Header({ showSave = false }: { showSave?: boolean }) {
+export default function Header() {
     const { isAuth, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -31,28 +31,6 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
 
     const [shareOpen, setShareOpen] = useState(false);
     const shareInputRef = useRef<HTMLInputElement>(null);
-
-    const doCopy = async () => {
-        const url = window.location.href;
-        try {
-            await navigator.clipboard.writeText(url);
-            showFlash('Bağlantı kopyalandı.');
-        } catch {
-            try {
-                const el = shareInputRef.current;
-                if (el) {
-                    el.focus();
-                    el.select();
-                    document.execCommand('copy');
-                    showFlash('Bağlantı kopyalandı.');
-                } else {
-                    showFlash('Kopyalama başarısız. URL’i elle kopyalayın.');
-                }
-            } catch {
-                showFlash('Kopyalama başarısız. URL’i elle kopyalayın.');
-            }
-        }
-    };
 
     // dashboard’dayken admin mi?
     useEffect(() => {
@@ -199,9 +177,9 @@ export default function Header({ showSave = false }: { showSave?: boolean }) {
                 <Link
                     to="/"
                     className="hidden md:inline-block text-2xl font-extrabold text-white truncate max-w-[48vw] sm:max-w-none"
-                    title="Easy Tournament"
+                    title="Turnuvaist Taekwondo"
                 >
-                    Easy Tournament
+                    Turnuvaist Taekwondo
                 </Link>
 
                 {/* Desktop: Oluştur butonu */}
