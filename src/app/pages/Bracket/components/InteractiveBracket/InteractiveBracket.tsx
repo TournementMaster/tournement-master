@@ -120,26 +120,14 @@ function WinnerModal({
                             <div className="text-white/70 w-6 text-right">{idx === 0 ? '1' : '2'}</div>
                             <div className="flex-1 min-w-0">
                                 {(() => {
-                                    const full = formatLabel(p?.name, p?.club) || '—';
-                                    const m = full.match(/\(([^()]*)\)\s*$/); // sondaki "(Kulüp)" kısmını yakala
-                                    const nameText = m ? full.slice(0, m.index).trimEnd() : full;
-                                    const clubText = m ? m[1] : '';
-
                                     return (
-                                        <div
-                                            className="w-full h-10 rounded-md bg-[#1f2229] text-white/90 flex items-center px-4 select-none truncate"
-                                            title={full}
-                                        >
-      <span className="truncate">
-        {nameText}
-          {clubText && (
-                 <span className="ml-2 text-white/95">
-     <span className="font-black">(</span>
-     <span className="font-semibold">{clubText}</span>
-     <span className="font-black">)</span>
-    </span>
-               )}
-      </span>
+                                        <div className="w-full rounded-md bg-[#1f2229] px-4 py-2 select-none">
+                                            <div className="text-white font-medium truncate">{p?.name || '—'}</div>
+                                            {p?.club ? (
+                                                <div className="mt-0.5 text-xs text-emerald-300/90 font-medium truncate">
+                                                    {p.club}
+                                                </div>
+                                            ) : null}
                                         </div>
                                     );
                                 })()}
@@ -344,6 +332,45 @@ export default memo(function InteractiveBracket() {
         window.addEventListener('bracket:highlight', h);
         return () => window.removeEventListener('bracket:highlight', h);
     }, []);
+
+    // Rol bilgisini Sidebar'a ilet + globale yaz
+    useEffect(() => {
+        (window as any).__bracketState = {
+            ...(window as any).__bracketState,
+            isReferee,
+            canEdit,
+        };
+        window.dispatchEvent(new CustomEvent('bracket:role', { detail: { isReferee, canEdit } }));
+    }, [isReferee, canEdit]);
+
+// Başladı mı bilgisini SettingsPanel'e ilet + root attribute + globale yaz
+    useEffect(() => {
+        document.documentElement.setAttribute('data-bracket-started', started ? '1' : '0');
+        (window as any).__bracketState = {
+            ...(window as any).__bracketState,
+            started,
+        };
+        window.dispatchEvent(new CustomEvent('bracket:started', { detail: { started } }));
+    }, [started]);
+
+    useEffect(() => {
+        // yeni brackete geçerken varsayılanları yayınla (gizlemek için)
+        setIsReferee(false);
+        setCanEdit(false);
+        (window as any).__bracketState = {
+            ...(window as any).__bracketState,
+            isReferee: false,
+            canEdit: false,
+        };
+        window.dispatchEvent(new CustomEvent('bracket:role', { detail: { isReferee: false, canEdit: false } }));
+    }, [slug]);
+
+    useEffect(() => {
+        const h = () => setStartConfirmOpen(true);
+        window.addEventListener('bracket:request-start', h);
+        return () => window.removeEventListener('bracket:request-start', h);
+    }, []);
+
 
     const handleBuilt = useCallback(
         (matrix: Matrix, firstRoundParticipants: Participant[]) => {
@@ -1476,6 +1503,15 @@ export default memo(function InteractiveBracket() {
                                 Kaydet
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {saving && (
+                <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center">
+                    <div className="rounded-xl bg-[#1b1f24] border border-white/10 px-6 py-5 text-white flex items-center gap-3 shadow-2xl">
+                        <span className="inline-block h-5 w-5 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
+                        <span>Kaydediliyor…</span>
                     </div>
                 </div>
             )}

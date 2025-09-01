@@ -123,6 +123,23 @@ export default function SettingsPanel() {
     const { players, setPlayers } = usePlayers();
     const [confirmOpen, setConfirmOpen] = useState(false);
 
+    const [started, setStarted] = useState(false);
+
+    // İlk açılışta globalden/datasetten oku
+    useEffect(() => {
+        const g = (window as any).__bracketState;
+        if (g && typeof g.started === 'boolean') setStarted(Boolean(g.started));
+        else setStarted(document.documentElement.getAttribute('data-bracket-started') === '1');
+    }, []);
+
+    // Canlı güncellemeleri dinle
+    useEffect(() => {
+        const h = (e: any) => setStarted(Boolean(e?.detail?.started));
+        window.addEventListener('bracket:started', h);
+        return () => window.removeEventListener('bracket:started', h);
+    }, []);
+
+
     const shufflePlacement = () => {
 
         const n = players.length;
@@ -190,6 +207,20 @@ export default function SettingsPanel() {
 
             <div className="h-2" />
 
+            {!started && (
+                <section className="rounded-lg bg-[#111318] border border-white/10 p-4 space-y-3">
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('bracket:request-start'))}
+                        className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow"
+                    >
+                        Maçı Başlat
+                    </button>
+                    <p className="text-xs text-gray-400">
+                        Başladıktan sonra sporcu listesi kilitlenir.
+                    </p>
+                </section>
+            )}
+
             <section className="rounded-lg bg-[#111318] border border-white/10 p-4 space-y-5">
                 <button
                    onClick={() => {
@@ -210,6 +241,7 @@ export default function SettingsPanel() {
                     Şablonu Sıfırla
                 </button>
             </section>
+
 
             {confirmOpen && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center">

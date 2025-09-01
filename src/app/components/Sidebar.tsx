@@ -74,6 +74,22 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
     const [full, setFull] = useState(false)
     const [paletteOnly, setPaletteOnly] = useState(false)
 
+    const [isReferee, setIsReferee] = useState(false);
+    const [canEdit, setCanEdit] = useState(false);
+
+    // İlk mount'ta globale bak
+    useEffect(() => {
+        const g = (window as any).__bracketState;
+        if (g) { setIsReferee(!!g.isReferee); setCanEdit(!!g.canEdit); }
+    }, []);
+    // Canlı role event'i
+    useEffect(() => {
+        const h = (e:any) => { setIsReferee(!!e?.detail?.isReferee); setCanEdit(!!e?.detail?.canEdit); };
+        window.addEventListener('bracket:role', h);
+        return () => window.removeEventListener('bracket:role', h);
+    }, []);
+    const hideSettings = isReferee && !canEdit;
+
     useEffect(() => {
         if (!isAuth) setActive('theme')
     }, [isAuth])
@@ -88,8 +104,10 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
     }, [paletteOnly])
 
     const ensureOpen = () => {
-        if (!isOpen) onToggle()
-    }
+        if (!isOpen) onToggle();
+        const g = (window as any).__bracketState;
+        if (g) { setIsReferee(!!g.isReferee); setCanEdit(!!g.canEdit); }
+    };
 
     // Excel import
     const fileRef = useRef<HTMLInputElement | null>(null)
@@ -140,145 +158,159 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
     }
 
     return (
-        <div className="flex flex-col md:flex-row">
-            {/* NAV – desktop: dikey; mobil: üstte yatay */}
-            <nav
-                className="
+        <>
+            {/* ===== DESKTOP (md↑): sol dikey nav + yan panel ===== */}
+            <div className="hidden md:flex">
+                {/* Sol nav (dikey) */}
+                <nav
+                    className="
           relative z-40
           flex md:flex-col items-center
-          w-full md:w-16 h-14 md:h-auto
-          px-2 md:px-0 py-2 md:py-3
+          md:w-16 md:h-auto
+          px-0 py-3
           bg-[#222831] text-white
           shadow-[inset_-1px_0_0_0_rgba(255,255,255,.06)]
         "
-            >
-                {/* Aç/Kapat */}
-                <button
-                    onClick={onToggle}
-                    title={isOpen ? 'Sidebari kapat' : 'Sidebari aç'}
-                    className="mr-2 md:mr-0 md:mb-4 w-12 h-12 flex items-center justify-center rounded-full border border-white/25 hover:bg-white/10 focus:outline-none transition shrink-0"
                 >
-                    <Icon d={PATH.chevronL} className={`w-7 h-7 transition ${isOpen ? '' : 'rotate-180'}`} />
-                </button>
-
-                {/* İkonlar */}
-                <div className="flex-1 md:flex-none flex items-center md:flex-col gap-2 md:gap-4 overflow-x-auto md:overflow-visible pr-2 md:pr-0">
-                    {isAuth && !paletteOnly && (
-                        <>
-                            <IconButton
-                                title="Katılımcılar"
-                                active={active === 'participants'}
-                                onClick={() => {
-                                    ensureOpen()
-                                    setActive('participants')
-                                }}
-                            >
-                                <Icon d={PATH.users} />
-                            </IconButton>
-
-                            <IconButton
-                                title="Alt Turnuva Bilgileri"
-                                active={active === 'sub'}
-                                onClick={() => {
-                                    ensureOpen()
-                                    setActive('sub')
-                                }}
-                            >
-                                <Icon d={PATH.info} />
-                            </IconButton>
-
-                            <IconButton
-                                title="Ayarlar"
-                                active={active === 'settings'}
-                                onClick={() => {
-                                    ensureOpen()
-                                    setActive('settings')
-                                }}
-                            >
-                                <Icon d={PATH.cog} />
-                            </IconButton>
-
-                            {/* 📥 Excel Import – sadece girişliler */}
-                            <IconButton
-                                title="Excel'den içe aktar"
-                                onClick={() => {
-                                    ensureOpen()
-                                    triggerImport()
-                                }}
-                            >
-                                <Icon d={PATH.sheet} />
-                            </IconButton>
-                            <input
-                                ref={fileRef}
-                                type="file"
-                                className="hidden"
-                                accept=".xlsx,.xls,.csv"
-                                onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-                            />
-                        </>
-                    )}
-
-                    {/* Tema her zaman açık */}
-                    <IconButton
-                        title="Şablon & Renk"
-                        active={active === 'theme'}
-                        onClick={() => {
-                            ensureOpen()
-                            setActive('theme')
-                        }}
+                    {/* Aç/Kapat */}
+                    <button
+                        onClick={onToggle}
+                        title={isOpen ? 'Sidebari kapat' : 'Sidebari aç'}
+                        className="mb-4 w-12 h-12 flex items-center justify-center rounded-full border border-white/25 hover:bg-white/10 focus:outline-none transition shrink-0"
                     >
-                        <Icon d={PATH.palette} />
-                    </IconButton>
-                </div>
+                        <Icon d={PATH.chevronL} className={`w-7 h-7 transition ${isOpen ? '' : 'rotate-180'}`} />
+                    </button>
 
-                {/* Tam ekran */}
-                <div className="md:mt-auto md:ml-0 ml-auto">
-                    <IconButton title="Tam ekran" onClick={() => setFull(true)}>
-                        <Icon d={PATH.fullscreen} />
-                    </IconButton>
-                </div>
-            </nav>
+                    {/* İkonlar (desktop) */}
+                    <div className="flex-none flex md:flex-col gap-4">
+                        {isAuth && !paletteOnly && (
+                            <>
+                                <IconButton title="Katılımcılar" active={active==='participants'} onClick={()=>{ if(!isOpen) onToggle(); setActive('participants'); }}>
+                                    <Icon d={PATH.users}/>
+                                </IconButton>
 
-            {/* Mobilde açılınca arka plan overlay */}
+                                <IconButton title="Alt Turnuva Bilgileri" active={active==='sub'} onClick={()=>{ if(!isOpen) onToggle(); setActive('sub'); }}>
+                                    <Icon d={PATH.info}/>
+                                </IconButton>
+
+                                {!hideSettings && (
+                                    <IconButton title="Ayarlar" active={active==='settings'} onClick={()=>{ if(!isOpen) onToggle(); setActive('settings'); }}>
+                                        <Icon d={PATH.cog}/>
+                                    </IconButton>
+                                )}
+
+                                <IconButton title="Excel'den içe aktar" onClick={()=>{ if(!isOpen) onToggle(); triggerImport(); }}>
+                                    <Icon d={PATH.sheet}/>
+                                </IconButton>
+                                <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e)=>onFile(e.target.files?.[0] ?? null)} />
+                            </>
+                        )}
+
+                        {/* Tema her zaman açık */}
+                        <IconButton title="Şablon & Renk" active={active==='theme'} onClick={()=>{ if(!isOpen) onToggle(); setActive('theme'); }}>
+                            <Icon d={PATH.palette}/>
+                        </IconButton>
+                    </div>
+
+                    {/* Tam ekran */}
+                    <div className="mt-auto">
+                        <IconButton title="Tam ekran" onClick={()=>setFull(true)}>
+                            <Icon d={PATH.fullscreen}/>
+                        </IconButton>
+                    </div>
+                </nav>
+
+                {/* Panel (desktop’ta sol yanında) */}
+                {isOpen && (
+                    <div
+                        className="
+            bg-[#2a303a] text-slate-100 p-4
+            md:w-72
+            md:h-[calc(100vh-64px)]
+            overflow-hidden
+          "
+                    >
+                        <div className="h-full overflow-y-auto">
+                            {paletteOnly || !isAuth ? (
+                                <ThemePanel />
+                            ) : (
+                                <>
+                                    {active==='participants' && <ParticipantsPanel />}
+                                    {active==='sub' && <SubTournamentSettingsPanel />}
+                                    {active==='settings' && <SettingsPanel />}
+                                    {active==='theme' && <ThemePanel />}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* ===== MOBILE (below md): bottom nav + bottom drawer panel ===== */}
+
+            {/* Panel açıkken karartma */}
             {isOpen && (
-                <div className="md:hidden fixed inset-0 bg-black/40 z-20" onClick={onToggle} />
+                <div className="md:hidden fixed inset-0 bg-black/60 z-[85]" onClick={onToggle} />
             )}
 
-            {/* PANEL – desktop: sol yanında; mobil: alttan drawer */}
+            {/* Bottom drawer panel (alt barda 56px yer bırak) */}
             {isOpen && (
                 <div
                     className="
-            bg-[#2a303a] text-slate-100 p-4
-            md:w-72 w-full
-            z-30
-            md:static
-            fixed inset-x-0 bottom-0
-            md:rounded-none rounded-t-2xl
-            md:border-t-0 border-t border-white/10
-            md:h-[calc(100vh-64px)] h-[75vh]
-            overflow-hidden shadow-2xl md:shadow-none
-          "
+          md:hidden fixed left-0 right-0 bottom-14  /* alt bar yüksekliği kadar yukarıda */
+          z-[90]
+          bg-[#2a303a] text-slate-100 p-4
+          rounded-t-2xl border-t border-white/10
+          h-[70vh] pb-[calc(env(safe-area-inset-bottom)+12px)]
+          overflow-hidden shadow-2xl
+        "
                 >
                     <div className="h-full overflow-y-auto">
-                        {paletteOnly ? (
-                            <div className="h-full">
-                                <ThemePanel />
-                            </div>
-                        ) : !isAuth ? (
-                            <div className="h-full">
-                                <ThemePanel />
-                            </div>
+                        {paletteOnly || !isAuth ? (
+                            <ThemePanel />
                         ) : (
-                            <div className="h-full">
-                                {active === 'participants' && <ParticipantsPanel />}
-                                {active === 'sub' && <SubTournamentSettingsPanel />}
-                                {active === 'settings' && <SettingsPanel />}
-                                {active === 'theme' && <ThemePanel />}
-                            </div>
+                            <>
+                                {active==='participants' && <ParticipantsPanel />}
+                                {active==='sub' && <SubTournamentSettingsPanel />}
+                                {active==='settings' && <SettingsPanel />}
+                                {active==='theme' && <ThemePanel />}
+                            </>
                         )}
                     </div>
                 </div>
             )}
-        </div>
-    )
+
+            {/* Bottom navigation bar */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 z-[80] bg-[#222831] text-white border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
+                <div className="h-full flex items-center justify-between px-2 overflow-x-auto gap-1">
+                    <button
+                        onClick={onToggle}
+                        title={isOpen ? 'Paneli kapat' : 'Paneli aç'}
+                        className="w-10 h-10 flex items-center justify-center rounded-full border border-white/20"
+                    >
+                        <Icon d={PATH.chevronL} className={`w-6 h-6 ${isOpen ? '' : 'rotate-180'}`} />
+                    </button>
+
+                    {isAuth && !paletteOnly && (
+                        <>
+                            <IconButton title="Katılımcılar" active={active==='participants'} onClick={()=>{ if(!isOpen) onToggle(); setActive('participants'); }}><Icon d={PATH.users}/></IconButton>
+                            <IconButton title="Alt Turnuva"   active={active==='sub'}          onClick={()=>{ if(!isOpen) onToggle(); setActive('sub'); }}><Icon d={PATH.info}/></IconButton>
+                            {!hideSettings && (
+                                <IconButton title="Ayarlar" active={active==='settings'} onClick={()=>{ if(!isOpen) onToggle(); setActive('settings'); }}>
+                                    <Icon d={PATH.cog}/>
+                                </IconButton>
+                            )}
+                            <IconButton title="Excel içe aktar" onClick={()=>{ if(!isOpen) onToggle(); triggerImport(); }}><Icon d={PATH.sheet}/></IconButton>
+                            <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e)=>onFile(e.target.files?.[0] ?? null)} />
+                        </>
+                    )}
+
+                    <IconButton title="Tema" active={active==='theme'} onClick={()=>{ if(!isOpen) onToggle(); setActive('theme'); }}>
+                        <Icon d={PATH.palette}/>
+                    </IconButton>
+                </div>
+            </nav>
+        </>
+    );
+
 }
