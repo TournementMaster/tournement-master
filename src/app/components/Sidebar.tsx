@@ -198,10 +198,12 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                                         <Icon d={PATH.cog}/>
                                     </IconButton>
                                 )}
-
+                                {!hideSettings && (
                                 <IconButton title="Excel'den içe aktar" onClick={()=>{ if(!isOpen) onToggle(); triggerImport(); }}>
                                     <Icon d={PATH.sheet}/>
                                 </IconButton>
+                                )}
+
                                 <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e)=>onFile(e.target.files?.[0] ?? null)} />
                             </>
                         )}
