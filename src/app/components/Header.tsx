@@ -177,9 +177,9 @@ export default function Header() {
                 <Link
                     to="/"
                     className="hidden md:inline-block text-2xl font-extrabold text-white truncate max-w-[48vw] sm:max-w-none"
-                    title="Turnuvaist"
+                    title="Turnuvaist Taekwondo"
                 >
-                    Turnuvaist
+                    Turnuvaist Taekwondo
                 </Link>
 
                 {/* Desktop: Oluştur butonu */}
