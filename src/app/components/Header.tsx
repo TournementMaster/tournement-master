@@ -193,6 +193,14 @@ export default function Header() {
                     </button>
                 )}
             </div>
+            {/* MOBİL FALLBACK BAŞLIK: header boşsa mobilde 'Turnuvaist' göster */}
+            {(!isBracket || !headerTextNoGender) && (
+                <div className="absolute inset-x-0 flex md:hidden justify-center pointer-events-none">
+                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[80vw]">
+                        Turnuvaist
+                    </div>
+                </div>
+            )}
 
             {/* ORTA: Bracket başlığı */}
             {isBracket && (

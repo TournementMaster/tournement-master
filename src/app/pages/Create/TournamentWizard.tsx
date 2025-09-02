@@ -536,13 +536,12 @@ export default function TournamentWizard({
                             <LabeledSelect label="Cinsiyet" value={gender} set={setGender} options={{ M: 'Erkek', F: 'Kadın', O: 'Karma' }} />
                             <TextArea label="Açıklama" value={subDesc} set={setSubDesc} />
                             <LabeledSelect
-                                label="Yaş Kategorisi"
-                                value={ageCat || 'kucukler'}
-                                set={(v)=> setAgeCat(v as AgeCatKey)}
-                                options={
-                                    Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label])) as Record<AgeCatKey, string>
-                                }
-                            />
+                               label="Yaş Kategorisi"
+                               value={ageCat}                           // ← fallback yok
+                               set={(v)=> setAgeCat(v as AgeCatKey | '')}
+                               options={Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label]))}
+                               placeholder="Seçiniz"
+                             />
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled
                                     label="Kilo Min (kg)"
@@ -668,20 +667,22 @@ function Labeled({ label, value, set, type = 'text', placeholder = '' }: {
         </div>
     )
 }
-function LabeledSelect<T extends string>({ label, value, set, options }: {
-    label: string
-    value: T
-    set: (v: T) => void
-    options: Record<T, string>
-}) {
+function LabeledSelect<T extends string>({ label, value, set, options, placeholder }: {
+        label: string
+        value: T
+        set: (v: T) => void
+        options: Record<string, string>
+        placeholder?: string
+    }) {
     return (
         <div className="flex flex-col">
             <label className="mb-1">{label}</label>
             <select value={value} onChange={e => set(e.target.value as T)} className="rounded bg-[#1f2229] px-3 py-2">
-                {(Object.keys(options) as T[]).map(k => (
-                    <option key={k} value={k}>{options[k]}</option>
-                ))}
-            </select>
+                                {placeholder && <option value="" disabled> {placeholder} </option>}
+                                {Object.entries(options).map(([k, v]) => (
+                                    <option key={k} value={k}>{v}</option>
+                                ))}
+                            </select>
         </div>
     )
 }
