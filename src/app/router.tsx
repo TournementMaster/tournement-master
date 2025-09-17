@@ -16,11 +16,13 @@ import LeaderboardPage from './pages/Tournements/LeaderboardPage.tsx';
 import ProfilePage from "./pages/ProfilePage.tsx";
 import MyAppointmentsPage from './pages/Weigh/MyAppointmentsPage';
 import LiveMatchPage from "./pages/Tournements/Livematchpage.tsx";
+import AppErrorPage from "./pages/AppErrorPage.tsx";
 
 
 export const router = createBrowserRouter([
     {
         element: <RootLayout />,
+        errorElement: <AppErrorPage />,
         children: [
             { index: true, element: <Dashboard /> },
 

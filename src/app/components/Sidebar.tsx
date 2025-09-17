@@ -77,6 +77,22 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
     const [isReferee, setIsReferee] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
 
+    const autoClosedRef = useRef(false)
+
+    useEffect(() => {
+        // Sadece ilk mount'ta çalışsın
+        if (autoClosedRef.current) return
+        autoClosedRef.current = true
+
+        // Tailwind "md" breakpoint'i: 768px
+        const isMobile = !window.matchMedia('(min-width: 768px)').matches
+
+        // Mobilde sayfa ilk açıldığında panel açık geliyorsa kapat
+        if (isMobile && isOpen) {
+            onToggle()
+        }
+    }, [])
+
     // İlk mount'ta globale bak
     useEffect(() => {
         const g = (window as any).__bracketState;

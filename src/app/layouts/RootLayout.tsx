@@ -1,5 +1,5 @@
 // src/app/layouts/RootLayout.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
@@ -7,14 +7,51 @@ import { BracketPlayersProvider } from '../context/BracketPlayersCtx';
 import { BracketSettingsProvider } from '../context/BracketSettingsCtx';
 import { BracketThemeProvider } from '../context/BracketThemeContext';
 
+const SIDEBAR_KEY = 'tm.sidebar.collapsed'; // '1' => collapsed/kapalı
+
 export default function RootLayout() {
     const { pathname } = useLocation();
     const isBracket = pathname.startsWith('/bracket');
-    const isCreate = pathname.startsWith('/create');
+    const isCreate  = pathname.startsWith('/create');
 
-    // Bracket sayfasında sidebar açık başlasın
-    const [sidebarOpen, setSidebarOpen] = useState<boolean>(isBracket);
-    useEffect(() => setSidebarOpen(isBracket), [isBracket]);
+    // ↙️ EKRAN GENİŞLİĞİ: desktop mı? (md:768px+)
+    const isDesktop = useMemo(() => {
+        if (typeof window === 'undefined') return true;
+        return window.matchMedia('(min-width: 768px)').matches;
+    }, []);
+
+    // ↙️ BAŞLANGIÇ: localStorage varsa ona uy; yoksa desktop→açık, mobil→kapalı
+    const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+        if (typeof window === 'undefined') return true;
+        const persisted = window.localStorage.getItem(SIDEBAR_KEY);
+        if (persisted != null) return persisted !== '1';
+        return isBracket ? isDesktop : false; // bracket’ta mobil kapalı; diğer sayfalarda önemli değil
+    });
+
+    // ↙️ BRACKET SAYFASINA GİRİNCE varsayılanı tekrar uygula (persisted > media query)
+    useEffect(() => {
+        if (!isBracket) return;
+        const persisted = window.localStorage.getItem(SIDEBAR_KEY);
+        if (persisted != null) {
+            setSidebarOpen(persisted !== '1');
+        } else {
+            setSidebarOpen(isDesktop);
+        }
+    }, [isBracket, isDesktop]);
+
+    // ↙️ ROOT CLASS + PERSIST
+    useEffect(() => {
+        document.documentElement.classList.toggle('sidebar-open', sidebarOpen);
+        document.documentElement.classList.toggle('sidebar-collapsed', !sidebarOpen);
+        window.localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? '0' : '1');
+    }, [sidebarOpen]);
+
+    // ↙️ GLOBAL TOGGLE EVENT (Sidebar veya başka yerlerden tetiklenebilir)
+    useEffect(() => {
+        const onToggle = () => setSidebarOpen(prev => !prev);
+        window.addEventListener('layout:sidebar-toggle', onToggle as any);
+        return () => window.removeEventListener('layout:sidebar-toggle', onToggle as any);
+    }, []);
 
     // 401 toast
     const [unauth, setUnauth] = useState(false);
@@ -36,8 +73,10 @@ export default function RootLayout() {
                     <BracketPlayersProvider>
                         <BracketSettingsProvider>
                             <BracketThemeProvider>
-                                {/* Ok düğmesi artık Sidebar içinde; sadece toggle fonksiyonu veriyoruz */}
-                                <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} />
+                                <Sidebar
+                                    isOpen={sidebarOpen}
+                                    onToggle={() => setSidebarOpen(o => !o)}
+                                />
                                 <main className="flex-1 overflow-visible bg-[#1f2229] p-4">
                                     <Outlet />
                                 </main>
