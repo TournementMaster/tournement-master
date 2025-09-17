@@ -31,12 +31,7 @@ export default function RootLayout() {
     // ↙️ BRACKET SAYFASINA GİRİNCE varsayılanı tekrar uygula (persisted > media query)
     useEffect(() => {
         if (!isBracket) return;
-        const persisted = window.localStorage.getItem(SIDEBAR_KEY);
-        if (persisted != null) {
-            setSidebarOpen(persisted !== '1');
-        } else {
-            setSidebarOpen(isDesktop);
-        }
+        setSidebarOpen(isDesktop);
     }, [isBracket, isDesktop]);
 
     // ↙️ ROOT CLASS + PERSIST
