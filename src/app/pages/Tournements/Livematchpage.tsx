@@ -1,4 +1,3 @@
-// src/app/pages/LiveMatchPage.tsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -10,6 +9,7 @@ type SubTournament = {
     gender: 'M' | 'F';
     started: boolean;
     court_no: number;
+    day?: string | null;   // ✨ eklendi
 };
 
 type Match = {
@@ -27,14 +27,11 @@ type AthleteLite = { id: number; name: string; club?: string };
 type ResolvedKind = 'unknown' | 'sub' | 'tournament';
 type LiveBundle = {
     scope: 'sub' | 'tournament';
+    day?: string;
     subs: Record<string, SubTournament>;
     matches: Record<string, Match[]>;
     athletes: Record<string, Record<number, AthleteLite>>;
 };
-
-const fetchLiveBundle = (slug: string) =>
-    api.get<LiveBundle>(`live/${slug}/`).then(r => r.data);
-
 
 const gLabel = (g?: string) => (g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : '—');
 const roundLabel = (r: number, maxR: number) => {
@@ -45,102 +42,65 @@ const roundLabel = (r: number, maxR: number) => {
     return `${r}. Tur`;
 };
 
+const isoToday = () => {
+    const d = new Date();
+    // local gün: YYYY-MM-DD
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function LiveMatchPage() {
     const { slug } = useParams<{ slug: string }>();
     const [resolved, setResolved] = useState<ResolvedKind>('unknown');
 
     const [subs, setSubs] = useState<Record<string, SubTournament>>({});
     const [matches, setMatches] = useState<Record<string, Match[]>>({});
+    const [day, setDay] = useState<string>(isoToday());
     const [error, setError] = useState<string | null>(null);
     const refreshingRef = useRef(false);
-
     const [athletesBySub, setAthletesBySub] =
         useState<Record<string, Record<number, AthleteLite>>>({});
-
-    /** ---- Veri çekiciler ---- */
-    const fetchSubDetail = (subSlug: string) =>
-        api.get<SubTournament>(`subtournaments/${subSlug}/`).then((r) => r.data);
-
-    const fetchSubMatches = async (subSlug: string) => {
-        try {
-            const r = await api.get<Match[]>(`subtournaments/${subSlug}/matches/`);
-            return r.data;
-        } catch {
-            // Alternatif/eski endpoint
-            const r2 = await api.get<Match[]>(`subtournements/${subSlug}/matches`);
-            return r2.data;
-        }
-    };
-
-    const fetchAsSub = async (subSlug: string) => {
-        const sub = await fetchSubDetail(subSlug);
-        const m = await fetchSubMatches(subSlug).catch(() => [] as Match[]);
-        return { sub, matches: m };
-    };
-
-    const fetchAsTournament = async (tSlug: string) => {
-        const list = await api.get<SubTournament[]>(`tournaments/${tSlug}/subtournaments/`);
-        const subsArr = Array.isArray(list.data) ? list.data : [];
-        const results = await Promise.all(
-            subsArr.map(async (s) => {
-                const m = await fetchSubMatches(s.public_slug).catch(() => [] as Match[]);
-                return { sub: s, matches: m };
-            })
-        );
-        return results;
-    };
 
     // Tek seferde hepsini alan akış (+ polling)
     useEffect(() => {
         if (!slug) return;
         let stop = false;
         let timer: any;
+        setError(null);
 
-        const prime = async () => {
+        const fetchBundle = async (isPoll = false) => {
             try {
                 refreshingRef.current = true;
-                const b = await fetchLiveBundle(slug);
+                const { data } = await api.get<LiveBundle>(`live/${slug}/`, {
+                    params: { day },
+                });
                 if (stop) return;
-                setResolved(b.scope);
-                setSubs(b.subs || {});
-                setMatches(b.matches || {});
-                setAthletesBySub(b.athletes || {});
-            } catch (e: any) {
-                if (!stop) setError('Veri yüklenemedi.');
+                setResolved(data.scope);
+                setSubs(data.subs || {});
+                setMatches(data.matches || {});
+                setAthletesBySub(data.athletes || {});
+                if (data.day) setDay(data.day);
+            } catch {
+                if (!stop && !isPoll) setError('Veri yüklenemedi.');
             } finally {
                 refreshingRef.current = false;
-            }
-        };
-
-        const poll = async () => {
-            if (stop) return;
-            try {
-                refreshingRef.current = true;
-                const b = await fetchLiveBundle(slug);
-                if (stop) return;
-                setResolved(b.scope);
-                setSubs(b.subs || {});
-                setMatches(b.matches || {});
-                setAthletesBySub(b.athletes || {});
-            } finally {
-                refreshingRef.current = false;
-                if (!stop) timer = setTimeout(poll, 15000);
+                if (!stop && isPoll) {
+                    timer = setTimeout(() => fetchBundle(true), 15000);
+                }
             }
         };
 
         // ilk yükleme + periyodik polling
-        prime().then(() => {
-            if (!stop) timer = setTimeout(poll, 15000);
+        fetchBundle(false).then(() => {
+            if (!stop) timer = setTimeout(() => fetchBundle(true), 15000);
         });
 
         return () => {
             stop = true;
             clearTimeout(timer);
         };
-    }, [slug]);
+    }, [slug, day]);
 
-
-    /** Kart verileri — COURT bazında tek kart + sıradaki maç (playable mantığı) */
+    /** Kart verileri — BUGÜN ve COURT bazında tek kart + sıradaki maç */
     const cards = useMemo(() => {
         type Candidate = {
             subSlug: string;
@@ -168,15 +128,25 @@ export default function LiveMatchPage() {
             nextAthlete2?: number | null;
         };
 
-        // 1) Tüm pending maçları court’a göre grupla
+        // 0) bugün olmayan sub’ları güvence için ele (backend zaten filtreli, bu sadece koruma)
+        const today = day || isoToday();
+        const todaysSubs = new Set(
+            Object.values(subs)
+                .filter((s) => (s.day || today) === today)
+                .map((s) => s.public_slug),
+        );
+
+        // 1) Tüm pending maçları court’a göre grupla (sadece bugünün subs’ları)
         const buckets = new Map<number, Candidate[]>();
 
-        Object.keys(matches).forEach((subSlug) => {
+        for (const subSlug of Object.keys(matches)) {
+            if (!todaysSubs.has(subSlug)) continue;
             const sub = subs[subSlug];
             const list = matches[subSlug] || [];
-            if (!sub || !list.length) return;
+            if (!sub || !list.length) continue;
 
             const maxR = Math.max(...list.map((m) => m.round_no));
+            // pending (winner==null) zaten backend’de; yine de güvence:
             const pending = list.filter((m) => (m.court_no ?? 0) > 0 && m.winner == null);
 
             for (const m of pending) {
@@ -185,24 +155,29 @@ export default function LiveMatchPage() {
                 if (!buckets.has(c)) buckets.set(c, []);
                 buckets.get(c)!.push({ subSlug, sub, m, maxR, playable });
             }
-        });
+        }
 
-        // 2) Her court için ilk PLAYABLE maç ana maç; ardından gelen PLAYABLE maç "bir sonraki"
+        // 2) Her court için EN KÜÇÜK match_no’lu PLAYABLE maç ana maç;
+        //    sonra gelen ilk PLAYABLE maç "bir sonraki"
         const entries: Card[] = [];
         [...buckets.entries()].forEach(([courtNo, arr]) => {
             arr.sort((a, b) => {
                 const aN = a.m.match_no ?? Number.POSITIVE_INFINITY;
                 const bN = b.m.match_no ?? Number.POSITIVE_INFINITY;
-                if (aN !== bN) return aN - bN;
+                if (aN !== bN) return aN - bN;                        // ✨ en küçük match_no öne
                 if (a.m.round_no !== b.m.round_no) return a.m.round_no - b.m.round_no;
                 return a.m.position - b.m.position;
             });
 
             const playables = arr.filter((x) => x.playable);
             const cur = playables[0];
-            if (!cur) return; // hiç playable yoksa bu court’ta kart göstermeyelim
+            if (!cur) return; // playable yoksa bu court’ta kart göstermeyelim
 
-            const next = playables[1]; // varsa ikinci playable maç
+            const next = playables.find((x) => {
+                const curNo = cur.m.match_no ?? Number.POSITIVE_INFINITY;
+                const nextNo = x.m.match_no ?? Number.POSITIVE_INFINITY;
+                return nextNo > curNo;
+            });
 
             entries.push({
                 id: `${cur.subSlug}-${courtNo}-${cur.m.match_no ?? cur.m.position}-${cur.m.round_no}`,
@@ -223,7 +198,7 @@ export default function LiveMatchPage() {
 
         entries.sort((a, b) => a.court - b.court);
         return entries;
-    }, [matches, subs]);
+    }, [matches, subs, day]);
 
     return (
         <div
@@ -245,6 +220,7 @@ export default function LiveMatchPage() {
                         />
                     </div>
                     <div className="flex items-center gap-3">
+                        <span className="hidden sm:inline text-white/70 text-sm">Gün: {day}</span>
                         {refreshingRef.current && (
                             <svg className="animate-spin h-4 w-4 text-white/70" viewBox="0 0 24 24" fill="none">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
@@ -260,7 +236,9 @@ export default function LiveMatchPage() {
                     <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3">{error}</div>
                 )}
 
-                {!error && cards.length === 0 && <div className="text-white/75">Gösterilecek maç bulunamadı.</div>}
+                {!error && cards.length === 0 && (
+                    <div className="text-white/75">Bugün için gösterilecek maç bulunamadı.</div>
+                )}
 
                 {!error && cards.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -328,7 +306,7 @@ function CourtCard({
     const N1 = nextAthlete1 != null ? NA[nextAthlete1!] : undefined;
     const N2 = nextAthlete2 != null ? NA[nextAthlete2!] : undefined;
 
-    const showMainPlayers = !!(A1 && A2); // playable seçildiği için zaten true olmalı ama koruyalım
+    const showMainPlayers = !!(A1 && A2);
     const showNextPlayers = !!(N1 && N2);
 
     return (
@@ -357,7 +335,9 @@ function CourtCard({
               {title}
             </span>
                     ) : null}
-                    <div className="text-xl md:text-2xl font-extrabold tabular-nums text-emerald-300/90">{matchNo != null ? matchNo : '—'}</div>
+                    <div className="text-xl md:text-2xl font-extrabold tabular-nums text-emerald-300/90">
+                        {matchNo != null ? matchNo : '—'}
+                    </div>
                 </div>
             </div>
 
@@ -440,7 +420,7 @@ function PlayerBox({ name, club, className = '' }: { name?: string; club?: strin
     );
 }
 
-/** Mini kutucuk — bir sonraki maç (isim + kulüp), kulüp açık mavi ve biraz daha küçük */
+/** Mini kutucuk — bir sonraki maç */
 function MiniPlayerBox({ name, club }: { name?: string; club?: string }) {
     const cleanedName =
         String(name || '')
@@ -450,15 +430,19 @@ function MiniPlayerBox({ name, club }: { name?: string; club?: string }) {
 
     return (
         <div className="min-w-0 flex-1">
-            <div className="w-full rounded-xl px-3.5 py-2.5 text-center
+            <div
+                className="w-full rounded-xl px-3.5 py-2.5 text-center
                       bg-[#4b5261] text-white ring-1 ring-white/15
-                      shadow-[0_3px_10px_rgba(0,0,0,.18)]">
+                      shadow-[0_3px_10px_rgba(0,0,0,.18)]"
+            >
                 <div className="font-black uppercase tracking-wide truncate text-[0.95rem] md:text-[1rem] leading-tight">
                     {cleanedName}
                 </div>
                 {club ? (
-                    <div className="mt-0.5 text-[11px] md:text-[12px] font-extrabold uppercase tracking-wide truncate
-                          text-sky-300 drop-shadow-[0_1px_0_rgba(0,0,0,.55)]">
+                    <div
+                        className="mt-0.5 text-[11px] md:text-[12px] font-extrabold uppercase tracking-wide truncate
+                          text-sky-300 drop-shadow-[0_1px_0_rgba(0,0,0,.55)]"
+                    >
                         {club}
                     </div>
                 ) : (
@@ -468,8 +452,6 @@ function MiniPlayerBox({ name, club }: { name?: string; club?: string }) {
         </div>
     );
 }
-
-
 
 function Row({ label, value, big = false }: { label: string; value: string; big?: boolean }) {
     return (

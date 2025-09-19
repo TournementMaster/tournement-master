@@ -28,6 +28,23 @@ const inCategory = (s: SubTournament, cat: AgeCatKey) => {
     return !((hi < c.min) || (max < lo));
 };
 
+type SubWithDay = SubTournament & { day?: string | null; court_no?: number | null };
+
+const DAY_SENTINEL = '1970-01-01'; // backend default
+
+const formatDayLabel = (iso?: string | null) => {
+    if (!iso || iso === DAY_SENTINEL) return 'TARİH ATANMAMIŞ';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('tr-TR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+    });
+};
+
+
 function parseNum(x: unknown, def = NaN) {
     const n = typeof x === 'string' ? parseFloat(x.replace(',', '.')) : Number(x);
     return Number.isFinite(n) ? n : def;
@@ -789,60 +806,107 @@ export default function TournamentSubListPage() {
                             ) : (
                                 <div className="space-y-4 pb-8">
                                     {(() => {
-                                        // court_no’ya göre gruplama
-                                        const groups = new Map<number | 'none', SubTournament[]>();
-                                        for (const s of list) {
-                                            const key = Number.isFinite((s as any).court_no) ? Number((s as any).court_no) : ('none' as const);
-                                            const arr = groups.get(key) || [];
+                                        // ✨ 1) GÜNE göre grupla
+                                        const byDay = new Map<string | 'none', SubWithDay[]>();
+                                        for (const s of list as SubWithDay[]) {
+                                            const raw = (s.day || '').trim();
+                                            const key = raw && raw !== DAY_SENTINEL ? raw : ('none' as const);
+                                            const arr = byDay.get(key) || [];
                                             arr.push(s);
-                                            groups.set(key, arr);
+                                            byDay.set(key, arr);
                                         }
-                                        const ordered = [...groups.entries()].sort(([a], [b]) => {
+
+                                        // ✨ 2) Günleri sırala (atanmamış en sona)
+                                        const orderedDays = [...byDay.entries()].sort(([a], [b]) => {
                                             if (a === 'none') return 1;
                                             if (b === 'none') return -1;
-                                            return (a as number) - (b as number);
+                                            return new Date(a).getTime() - new Date(b).getTime();
                                         });
 
                                         return (
-                                            <div className="space-y-6 pb-8">
-                                                {ordered.map(([k, arr]) => (
-                                                    <section key={String(k)}>
-                                                        {/* Grup başlığı: şık rozet + gradient çizgi */}
-                                                        <div className="flex items-center gap-2 mb-3">
-  <span className="
-    inline-flex items-center gap-2 px-3 py-1.5 rounded-full
-    border border-white/10
-    bg-gradient-to-r from-emerald-600/25 via-emerald-500/15 to-emerald-400/10
-    text-emerald-200/95
-    shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(16,185,129,.35)]
-    backdrop-blur-[2px]
-  ">
-    {/* küçük kort simgesi */}
-      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-      <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" fill="none"/>
-      <path d="M12 6v12M3 12h18" stroke="currentColor" strokeWidth="1.6"/>
-    </svg>
-    <span className="text-[13px] font-semibold tracking-wide uppercase">
-      {k === 'none' ? 'KORT ATANMAMIŞ' : `KORT-${k}`}
-    </span>
-  </span>
+                                            <div className="space-y-10 pb-8">
+                                                {orderedDays.map(([dayKey, dayItems]) => {
+                                                    // ✨ 3) Gün başlığı – calendar rozet + vurgu çizgisi
+                                                    const dayLabel = dayKey === 'none' ? 'TARİH ATANMAMIŞ' : formatDayLabel(dayKey);
 
-                                                            {/* sağa doğru incelen vurgu çizgisi */}
-                                                            <span className="h-[1px] flex-1 rounded-full
-    bg-gradient-to-r from-emerald-400/40 via-white/10 to-transparent"/>
-                                                        </div>
+                                                    // ✨ 4) Gün içinde KORT’a göre grupla
+                                                    const byCourt = new Map<number | 'none', SubWithDay[]>();
+                                                    for (const s of dayItems) {
+                                                        const k = Number.isFinite(s.court_no as any) ? (s.court_no as number) : ('none' as const);
+                                                        const arr = byCourt.get(k) || [];
+                                                        arr.push(s);
+                                                        byCourt.set(k, arr);
+                                                    }
+                                                    const orderedCourts = [...byCourt.entries()].sort(([a], [b]) => {
+                                                        if (a === 'none') return 1;
+                                                        if (b === 'none') return -1;
+                                                        return (a as number) - (b as number);
+                                                    });
 
-                                                        <div className="space-y-4">
-                                                            {arr.map((s) => (
-                                                                <Row key={s.id} item={s} onChanged={refetch}
-                                                                     canManage={canManage}/>
-                                                            ))}
-                                                        </div>
-                                                    </section>
-                                                ))}
+                                                    return (
+                                                        <section key={String(dayKey)}>
+                                                            {/* ── GÜN BAŞLIĞI (şık) ───────────────────────────────────────── */}
+                                                            <div className="flex items-center gap-2 mb-4">
+              <span className="
+                inline-flex items-center gap-2 px-3 py-1.5 rounded-full
+                border border-white/10
+                bg-gradient-to-r from-violet-600/25 via-violet-500/15 to-violet-400/10
+                text-violet-200/95
+                shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(139,92,246,.35)]
+                backdrop-blur-[2px]
+              ">
+                {/* takvim simgesi */}
+                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
+                  <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" fill="none"/>
+                  <path d="M8 3v4M16 3v4M3.5 10.5h17" stroke="currentColor" strokeWidth="1.6"/>
+                </svg>
+                <span className="text-[13px] font-semibold tracking-wide uppercase">
+                  {dayLabel}
+                </span>
+              </span>
+                                                                <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-violet-400/40 via-white/10 to-transparent"/>
+                                                            </div>
+
+                                                            {/* ── Gün içindeki kort grupları ─────────────────────────────── */}
+                                                            <div className="space-y-8">
+                                                                {orderedCourts.map(([courtKey, arr]) => (
+                                                                    <div key={String(courtKey)}>
+                                                                        {/* KORT BAŞLIĞI (mevcut şıklık korunarak) */}
+                                                                        <div className="flex items-center gap-2 mb-3">
+                    <span className="
+                      inline-flex items-center gap-2 px-3 py-1.5 rounded-full
+                      border border-white/10
+                      bg-gradient-to-r from-emerald-600/25 via-emerald-500/15 to-emerald-400/10
+                      text-emerald-200/95
+                      shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(16,185,129,.35)]
+                      backdrop-blur-[2px]
+                    ">
+                      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
+                        <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" fill="none"/>
+                        <path d="M12 6v12M3 12h18" stroke="currentColor" strokeWidth="1.6"/>
+                      </svg>
+                      <span className="text-[13px] font-semibold tracking-wide uppercase">
+                        {courtKey === 'none' ? 'KORT ATANMAMIŞ' : `KORT-${courtKey}`}
+                      </span>
+                    </span>
+                                                                            <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-emerald-400/40 via-white/10 to-transparent"/>
+                                                                        </div>
+
+                                                                        <div className="space-y-4">
+                                                                            {arr.map((s) => (
+                                                                                <Row key={s.id} item={s} onChanged={refetch} canManage={canManage}/>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </section>
+                                                    );
+                                                })}
                                             </div>
                                         );
                                     })()}
+
 
                                 </div>
                             )}
