@@ -281,6 +281,7 @@ export default memo(function InteractiveBracket() {
         tournament_public_slug?: string | null;
         tournament_slug?: string | null;
         tournament?: any;
+        day?: string | null;
     };
 
     const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
@@ -945,11 +946,13 @@ export default memo(function InteractiveBracket() {
                 if (!started) {
                     const genSlug = tournamentSlug;
                     const genCourt = courtNo;
+                    const dayParam = (subDetail as any)?.day || '2025-01-01';
+
                     if (genSlug && Number.isFinite(genCourt as any) && genCourt !== null) {
                         await api.post(
                             `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
                             {},
-                            { params: { court: genCourt as number } }
+                            { params: { court: genCourt as number, day: dayParam } }
                         );
                     } else if (genSlug) {
                         const courts = new Set<number>();
@@ -963,7 +966,7 @@ export default memo(function InteractiveBracket() {
                                 api.post(
                                     `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
                                     {},
-                                    { params: { court: c } }
+                                    { params: { court: c, day: dayParam } }
                                 ).catch(() => {})
                             )
                         );
@@ -982,7 +985,11 @@ export default memo(function InteractiveBracket() {
             setSaving(false);
             setTimeout(() => setSaveMsg(null), 2400);
         }
-    }, [slug, subId, players, rounds, settings.placementMap, started, tournamentSlug, courtNo, canEdit, isReferee]);
+    }, [
+        slug, subId, players, rounds, settings.placementMap, started,
+        tournamentSlug, courtNo, canEdit, isReferee,
+        subDetail,
+    ]);
 
     useEffect(() => {
         const h = () => {

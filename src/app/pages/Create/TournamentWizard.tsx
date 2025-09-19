@@ -204,6 +204,7 @@ export default function TournamentWizard({
     const [gender, setGender] = useState<'M' | 'F' | 'O'>('M')
     const [subPublic, setSubPublic] = useState(true)
     const [defaultCourt, setDefaultCourt] = useState('')
+    const [subDay, setSubDay] = useState('') // ← YENİ: Gün (YYYY-MM-DD)
 
     // SUB: Düzenleme modunda alanları doldur
     useEffect(() => {
@@ -221,6 +222,7 @@ export default function TournamentWizard({
                 setGender((data.gender as never) || 'M')
                 setSubPublic(!!data.public)
                 setDefaultCourt(String(data.court_no ?? ''))
+                setSubDay((data.day as string) ?? '') // ← YENİ: API’den oku
                 if (Array.isArray((data as any).referees)) {
                     const ids = Array.from(new Set<number>(data.referees as number[]));
                     const resolvedRefs = await Promise.all(
@@ -372,6 +374,7 @@ export default function TournamentWizard({
                     gender,
                     public: subPublic,
                     ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
+                    ...(subDay ? { day: subDay } : {}), // ← YENİ: gün gönder
                     referees: referees.map(r => r.id),
                 })
                 await qc.invalidateQueries({ queryKey: ['subtournaments'] })
@@ -401,6 +404,7 @@ export default function TournamentWizard({
                 gender,
                 public: subPublic,
                 ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
+                ...(subDay ? { day: subDay } : {}), // ← YENİ
                 referees: referees.map(r => r.id),
             })
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
@@ -529,19 +533,19 @@ export default function TournamentWizard({
                         </>
                     )}
 
-                    {/* ALT: Genel Bilgiler (kilo integer + varsayılan kort no eklendi) */}
+                    {/* ALT: Genel Bilgiler (kilo integer + varsayılan kort no + GÜN eklendi) */}
                     {mode === 'sub' && steps[step] === 'Genel Bilgiler' && (
                         <>
                             <Labeled label="Alt Turnuva Başlığı" value={subTitle} set={setSubTitle} />
                             <LabeledSelect label="Cinsiyet" value={gender} set={setGender} options={{ M: 'Erkek', F: 'Kadın', O: 'Karma' }} />
                             <TextArea label="Açıklama" value={subDesc} set={setSubDesc} />
                             <LabeledSelect
-                               label="Yaş Kategorisi"
-                               value={ageCat}                           // ← fallback yok
-                               set={(v)=> setAgeCat(v as AgeCatKey | '')}
-                               options={Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label]))}
-                               placeholder="Seçiniz"
-                             />
+                                label="Yaş Kategorisi"
+                                value={ageCat}
+                                set={(v)=> setAgeCat(v as AgeCatKey | '')}
+                                options={Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label]))}
+                                placeholder="Seçiniz"
+                            />
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled
                                     label="Kilo Min (kg)"
@@ -564,7 +568,12 @@ export default function TournamentWizard({
                                     type="number"
                                     placeholder="1"
                                 />
-                                <div />
+                                <Labeled
+                                    label="Gün (Tarih)"
+                                    value={subDay}
+                                    set={setSubDay}
+                                    type="date"
+                                />
                             </div>
                             <Toggle checked={subPublic} onChange={setSubPublic}>Herkes</Toggle>
 
@@ -617,8 +626,7 @@ export default function TournamentWizard({
                         <SummaryCard
                             mode={mode}
                             propsMain={{ title, seasonYear, city, venue, startDate, endDate, isPublic, editors }}
-                            propsSub={{ subTitle, gender, ageLabel: ageCat ? AGE_CATEGORIES[ageCat].label : '—', weightMin, weightMax, subPublic }}
-
+                            propsSub={{ subTitle, gender, ageLabel: ageCat ? AGE_CATEGORIES[ageCat].label : '—', weightMin, weightMax, subPublic, day: subDay }}
                         />
                     )}
 
@@ -668,21 +676,21 @@ function Labeled({ label, value, set, type = 'text', placeholder = '' }: {
     )
 }
 function LabeledSelect<T extends string>({ label, value, set, options, placeholder }: {
-        label: string
-        value: T
-        set: (v: T) => void
-        options: Record<string, string>
-        placeholder?: string
-    }) {
+    label: string
+    value: T
+    set: (v: T) => void
+    options: Record<string, string>
+    placeholder?: string
+}) {
     return (
         <div className="flex flex-col">
             <label className="mb-1">{label}</label>
             <select value={value} onChange={e => set(e.target.value as T)} className="rounded bg-[#1f2229] px-3 py-2">
-                                {placeholder && <option value="" disabled> {placeholder} </option>}
-                                {Object.entries(options).map(([k, v]) => (
-                                    <option key={k} value={k}>{v}</option>
-                                ))}
-                            </select>
+                {placeholder && <option value="" disabled> {placeholder} </option>}
+                {Object.entries(options).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                ))}
+            </select>
         </div>
     )
 }
@@ -716,11 +724,11 @@ function SummaryCard({
     }
     propsSub: {
         subTitle: string; gender: 'M'|'F'|'O'; ageLabel: string;
-        weightMin: string; weightMax: string; subPublic: boolean
+        weightMin: string; weightMax: string; subPublic: boolean; day: string
     }
 }) {
     const { title, seasonYear, city, venue, startDate, endDate, isPublic, editors } = propsMain
-    const { subTitle, gender, ageLabel, weightMin, weightMax, subPublic } = propsSub
+    const { subTitle, gender, ageLabel, weightMin, weightMax, subPublic, day } = propsSub
     return (
         <div className="space-y-4 text-sm">
             {mode === 'main' ? (
@@ -740,6 +748,7 @@ function SummaryCard({
                     <div><b>Cinsiyet:</b> {gender === 'M' ? 'Erkek' : gender === 'F' ? 'Kadın' : 'Karma'}</div>
                     <div><b>Yaş:</b> {ageLabel}</div>
                     <div><b>Kilo:</b> {(weightMin || '?') + '–' + (weightMax || '?')} kg</div>
+                    <div><b>Gün:</b> {day || '—'}</div>
                     <div><b>Herkes:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
                 </div>
             )}
