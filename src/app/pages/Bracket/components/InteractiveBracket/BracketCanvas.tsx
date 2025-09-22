@@ -28,6 +28,7 @@ const abbreviateGivenNames = (fullName?: string) => {
     const last = parts.at(-1)!;
     const given = parts.slice(0, -1).map(w => {
         const lw = w.toLocaleLowerCase('tr');
+        return w;
     });
     return [...given, last].join(' ');
 };
