@@ -51,7 +51,6 @@ const abbreviateGivenNames = (fullName?: string) => {
     const last = parts[parts.length - 1];
     const given = parts.slice(0, -1).map(w => {
         const lw = w.toLocaleLowerCase('tr');
-        if (lw === 'muhammed' || lw === 'muhammet') return 'M.';
         return w;
     });
     return [...given, last].join(' ');
