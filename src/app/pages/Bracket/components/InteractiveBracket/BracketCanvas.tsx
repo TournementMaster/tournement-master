@@ -51,7 +51,7 @@ const formatLabel = (name?: string, club?: string) => {
 const cutFit = (s: string, pxWidth: number, fontPx: number) => {
     const approxCharW = fontPx * 0.58;
     const maxChars = Math.max(4, Math.floor(pxWidth / approxCharW));
-    return s.length > maxChars ? s.slice(0, maxChars - 1) + '…' : s;
+    return s.length > maxChars ? s.slice(0, maxChars - 4) + '…' : s;
 };
 
 function luminance(c: string): number {
