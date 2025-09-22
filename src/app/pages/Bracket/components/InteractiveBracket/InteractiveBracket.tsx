@@ -254,6 +254,7 @@ export default memo(function InteractiveBracket() {
     const [refreshKey, setRefreshKey] = useState(0);
     const [authErr, setAuthErr] = useState<number | null>(null);
     const [subDetail, setSubDetail] = useState<SubTournamentDetail | null>(null);
+    const [preferredCourts, setPreferredCourts] = useState<number[]>([]);
 
     const [shuffleOpen, setShuffleOpen] = useState(false);
     const [shuffleCount, setShuffleCount] = useState(3);
@@ -282,6 +283,7 @@ export default memo(function InteractiveBracket() {
         tournament_slug?: string | null;
         tournament?: any;
         day?: string | null;
+        preferred_courts?: number[] | null;
     };
 
     const [started, setStarted] = useState<boolean>(Boolean((stateItem as any)?.started ?? false));
@@ -544,6 +546,13 @@ export default memo(function InteractiveBracket() {
                 } else if (Object.prototype.hasOwnProperty.call(data as any, 'has_started')) {
                     setStarted(Boolean((data as any).has_started));
                 }
+
+                const pc = Array.isArray((data as any)?.preferred_courts)
+                    ? ((data as any).preferred_courts as any[])
+                        .map(n => parseInt(String(n), 10))
+                        .filter(n => Number.isFinite(n) && n > 0)
+                    : [];
+                setPreferredCourts(pc);
             } catch (e: any) {
                 const code = e?.response?.status;
                 if (code === 401) setAuthErr(401);
@@ -908,6 +917,7 @@ export default memo(function InteractiveBracket() {
             };
 
             const isStarted = startedRef.current;
+
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
                     const a1 = getAthleteIdFor(m.players[0]);
@@ -944,35 +954,52 @@ export default memo(function InteractiveBracket() {
 
             try {
                 if (!started) {
-                    const genSlug = tournamentSlug;
-                    const genCourt = courtNo;
+                    const genSlug  = tournamentSlug;
                     const dayParam = (subDetail as any)?.day || '2025-01-01';
 
-                    if (genSlug && Number.isFinite(genCourt as any) && genCourt !== null) {
+                    if (genSlug) {
+                        // Gün için kullanılacak kortları topla:
+                        // 1) alt turnuvanın preferred_courts'u
+                        // 2) alt turnuvanın default court_no'su
+                        // 3) maç meta.court alanları
+                        const set = new Set<number>();
+
+                        (preferredCourts || []).forEach((c) => {
+                            if (Number.isFinite(c as any) && (c as number) > 0) set.add(c as number);
+                        });
+
+                        if (Number.isFinite(courtNo as any) && (courtNo as number) > 0) {
+                            set.add(courtNo as number);
+                        }
+
+                        for (const round of roundsForSave) {
+                            for (const m of round) {
+                                const n = parseInt((m.meta?.court ?? '').toString(), 10);
+                                if (Number.isFinite(n) && n > 0) set.add(n);
+                            }
+                        }
+
+                        const courts = [...set].sort((a, b) => a - b);
+
+                        // Çoklu kort varsa tek çağrıda CSV olarak gönder;
+                        // tek kort varsa eski 'court' paramıyla geriye dönük uyumlu.
+                        const params =
+                            courts.length > 1
+                                ? { courts: courts.join(','), day: dayParam }
+                                : courts.length === 1
+                                    ? { court: courts[0], day: dayParam }
+                                    : { day: dayParam };
+
                         await api.post(
                             `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
                             {},
-                            { params: { court: genCourt as number, day: dayParam } }
-                        );
-                    } else if (genSlug) {
-                        const courts = new Set<number>();
-                        for (const round of roundsForSave)
-                            for (const m of round) {
-                                const n = parseInt((m.meta?.court ?? '').toString(), 10);
-                                if (Number.isFinite(n)) courts.add(n);
-                            }
-                        await Promise.all(
-                            [...courts].map((c) =>
-                                api.post(
-                                    `tournaments/${encodeURIComponent(genSlug)}/generate-match-numbers/`,
-                                    {},
-                                    { params: { court: c, day: dayParam } }
-                                ).catch(() => {})
-                            )
+                            { params }
                         );
                     }
                 }
-            } catch {}
+            } catch {
+                /* yoksay */
+            }
 
             setDirty(false);
             setSaveMsg('Kaydedildi.');

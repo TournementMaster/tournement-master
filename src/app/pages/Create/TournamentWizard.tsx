@@ -1,4 +1,3 @@
-// src/app/pages/Create/TournamentWizard.tsx
 import { useMemo, useState, type ReactNode, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -205,6 +204,14 @@ export default function TournamentWizard({
     const [subPublic, setSubPublic] = useState(true)
     const [defaultCourt, setDefaultCourt] = useState('')
     const [subDay, setSubDay] = useState('') // ← YENİ: Gün (YYYY-MM-DD)
+    const [splitCourts, setSplitCourts] = useState('');
+
+    // "1,2,4" → [1,2,4]
+    const parseCourts = (s: string): number[] =>
+        (s || '')
+            .split(',')
+            .map(x => parseInt(x, 10))
+            .filter(n => Number.isFinite(n) && n > 0);
 
     // SUB: Düzenleme modunda alanları doldur
     useEffect(() => {
@@ -233,6 +240,14 @@ export default function TournamentWizard({
                     );
                     setReferees(resolvedRefs);
                 }
+
+                // Backend'den gelen preferred_courts → UI string'ine yaz
+                const pc = Array.isArray((data as any)?.preferred_courts)
+                    ? ((data as any).preferred_courts as any[])
+                        .map(n => parseInt(String(n), 10))
+                        .filter(n => Number.isFinite(n) && n > 0)
+                    : [];
+                setSplitCourts(pc.join(','));
             } catch { /* empty */ }
         })()
     }, [mode, editSlug])
@@ -376,6 +391,9 @@ export default function TournamentWizard({
                     ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
                     ...(subDay ? { day: subDay } : {}), // ← YENİ: gün gönder
                     referees: referees.map(r => r.id),
+
+                    // BE’de kalıcı — boşsa [] gönderir (temizler)
+                    preferred_courts: parseCourts(splitCourts),
                 })
                 await qc.invalidateQueries({ queryKey: ['subtournaments'] })
                 navigate(-1)
@@ -406,6 +424,8 @@ export default function TournamentWizard({
                 ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
                 ...(subDay ? { day: subDay } : {}), // ← YENİ
                 referees: referees.map(r => r.id),
+
+                preferred_courts: parseCourts(splitCourts),
             })
             await qc.invalidateQueries({ queryKey: ['subtournaments'] })
             navigate(-1)
@@ -575,6 +595,21 @@ export default function TournamentWizard({
                                     type="date"
                                 />
                             </div>
+
+                            {/* ⬇️ YENİ: çoklu kort ipucu */}
+                            <Labeled
+                                label="Dağıtılacak Kortlar (ops., virgülle)"
+                                value={splitCourts}
+                                set={(v) => {
+                                    // sadece 0-9 ve virgül; ardışık virgülleri tekle
+                                    const cleaned = v.replace(/[^\d,]/g, '').replace(/,+/g, ',');
+                                    setSplitCourts(cleaned);
+                                }}
+                                placeholder="örn. 1,2 veya 2,3,4"
+                            />
+                            <p className="text-[11px] text-gray-400 -mt-4">
+                                Doldurursanız, şablon kaydederken maçlar BYE’lar atlanarak sıraya göre bu kortlara eşit parçalara bölünür.
+                            </p>
                             <Toggle checked={subPublic} onChange={setSubPublic}>Herkes</Toggle>
 
                             <div className="mt-4">
@@ -626,7 +661,13 @@ export default function TournamentWizard({
                         <SummaryCard
                             mode={mode}
                             propsMain={{ title, seasonYear, city, venue, startDate, endDate, isPublic, editors }}
-                            propsSub={{ subTitle, gender, ageLabel: ageCat ? AGE_CATEGORIES[ageCat].label : '—', weightMin, weightMax, subPublic, day: subDay }}
+                            propsSub={{
+                                subTitle, gender,
+                                ageLabel: ageCat ? AGE_CATEGORIES[ageCat].label : '—',
+                                weightMin, weightMax, subPublic,
+                                day: subDay,
+                                prefCourts: splitCourts, // ⬅️
+                            }}
                         />
                     )}
 
@@ -724,7 +765,8 @@ function SummaryCard({
     }
     propsSub: {
         subTitle: string; gender: 'M'|'F'|'O'; ageLabel: string;
-        weightMin: string; weightMax: string; subPublic: boolean; day: string
+        weightMin: string; weightMax: string; subPublic: boolean; day: string;
+        prefCourts?: string;
     }
 }) {
     const { title, seasonYear, city, venue, startDate, endDate, isPublic, editors } = propsMain
@@ -750,6 +792,7 @@ function SummaryCard({
                     <div><b>Kilo:</b> {(weightMin || '?') + '–' + (weightMax || '?')} kg</div>
                     <div><b>Gün:</b> {day || '—'}</div>
                     <div><b>Herkes:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
+                    <div><b>Dağıtım Kortları:</b> {propsSub.prefCourts || '—'}</div>
                 </div>
             )}
         </div>
