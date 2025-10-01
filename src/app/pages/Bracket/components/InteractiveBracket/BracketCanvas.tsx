@@ -15,6 +15,9 @@ type Props = {
     onSelect: (r: number, m: number) => void;
     sizes: Sizes;
     svgDims: Dims;
+    labelLayout?: 'classic' | 'stacked';
+    /** Stacked modda tur bazlı genişlikler (her tur için tek genişlik). */
+    roundWidths?: number[];
 };
 
 const fixTurkishIDot = (s: string) =>
@@ -72,8 +75,11 @@ function badgeDims(matchNo: number, fontPx: number) {
     return { w, h, rx };
 }
 
+
 export default memo(function BracketCanvas({
                                                rounds, palette, showMatchNo, highlight, mode, onSelect, sizes, svgDims,
+                                               labelLayout = 'stacked',   // stacked düzen varsayılan olsun istersen
+                                               roundWidths,
                                            }: Props) {
     const { BOX_W, BOX_H, GAP, BASE, CORNER } = sizes;
 
@@ -82,71 +88,89 @@ export default memo(function BracketCanvas({
         return L > 160 ? '#0b1220' : '#f1f5f9';
     }, [palette]);
 
+    // Temel fontlar
     const MAIN_FONT = useMemo(() => Math.max(14, Math.min(20, Math.round(BOX_H * 0.30))), [BOX_H]);
+    const NAME_FONT = MAIN_FONT;
+    const CLUB_FONT = Math.round(MAIN_FONT * 0.86);
+
+    // Stacked düzen için nefes payları
+    const STACK_LINE_GAP = Math.max(6, Math.round(MAIN_FONT * 0.28)); // iki satır arası
+    const STACK_PAD_Y    = Math.max(10, Math.round(MAIN_FONT * 0.70)); // yarı alan başına ekstra boşluk
+
     const MNO_FONT  = useMemo(() => Math.max(13, Math.min(22, Math.round(BOX_H * 0.36))), [BOX_H]);
 
-    // yeni etiket ölçüleri (kutu yüksekliğine göre ölçek)
-    const TAG_W         = Math.max(10, Math.round(BOX_H * 0.12));   // ince kapsül
+    const clubFill = useMemo(() => {
+        const L = luminance((palette as any)?.bg as string);
+        return L > 160 ? '#0ea5e9' : '#93c5fd';
+    }, [palette]);
+
+    // Etiket kapsülleri
+    const TAG_W         = Math.max(10, Math.round(BOX_H * 0.12));
     const TAG_H         = Math.max(16, Math.round(BOX_H * 0.40));
     const TAG_RX        = Math.round(TAG_W / 2);
-    const TEXT_PAD_LEFT = 18 + TAG_W + 12; // soldan metin başlangıcı
+    const TEXT_PAD_LEFT = 18 + TAG_W + 12;
+
 
     return (
         <svg width={svgDims.width} height={svgDims.height}
              style={{ position: 'absolute', left: svgDims.left, top: svgDims.top }}>
             <defs>
                 <style>{`
-          .rect{fill:${(palette as any).bg}}
-          .bar {fill:${(palette as any).bar}}
-          .mid {stroke:${(palette as any).bar};stroke-width:1.4;vector-effect:non-scaling-stroke}
-          .ln  {stroke:white;stroke-width:1.4;vector-effect:non-scaling-stroke}
-          .txt {
-            font-weight: 700;
-            font-size: ${MAIN_FONT}px;
-            line-height: 1.15;
-            font-family: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
-            fill: ${textFill};
-            dominant-baseline: middle;
-            paint-order: stroke fill;
-            stroke: rgba(0,0,0,.55);
-            stroke-width: .9;
-            letter-spacing: .2px;
-            text-rendering: geometricPrecision;
-          }
-          .win {fill:${(palette as any).win}}
-          .outline{stroke:url(#g);fill:none;stroke-width:0}
-          .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${(palette as any).glow2})}
-          .done {opacity:.92}
-          .tick {fill:#22c55e}
-          .hl { fill:#fff; stroke:#22d3ee; stroke-width:1.2; paint-order:stroke fill }
+    .rect{fill:${(palette as any).bg}}
+    .bar {fill:${(palette as any).bar}}
+    .mid {stroke:${(palette as any).bar};stroke-width:1.4;vector-effect:non-scaling-stroke}
+    .ln  {stroke:white;stroke-width:1.4;vector-effect:non-scaling-stroke}
+    .txt {
+      font-weight: 700;
+      font-size: ${MAIN_FONT}px;
+      line-height: 1.15;
+      font-family: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      fill: ${textFill};
+      dominant-baseline: middle;
+      paint-order: stroke fill;
+      stroke: rgba(0,0,0,.55);
+      stroke-width: .9;
+      letter-spacing: .2px;
+      text-rendering: geometricPrecision;
+    }
+    .txt-club {
+      font-weight: 600;
+      font-size: ${CLUB_FONT}px;
+      dominant-baseline: middle;
+    }
+    .win {fill:${(palette as any).win}}
+    .outline{stroke:url(#g);fill:none;stroke-width:0}
+    .hit:hover + .outline{stroke-width:4;filter:drop-shadow(0 0 8px ${(palette as any).glow2})}
+    .done {opacity:.92}
+    .tick {fill:#22c55e}
+    .hl { fill:#fff; stroke:#22d3ee; stroke-width:1.2; paint-order:stroke fill }
 
-          .mno-bg {
-            fill: rgba(34,197,94,.14);
-            stroke: ${(palette as any).win};
-            stroke-width: 1.8;
-            vector-effect: non-scaling-stroke;
-          }
-          .mno-txt{
-            font-weight: 800;
-            font-size: ${MNO_FONT}px;
-            letter-spacing:.35px;
-            dominant-baseline:middle;
-            paint-order: stroke fill;
-            stroke: rgba(0,0,0,.45);
-            stroke-width:.7;
-            text-rendering: geometricPrecision;
-            fill:#eafff3;
-          }
+    .mno-bg {
+      fill: rgba(34,197,94,.14);
+      stroke: ${(palette as any).win};
+      stroke-width: 1.8;
+      vector-effect: non-scaling-stroke;
+    }
+    .mno-txt{
+      font-weight: 800;
+      font-size: ${MNO_FONT}px;
+      letter-spacing:.35px;
+      dominant-baseline:middle;
+      paint-order: stroke fill;
+      stroke: rgba(0,0,0,.45);
+      stroke-width:.7;
+      text-rendering: geometricPrecision;
+      fill:#eafff3;
+    }
 
-          /* ==== Oyuncu renk kapsülleri ==== */
-          .ptag-shadow { filter:url(#tagShadow); }
-          .ptag-ring   { fill:none; stroke:rgba(255,255,255,.75); stroke-width:.9; }
-          .ptag-win    { stroke:#22c55e; stroke-width:1.5; }
-          .ptag-gloss  { fill:rgba(255,255,255,.18); } /* üst parlama */
+    .ptag-shadow { filter:url(#tagShadow); }
+    .ptag-ring   { fill:none; stroke:rgba(255,255,255,.75); stroke-width:.9; }
+    .ptag-win    { stroke:#22c55e; stroke-width:1.5; }
+    .ptag-gloss  { fill:rgba(255,255,255,.18); }
 
-          .ptag-blue { fill:url(#grad-blue); }
-          .ptag-red  { fill:url(#grad-red);  }
-        `}</style>
+    .ptag-blue { fill:url(#grad-blue); }
+    .ptag-red  { fill:url(#grad-red);  }
+  `}</style>
 
                 <linearGradient id="g" x1="0" x2="1">
                     <stop offset="0%" stopColor={(palette as any).glow1} />
@@ -170,15 +194,35 @@ export default memo(function BracketCanvas({
             </defs>
 
             {rounds.map((round, r) => {
-                const x0base = 64 + r * (BOX_W + GAP);
-                const x1 = x0base + BOX_W + GAP;
+                const roundW = roundWidths?.[r] ?? BOX_W;
+
+                const x0base = roundWidths
+                    ? 64 + (roundWidths.slice(0, r).reduce((acc, w) => acc + (w + GAP), 0))
+                    : 64 + r * (BOX_W + GAP);
+
+                const nextRoundLeftX = roundWidths
+                    ? 64 + (roundWidths.slice(0, r + 1).reduce((acc, w) => acc + (w + GAP), 0))
+                    : 64 + (r + 1) * (BOX_W + GAP);
+
                 return round.map((m, i) => {
                     const span = BASE << r;
-                    const mid = BASE + span + i * span * 2;
-                    const y1 = mid - span / 2;
-                    const y2 = mid + span / 2;
+                    const mid  = BASE + span + i * span * 2;
+                    const y1   = mid - span / 2;
+                    const y2   = mid + span / 2;
                     const finished = m.players.some(p => p.winner != null);
+
                     const x0 = x0base;
+                    const BOX_W_EFF = roundW;
+
+                    const isStacked = labelLayout === 'stacked';
+
+                    // Yarı alan “çekirdek” yüksekliği (isim + kulüp + aralık)
+                    const HALF_CORE = NAME_FONT + CLUB_FONT + STACK_LINE_GAP;
+
+                    // Kutu yüksekliği: çekirdek + üst/alt nefes payı
+                    const BOX_H_EFF = isStacked
+                        ? Math.max(BOX_H, (HALF_CORE * 2) + (STACK_PAD_Y * 2))
+                        : BOX_H;
 
                     const mnoVal = (m as any)?.meta?.matchNo as number | undefined;
                     const dims   = (typeof mnoVal === 'number') ? badgeDims(mnoVal, MNO_FONT) : null;
@@ -193,88 +237,109 @@ export default memo(function BracketCanvas({
                                 </g>
                             )}
 
-                            <rect className="rect" x={x0} y={mid - BOX_H/2} width={BOX_W} height={BOX_H} rx={CORNER}/>
-                            <rect className="bar"  x={x0 - 8} y={mid - BOX_H/2} width={8} height={BOX_H} rx={CORNER}/>
+                            {/* Kutu ve yan şeritler */}
+                            <rect className="rect" x={x0} y={mid - BOX_H_EFF/2} width={BOX_W_EFF} height={BOX_H_EFF} rx={CORNER}/>
+                            <rect className="bar"  x={x0 - 8} y={mid - BOX_H_EFF/2} width={8} height={BOX_H_EFF} rx={CORNER}/>
                             {m.players.some(p => p.winner) && (
-                                <rect className="win" x={x0 + BOX_W} y={mid - BOX_H/2} width={8} height={BOX_H} rx={CORNER}/>
+                                <rect className="win" x={x0 + BOX_W_EFF} y={mid - BOX_H_EFF/2} width={8} height={BOX_H_EFF} rx={CORNER}/>
                             )}
-                            <line className="mid" x1={x0} x2={x0 + BOX_W} y1={mid} y2={mid}/>
+                            <line className="mid" x1={x0} x2={x0 + BOX_W_EFF} y1={mid} y2={mid}/>
 
+                            {/* Oyuncu satırları */}
                             {m.players.map((p, idx) => {
-                                const y = mid + (idx ? 22 : -22);
-                                const clubRaw = (p?.club || '').trim();
-
-                                const labelRaw = formatLabel(p?.name, clubRaw);
-                                const avail    = BOX_W - (TEXT_PAD_LEFT + 10);
-                                const label    = cutFit(labelRaw, avail, MAIN_FONT);
-                                const muted    = (labelRaw === '—');
-
-                                const q = (highlight || '').toLocaleLowerCase('tr');
-                                const isHL =
-                                    !!q &&
-                                    ((p?.name || '').toLocaleLowerCase('tr').includes(q) ||
-                                        clubRaw.toLocaleLowerCase('tr').includes(q) ||
-                                        label.toLocaleLowerCase('tr').includes(q));
+                                const halfCenterY = idx ? (mid + BOX_H_EFF/4) : (mid - BOX_H_EFF/4);
 
                                 const tagX = x0 + 18;
-                                const tagY = y;
+                                const tagY = halfCenterY;
+
+                                const clubRawFull   = (p?.club || '').trim();
+                                const classicLabelRaw = formatLabel(p?.name, clubRawFull);
+                                const classicAvail    = BOX_W_EFF - (TEXT_PAD_LEFT + 10);
+                                const classicLabel    = cutFit(classicLabelRaw, classicAvail, MAIN_FONT);
+
+                                const mutedStacked = !((p?.name || '').trim()) && !clubRawFull;
+                                const mutedClassic = (classicLabelRaw === '—');
+
+                                const q = (highlight || '').toLocaleLowerCase('tr');
+                                const isHL = !!q && (
+                                    (p?.name || '').toLocaleLowerCase('tr').includes(q) ||
+                                    clubRawFull.toLocaleLowerCase('tr').includes(q) ||
+                                    classicLabel.toLocaleLowerCase('tr').includes(q)
+                                );
+
+                                // === Yeni dikey konumlar ===
+                                // İki satır birbiriyle daha rahat dursun diye aralığı büyüttük
+                                const nameY = halfCenterY - (STACK_LINE_GAP/2) - (CLUB_FONT/2);
+                                const clubY = halfCenterY + (STACK_LINE_GAP/2) + (NAME_FONT/2);
 
                                 return (
                                     <g key={idx}>
-                                        {/* renk kapsülü + parlama + (kazanan ise) halka */}
+                                        {/* renk kapsülü */}
                                         <g className="ptag-shadow">
                                             <rect
                                                 x={tagX} y={tagY - TAG_H/2}
                                                 width={TAG_W} height={TAG_H} rx={TAG_RX}
                                                 className={idx === 0 ? 'ptag-blue' : 'ptag-red'}
-                                                opacity={muted ? 0.45 : 1}
+                                                opacity={(labelLayout === 'stacked' ? mutedStacked : mutedClassic) ? 0.45 : 1}
                                             />
-                                            {/* üst parlama */}
                                             <rect
                                                 x={tagX + 1} y={tagY - TAG_H/2 + 1}
                                                 width={TAG_W - 2} height={Math.max(6, TAG_H * 0.46)}
                                                 rx={TAG_RX - 1} className="ptag-gloss"
-                                                opacity={muted ? 0.28 : 0.38}
+                                                opacity={(labelLayout === 'stacked' ? mutedStacked : mutedClassic) ? .28 : .38}
                                             />
-                                            {/* kazanan halkası */}
                                             {p.winner ? (
-                                                <rect
-                                                    x={tagX - 2} y={tagY - TAG_H/2 - 2}
-                                                    width={TAG_W + 4} height={TAG_H + 4}
-                                                    rx={TAG_RX + 2}
-                                                    className={`ptag-ring ptag-win`}
-                                                />
+                                                <rect x={tagX - 2} y={tagY - TAG_H/2 - 2} width={TAG_W + 4} height={TAG_H + 4} rx={TAG_RX + 2} className="ptag-ring ptag-win" />
                                             ) : (
-                                                <rect
-                                                    x={tagX - 1} y={tagY - TAG_H/2 - 1}
-                                                    width={TAG_W + 2} height={TAG_H + 2}
-                                                    rx={TAG_RX + 1}
-                                                    className="ptag-ring"
-                                                    opacity={muted ? .25 : .45}
-                                                />
+                                                <rect x={tagX - 1} y={tagY - TAG_H/2 - 1} width={TAG_W + 2} height={TAG_H + 2} rx={TAG_RX + 1} className="ptag-ring" opacity={(labelLayout === 'stacked' ? mutedStacked : mutedClassic) ? .25 : .45}/>
                                             )}
                                         </g>
 
-                                        {/* isim */}
-                                        <text className={`txt ${isHL ? 'hl' : ''}`} x={x0 + TEXT_PAD_LEFT} y={y} opacity={muted ? .7 : 1}>
-                                            <tspan>{label}</tspan>
-                                            {p.winner && <tspan className="tick" dx="8">✓</tspan>}
-                                        </text>
+                                        {isStacked ? (
+                                            <>
+                                                <text className={`txt ${isHL ? 'hl' : ''}`}
+                                                      x={x0 + TEXT_PAD_LEFT}
+                                                      y={nameY}
+                                                      opacity={mutedStacked ? .7 : 1}>
+                                                    <tspan>{(p?.name || '—').trim()}</tspan>
+                                                    {p.winner && <tspan className="tick" dx="8">✓</tspan>}
+                                                </text>
+
+                                                <text className={`txt txt-club ${isHL ? 'hl' : ''}`}
+                                                      x={x0 + TEXT_PAD_LEFT}
+                                                      y={clubY}
+                                                      style={{ fill: clubFill }}
+                                                      opacity={mutedStacked ? .6 : .95}>
+                                                    <tspan>{clubRawFull}</tspan>
+                                                </text>
+                                            </>
+                                        ) : (
+                                            <text className={`txt ${isHL ? 'hl' : ''}`}
+                                                  x={x0 + TEXT_PAD_LEFT}
+                                                  y={idx ? (mid + 22) : (mid - 22)}
+                                                  opacity={mutedClassic ? .7 : 1}>
+                                                <tspan>{classicLabel}</tspan>
+                                                {p.winner && <tspan className="tick" dx="8">✓</tspan>}
+                                            </text>
+                                        )}
                                     </g>
                                 );
                             })}
 
+                            {/* Bağlantı ve kenar çizgileri */}
                             <line className="ln" x1={x0 - 8} y1={y1} x2={x0 - 8} y2={y2} />
                             <line className="ln" x1={x0 - 8} y1={mid} x2={x0} y2={mid} />
                             {r < rounds.length - 1 && (
-                                <line className="ln" x1={x0 + BOX_W + 8} y1={mid} x2={x1 - 8} y2={mid}/>
+                                // Başlangıç: mevcut kutunun sağından 8px, Bitiş: bir sonraki turun kutusunun solundan 8px
+                                <line className="ln" x1={x0 + BOX_W_EFF + 8} y1={mid} x2={nextRoundLeftX - 8} y2={mid}/>
                             )}
 
+                            {/* Hitbox & outline */}
                             {mode === 'edit' && (
-                                <rect className="hit" x={x0} y={mid - BOX_H/2} width={BOX_W} height={BOX_H}
+                                <rect className="hit" x={x0} y={mid - BOX_H_EFF/2} width={BOX_W_EFF} height={BOX_H_EFF}
                                       fill="transparent" onClick={() => onSelect(r, i)} />
                             )}
-                            <rect className="outline" x={x0 - 8} y={mid - BOX_H/2} width={BOX_W + 16} height={BOX_H} rx={CORNER + 2}/>
+                            <rect className="outline" x={x0 - 8} y={mid - BOX_H_EFF/2} width={BOX_W_EFF + 16} height={BOX_H_EFF} rx={CORNER + 2}/>
                         </g>
                     );
                 });

@@ -261,6 +261,7 @@ export default memo(function InteractiveBracket() {
     const ignoreNextEnterViewRef = useRef<boolean>(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
@@ -319,6 +320,38 @@ export default memo(function InteractiveBracket() {
         return { label: 'Maç düzenleniyor', cls: 'border-yellow-500/40 bg-yellow-500/20 text-yellow-300' };
     }, [isFinished, started]);
 
+    // === Etiket düzeni: 'classic' (tek satır) | 'stacked' (İsim + Kulüp, tam genişlik)
+    const labelLayout: 'classic' | 'stacked' =
+        (settings as any)?.labelLayout === 'stacked' ? 'stacked' : 'classic';
+
+    // Stacked tasarımda genişlikleri tur bazında büyüt (metin asla kesilmesin)
+    const stackedRoundWidths = useMemo(() => {
+        if (labelLayout !== 'stacked' || !rounds.length) return null;
+        // BracketCanvas ile aynı yaklaşık ölçüm formülleri
+        const MAIN_FONT = Math.max(14, Math.min(20, Math.round(BOX_H * 0.30)));
+        const approx = (s: string, px: number) => (s || '').length * px * 0.58;
+        const TAG_W = Math.max(10, Math.round(BOX_H * 0.12));
+        const TEXT_PAD_LEFT = 18 + TAG_W + 12;
+
+        const NAME_FONT = MAIN_FONT;                  // isim satırı
+        const CLUB_FONT = Math.round(MAIN_FONT * 0.86); // kulüp satırı biraz küçük
+
+        const roundMax: number[] = rounds.map(() => BOX_W);
+        for (let r = 0; r < rounds.length; r++) {
+            let mw = BOX_W;
+            for (const m of rounds[r]) {
+                for (const p of m.players) {
+                    const name = (p?.name || '').trim();
+                    const club = (p?.club || '').trim();
+                    const w = Math.max(approx(name, NAME_FONT), approx(club, CLUB_FONT));
+                    const need = TEXT_PAD_LEFT + Math.ceil(w) + 18; // sağ tampon
+                    if (need > mw) mw = need;
+                }
+            }
+            roundMax[r] = mw;
+        }
+        return roundMax;
+    }, [labelLayout, rounds]);
 
     const [startConfirmOpen, setStartConfirmOpen] = useState(false);
     const pendingPickRef = useRef<{ r: number; m: number } | null>(null);
@@ -1039,7 +1072,14 @@ export default memo(function InteractiveBracket() {
     );
 
     const svgHeight = Math.max((layout[0]?.at(-1)?.mid ?? 0) + BASE, 420);
-    const svgWidth = Math.max(56 + rounds.length * (BOX_W + GAP) + 200, 820);
+    // ⬇︎ Stacked modda her turun kutu genişliği değişebileceği için toplam genişliği tur bazında hesapla
+    const svgWidth = useMemo(() => {
+        if (labelLayout !== 'stacked' || !stackedRoundWidths?.length) {
+            return Math.max(56 + rounds.length * (BOX_W + GAP) + 200, 820);
+        }
+        const sum = stackedRoundWidths.reduce((acc, w) => acc + (w + GAP), 0);
+        return Math.max(56 + sum - GAP + 200, 820);
+    }, [labelLayout, stackedRoundWidths, rounds.length]);
 
     const STAGE_PAD = 400;
     const stageW = svgWidth + STAGE_PAD * 2;
@@ -1457,7 +1497,14 @@ export default memo(function InteractiveBracket() {
                                 mode={mode}
                                 onSelect={onSelectMatch}
                                 sizes={{ BOX_W, BOX_H, GAP, BASE, CORNER }}
-                                svgDims={{ width: Math.max(56 + rounds.length * (BOX_W + GAP) + 200, 820), height: Math.max((layout[0]?.at(-1)?.mid ?? 0) + BASE, 420), left: 400, top: 400 }}
+                                svgDims={{
+                                    width: svgWidth,
+                                    height: Math.max((layout[0]?.at(-1)?.mid ?? 0) + BASE, 420),
+                                    left: 400,
+                                    top: 400
+                                }}
+                                labelLayout={labelLayout}
+                                roundWidths={stackedRoundWidths || undefined}
                             />
                         )}
                     </div>

@@ -1,4 +1,5 @@
 import { useBracketTheme, useSetTheme, type BracketThemeKey } from '../context/BracketThemeContext'
+import { useSettings } from '../context/BracketSettingsCtx'
 import { PALETTES } from '../context/themePalettes'
 
 type Item = { key: BracketThemeKey; label: string; map?: string }
@@ -21,6 +22,9 @@ const ITEMS: Item[] = [
 export default function ThemePanel() {
     const theme = useBracketTheme()
     const setTheme = useSetTheme()
+    const { settings, set } = useSettings()
+    const labelLayout: 'classic' | 'stacked' =
+        (settings as any)?.labelLayout === 'stacked' ? 'stacked' : 'classic'
 
     const preview = (k: keyof typeof PALETTES) => {
         const p = PALETTES[k]
@@ -56,6 +60,23 @@ export default function ThemePanel() {
                     </button>
                 )
             })}
+
+            <div className="h-px bg-white/10 my-3" />
+            <h3 className="font-semibold mb-2">Etiket Düzeni</h3>
+            <div className="grid grid-cols-1 gap-2">
+                <button
+                    onClick={() => set({ labelLayout: 'classic' })}
+                    className={`px-3 py-2 rounded ${labelLayout==='classic' ? 'bg-teal-400 text-black' : 'hover:bg-gray-700'}`}
+                >
+                    Klasik — tek satır (kısalt)
+                </button>
+                <button
+                    onClick={() => set({ labelLayout: 'stacked' })}
+                    className={`px-3 py-2 rounded ${labelLayout==='stacked' ? 'bg-teal-400 text-black' : 'hover:bg-gray-700'}`}
+                >
+                    İsim üstte, kulüp altta — tam genişlik
+                </button>
+            </div>
         </aside>
     )
 }
