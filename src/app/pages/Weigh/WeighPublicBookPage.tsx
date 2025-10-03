@@ -57,6 +57,54 @@ function clsx(...xs: Array<string | false | null | undefined>) {
 }
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 
+// TR telefon: her zaman 0 ile başlayan 11 hane (05xxxxxxxxx) tutuyoruz.
+// Görüntülemede 0 (5xx) xxx xxxx formatına çeviriyoruz.
+function normalizeTRPhoneDigits(raw: string): string {
+    let d = (raw || '').replace(/\D/g, '');
+
+    // 0090 / +90 / 90 öneklerini temizle
+    if (d.startsWith('0090')) d = d.slice(4);
+    else if (d.startsWith('90') && d.length > 11) d = d.slice(2);
+
+    // 10 haneli girilmişse başa 0 ekle (5xx... geldiğinde)
+    if (!d.startsWith('0') && d.length >= 10) d = '0' + d.slice(-10);
+
+    // Yalnızca 11 haneye kadar tut
+    if (d.length > 11) d = d.slice(0, 11);
+
+    // Kullanıcı daha az hane girdiyse olduğu gibi (yalnız rakam) döner
+    return d;
+}
+
+function formatTRPhone(digits: string): string {
+    const s = (digits || '').replace(/\D/g, '').slice(0, 11);
+    if (!s) return '';
+
+    const p1 = s.slice(0, 1);      // 0
+    const p2 = s.slice(1, 4);      // 5xx
+    const p3 = s.slice(4, 7);      // xxx
+    const p4 = s.slice(7, 11);     // xxxx
+
+    if (s.length <= 1) return p1;                      // "0"
+    if (s.length <= 4) return `${p1} (${p2}`;          // "0 (5", "0 (53", "0 (532"
+    if (s.length <= 7) return `${p1} (${p2}) ${p3}`;   // "0 (532) 123"
+    return `${p1} (${p2}) ${p3} ${p4}`;               // "0 (532) 123 4567"
+}
+
+// Klavyeden yalnız rakam/yardımcı tuşları kabul et (isteğe bağlı ama UX’i iyileştirir)
+function allowOnlyDigitsKeys(e: React.KeyboardEvent<HTMLInputElement>) {
+    const allowed = [
+        'Backspace', 'Delete', 'Tab', 'Escape', 'Enter',
+        'ArrowLeft', 'ArrowRight', 'Home', 'End',
+    ];
+    if (allowed.includes(e.key) || (e.ctrlKey || e.metaKey)) return;
+
+    // Numpad veya üst sıra rakamları izin ver
+    if (/^\d$/.test(e.key)) return;
+
+    e.preventDefault();
+}
+
 /* ────────────────────────────────────────────────────────────────
    Page
    ──────────────────────────────────────────────────────────────── */
@@ -97,6 +145,10 @@ export default function WeighPublicBookPage() {
     const [smsErr, setSmsErr] = useState<string | null>(null);
     const hiddenCodeInputRef = useRef<HTMLInputElement>(null);
 
+    // phone state'ini HER ZAMAN sadece rakam (normalize edilmiş) olarak tutacağız
+    // input'ta ise formatlı gösterim kullanacağız
+    const phoneDisplay = useMemo(() => formatTRPhone(phone), [phone]);
+
     // load weigh-in
     useEffect(() => {
         let cancelled = false;
@@ -129,7 +181,7 @@ export default function WeighPublicBookPage() {
     const bookingClosed = !!(weighIn && !weighIn.is_open);
 
     // identity checks
-    const phoneOk = phone.trim().length > 0;
+    const phoneOk = phone.trim().length === 11; // 05xxxxxxxxx
     const idOk = phoneOk && !!firstName.trim() && !!lastName.trim();
 
     /* ────────────────────────────────────────────────────────────────
@@ -502,12 +554,23 @@ export default function WeighPublicBookPage() {
                             Telefon <span className="text-red-300">*</span>
                         </div>
                         <input
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            placeholder="+905xxxxxxxxx"
+                            value={phoneDisplay}
+                            onChange={(e) => setPhone(normalizeTRPhoneDigits(e.target.value))}
+                            onKeyDown={allowOnlyDigitsKeys}
+                            onPaste={(e) => {
+                                e.preventDefault();
+                                const text = (e.clipboardData?.getData('text') || '');
+                                setPhone(normalizeTRPhoneDigits(text));
+                            }}
+                            inputMode="numeric"
+                            autoComplete="tel"
+                            placeholder="0 (5__) ___ ____"
                             className="w-full px-3 py-2 rounded-lg bg-[#111318] border border-white/10 text-sm focus:ring-2 focus:ring-emerald-500/30"
                             disabled={phase === 'manage'}
                         />
+                        <div className="text-[11px] text-gray-500">
+                            Format: <code>0 (5xx) xxx xxxx</code>
+                        </div>
                     </label>
                     <label className="space-y-2 sm:col-span-1">
                         <div className="text-sm text-gray-300">

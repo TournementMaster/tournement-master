@@ -75,6 +75,21 @@ function badgeDims(matchNo: number, fontPx: number) {
     return { w, h, rx };
 }
 
+const normalizeClub = (club?: string) => {
+    const s = fixTurkishIDot((club || '').trim()).toLocaleLowerCase('tr');
+    if (!s) return '';
+    // yaygın ekleri ve boşluk/işaretleri temizle
+    const t = s
+        .replace(/\bspor\b/g, '')
+        .replace(/\bkul(ü|u)b(ü|u)\b/g, '')
+        .replace(/\bspor\s+kul(ü|u)b(ü|u)\b/g, '')
+        .replace(/\bsk\b/g, '')
+        .replace(/\bspor\s+tak(ı|i)mlar(ı|i)\b/g, '')
+        .replace(/[^\p{L}\p{N}]+/gu, '')
+        .trim();
+    return t;
+};
+
 
 export default memo(function BracketCanvas({
                                                rounds, palette, showMatchNo, highlight, mode, onSelect, sizes, svgDims,
@@ -103,6 +118,13 @@ export default memo(function BracketCanvas({
         const L = luminance((palette as any)?.bg as string);
         return L > 160 ? '#0ea5e9' : '#93c5fd';
     }, [palette]);
+
+    const clubFillDefault = useMemo(() => {
+        const L = luminance((palette as any)?.bg as string);
+        return L > 160 ? '#0ea5e9' : '#93c5fd'; // mavi ton (genişte default)
+    }, [palette]);
+
+    const CLUB_SAME_RED = '#f87171'; // aynı kulüp için kırmızı (rose-400)
 
     // Etiket kapsülleri
     const TAG_W         = Math.max(10, Math.round(BOX_H * 0.12));
@@ -214,6 +236,13 @@ export default memo(function BracketCanvas({
                     const x0 = x0base;
                     const BOX_W_EFF = roundW;
 
+                    // ✨ Aynı kulüp kontrolü (iki sporcu da kulüp yazmışsa)
+                    const aClubFull = (m.players[0]?.club || '').trim();
+                    const bClubFull = (m.players[1]?.club || '').trim();
+                    const sameClubThisMatch =
+                        !!aClubFull && !!bClubFull &&
+                        normalizeClub(aClubFull) === normalizeClub(bClubFull);
+
                     const isStacked = labelLayout === 'stacked';
 
                     // Yarı alan “çekirdek” yüksekliği (isim + kulüp + aralık)
@@ -251,6 +280,7 @@ export default memo(function BracketCanvas({
 
                                 const tagX = x0 + 18;
                                 const tagY = halfCenterY;
+                                const y = mid + (idx ? 22 : -22);
 
                                 const clubRawFull   = (p?.club || '').trim();
                                 const classicLabelRaw = formatLabel(p?.name, clubRawFull);
@@ -266,6 +296,12 @@ export default memo(function BracketCanvas({
                                     clubRawFull.toLocaleLowerCase('tr').includes(q) ||
                                     classicLabel.toLocaleLowerCase('tr').includes(q)
                                 );
+
+                                // isim + kulüp metinleri hazırlanıyor
+                                const name = (p?.name || '—').trim();
+
+                                // ✨ kulüp satırının rengi: stacked + aynı kulüp → kırmızı, değilse default mavi
+                                const clubFillThis = isStacked && sameClubThisMatch ? CLUB_SAME_RED : clubFillDefault;
 
                                 // === Yeni dikey konumlar ===
                                 // İki satır birbiriyle daha rahat dursun diye aralığı büyüttük
@@ -297,27 +333,23 @@ export default memo(function BracketCanvas({
 
                                         {isStacked ? (
                                             <>
-                                                <text className={`txt ${isHL ? 'hl' : ''}`}
-                                                      x={x0 + TEXT_PAD_LEFT}
-                                                      y={nameY}
-                                                      opacity={mutedStacked ? .7 : 1}>
-                                                    <tspan>{(p?.name || '—').trim()}</tspan>
+                                                <text className={`txt`} x={x0 + TEXT_PAD_LEFT} y={y - 10}>
+                                                    <tspan>{name}</tspan>
                                                     {p.winner && <tspan className="tick" dx="8">✓</tspan>}
                                                 </text>
 
-                                                <text className={`txt txt-club ${isHL ? 'hl' : ''}`}
-                                                      x={x0 + TEXT_PAD_LEFT}
-                                                      y={clubY}
-                                                      style={{ fill: clubFill }}
-                                                      opacity={mutedStacked ? .6 : .95}>
-                                                    <tspan>{clubRawFull}</tspan>
+                                                <text
+                                                    className="txt"
+                                                    x={x0 + TEXT_PAD_LEFT}
+                                                    y={y + 12}
+                                                    style={{ fill: clubFillThis, fontSize: `${Math.round(MAIN_FONT * 0.86)}px`, fontWeight: 700, opacity: .96 }}
+                                                >
+                                                    <tspan>{clubRawFull || '—'}</tspan>
                                                 </text>
                                             </>
                                         ) : (
-                                            <text className={`txt ${isHL ? 'hl' : ''}`}
-                                                  x={x0 + TEXT_PAD_LEFT}
-                                                  y={idx ? (mid + 22) : (mid - 22)}
-                                                  opacity={mutedClassic ? .7 : 1}>
+                                            // klasik tek satır görünüm aynı kalır
+                                            <text className="txt" x={x0 + TEXT_PAD_LEFT} y={y}>
                                                 <tspan>{classicLabel}</tspan>
                                                 {p.winner && <tspan className="tick" dx="8">✓</tspan>}
                                             </text>

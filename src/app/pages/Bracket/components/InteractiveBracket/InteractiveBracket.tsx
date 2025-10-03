@@ -871,41 +871,49 @@ export default memo(function InteractiveBracket() {
 
         setSaving(true);
         setSaveMsg(null);
+
+        const normClubKey = (s: string) =>
+            (s || '')
+                .normalize('NFKC')
+                .replace(/\s+/g, ' ')
+                .trim()
         try {
             // 1) Mevcut kulüpleri çek
             let clubs: Club[] = [];
             try {
-                const { data } = await api.get<Club[]>('clubs/');
+                const { data } = await api.get<Club[]>('clubs/', { params: { page_size: 1000 } });
                 if (Array.isArray(data)) clubs = data;
             } catch {}
 
-            // 2) Mevcut kulüp haritası
-            const clubIdByName = new Map(clubs.map((c) => [c.name.trim().toLowerCase(), c.id]));
+            // 2) Normalize KEY → id
+            const clubIdByName = new Map(clubs.map((c) => [normClubKey(c.name), c.id]));
 
-            // 3) Oyunculardan ihtiyaç duyulan kulüp isimlerini topla
+            // 3) Oyunculardaki kulüpler (KEY → orijinal ad)
             const sorted = [...players].sort((a, b) => a.seed - b.seed);
-            const originalByLower = new Map<string, string>();
+            const originalByKey = new Map<string, string>();
             for (const p of sorted) {
-                const raw = (p.club || '').trim();
-                if (raw) originalByLower.set(raw.toLowerCase(), raw);
+                const raw = (p.club ?? '').trim();
+                if (!raw) continue;
+                const key = normClubKey(raw);
+                if (key && !originalByKey.has(key)) originalByKey.set(key, raw); // ← POST ederken bu "raw" kullanılacak
             }
-            const neededLowers = [...originalByLower.keys()];
-            const missingLowers = neededLowers.filter(n => !clubIdByName.has(n));
+            const neededKeys  = [...originalByKey.keys()];
+            const missingKeys = neededKeys.filter((k) => !clubIdByName.has(k));
 
-            // 4) Eksik kulüpleri idempotent şekilde oluştur
-            //    (ClubViewSet.create aynı isim varsa mevcut kaydı 200 ile döndürmeli)
-            if (missingLowers.length) {
-                for (const lower of missingLowers) {
-                    const name = originalByLower.get(lower) || lower; // orijinal büyük-küçük harfi koru
+            // 4) Eksik kulüpleri idempotent şekilde oluştur (adı aynen gönder)
+            if (missingKeys.length) {
+                for (const key of missingKeys) {
+                    const exactName = originalByKey.get(key) || ''; // Excel’de nasılsa ÖYLE
+                    if (!exactName) continue;
                     try {
-                        const { data } = await api.post<Club>('clubs/', { name, city: '' });
-                        // dönen isme göre map’i güncelle (backende case/trim düzeltmesi olmuş olabilir)
+                        const { data } = await api.post<Club>('clubs/', { name: exactName, city: '' });
                         if (data?.id && data?.name) {
-                            clubIdByName.set(data.name.trim().toLowerCase(), data.id);
+                            // Hem talep edilen KEY’i hem de backend’in döndürdüğü ismin KEY’ini map’e yaz
+                            clubIdByName.set(key, data.id);
+                            clubIdByName.set(normClubKey(data.name), data.id);
                         }
                     } catch {
-                        // Kulüp oluşturulamazsa sporcular o kulüp olmadan yaratılır; burada hatayı yutuyoruz
-                        // istersen kullanıcıya küçük bir uyarı gösterebilirsin.
+                        /* yoksay */
                     }
                 }
             }
@@ -913,17 +921,18 @@ export default memo(function InteractiveBracket() {
             // 5) Sporcuları (athletes/bulk) artık kulüp id’leriyle gönder
             let seedToAthlete: Record<number, number> = {};
             if (!startedRef.current) {
-                const athletePayload = sorted.map((p) => ({
-                    first_name: p.name,
-                    last_name: 'Example',
-                    birth_year: 1453,
-                    weight: '-1.00',
-                    gender: 'M',
-                    club: (() => {
-                        const k = (p.club || '').trim().toLowerCase();
-                        return k ? (clubIdByName.get(k) ?? null) : null;
-                    })(),
-                }));
+                const athletePayload = sorted.map((p) => {
+                    const k = normClubKey(p.club || '');
+                    const clubId = k ? (clubIdByName.get(k) ?? null) : null;
+                    return {
+                        first_name: p.name,
+                        last_name: 'Example',
+                        birth_year: 1453,
+                        weight: '-1.00',
+                        gender: 'M',
+                        club: clubId, // id veya null
+                    };
+                });
 
                 const { data: created } = await api.post<Array<{ id: number }>>(
                     'athletes/bulk/',
@@ -1091,9 +1100,17 @@ export default memo(function InteractiveBracket() {
         if (!twRef.current || !containerRef.current) return;
         const cw = containerRef.current.clientWidth;
         const ch = containerRef.current.clientHeight || 0;
+
         const sx = (cw - 24) / (svgWidth + 360);
         const sy = ch ? (ch - 24) / (svgHeight + 360) : 1;
-        const scale = Math.max(0.35, Math.min(1, Math.min(sx, sy)));
+
+        let scale = Math.min(sx, sy);
+        // ✨ mobilde bir tık daha küçült
+        if (cw < 768) scale = scale * 0.5;
+
+        // alt–üst sınırlar
+        scale = Math.max(0.25, Math.min(1, scale));
+
         const left = Math.max(12, (cw - svgWidth * scale) / 2);
         const top  = Math.max(12, (ch - svgHeight * scale) / 2);
         const x = -(STAGE_PAD - left);
@@ -1101,7 +1118,7 @@ export default memo(function InteractiveBracket() {
         twRef.current.setTransform(x, y, scale, instant ? 0 : 260);
     }, [svgWidth, svgHeight]);
 
-    const INITIAL_POS = { left: 320, top: 120, scale: 1 };
+    const INITIAL_POS = { left: 50, top: 50, scale: 0.7 };
     const fitOnceAppliedRef = useRef(false);
     useEffect(() => {
         if (!twRef.current || fitOnceAppliedRef.current) return;
@@ -1474,7 +1491,7 @@ export default memo(function InteractiveBracket() {
 
             <TransformWrapper
                 ref={twRef}
-                minScale={0.35}
+                minScale={0.25}
                 maxScale={3.5}
                 limitToBounds={false}
                 centerOnInit={false}
@@ -1524,7 +1541,7 @@ export default memo(function InteractiveBracket() {
                 onClick={resetView}
                 title="Şablonu ilk konuma getir"
                 aria-label="Şablonu sıfırla"
-                className="fixed bottom-4 right-4 z-[35] w-12 h-12 rounded-full border border-white/25 text-white
+                className="fixed bottom-15 right-4 z-[35] w-12 h-12 rounded-full border border-white/25 text-white
                  bg-[#0f1217]/95 hover:bg-[#0f1217] shadow flex items-center justify-center"
             >
                 <svg
@@ -1571,6 +1588,32 @@ export default memo(function InteractiveBracket() {
             />
             {/* Karıştır geri sayım modalı */}
             <ShuffleCountdownModal open={shuffleOpen} count={shuffleCount} />
+
+            {/* Mini + / − (sadece mobilde) */}
+            <div
+                className="fixed md:hidden left-3 z-[80] flex flex-col gap-1"
+                style={{
+                    // iOS/Android alt güvenli alanı + ekstra 64px (bottom nav üstünde kalsın)
+                    bottom: 'calc(env(safe-area-inset-bottom) + 64px)',
+                }}
+            >
+                <button
+                    onClick={() => twRef.current?.zoomIn?.(0.18, 200)}
+                    className="h-9 w-9 rounded-md border border-white/20 bg-[#0f1217]/90 text-white text-sm leading-none shadow"
+                    title="Yakınlaştır (+)"
+                    aria-label="Yakınlaştır"
+                >
+                    +
+                </button>
+                <button
+                    onClick={() => twRef.current?.zoomOut?.(0.18, 200)}
+                    className="h-9 w-9 rounded-md border border-white/20 bg-[#0f1217]/90 text-white text-sm leading-none shadow"
+                    title="Uzaklaştır (−)"
+                    aria-label="Uzaklaştır"
+                >
+                    −
+                </button>
+            </div>
 
             {/* Edit'ten çıkış onayı */}
             {showExitConfirm && (
@@ -1629,6 +1672,8 @@ export default memo(function InteractiveBracket() {
                     </div>
                 </div>
             ) : null}
+
+
         </div>
     );
 });
