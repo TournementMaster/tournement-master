@@ -29,6 +29,11 @@ type AppointmentDTO = {
     created_at: string;
     cancelled_at: string | null;
     seq_no?: number;
+
+    // 🆕 tartı durumu
+    weighed?: boolean;
+    weighed_at?: string | null;
+
     appointments_ahead?: number;
     athletes_ahead?: number;
 };
@@ -74,6 +79,15 @@ function normalizeTRPhoneDigits(raw: string): string {
 
     // Kullanıcı daha az hane girdiyse olduğu gibi (yalnız rakam) döner
     return d;
+}
+
+function fmtDateTime(iso?: string | null) {
+    try {
+        if (!iso) return '';
+        return new Date(iso).toLocaleString('tr-TR');
+    } catch {
+        return iso || '';
+    }
 }
 
 function formatTRPhone(digits: string): string {
@@ -649,8 +663,8 @@ export default function WeighPublicBookPage() {
                             <div className="font-semibold text-white">Yeni Randevu Oluştur</div>
                             {bookingClosed && (
                                 <span className="text-xs px-2 py-1 rounded border border-amber-400/30 bg-amber-500/10 text-amber-100">
-                  Randevu Alımı Kapalı
-                </span>
+            Randevu Alımı Kapalı
+          </span>
                             )}
                         </div>
 
@@ -795,25 +809,50 @@ export default function WeighPublicBookPage() {
                                     <div className="text-sm text-gray-100">
                                         <span className="mr-2 font-medium">{a.gender === 'M' ? 'Erkek' : 'Kadın'}</span>
                                         <span className="mr-2">
-                      Sıra: <b>#{a.seq_no ?? '—'}</b>
-                    </span>
+          Sıra: <b>#{a.seq_no ?? '—'}</b>
+        </span>
                                         <span className="mr-2">
-                      Kişi: <b>{a.headcount}</b>
-                    </span>
+          Kişi: <b>{a.headcount}</b>
+        </span>
+
+                                        {/* Tartı durumu çipi */}
+                                        {typeof a.weighed === 'boolean' && (
+                                            <span
+                                                className={clsx(
+                                                    'ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs border align-middle',
+                                                    a.weighed
+                                                        ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/30'
+                                                        : 'bg-white/5 text-gray-300 border-white/10'
+                                                )}
+                                                title={
+                                                    a.weighed
+                                                        ? (a.weighed_at ? `Tartı saati: ${new Date(a.weighed_at).toLocaleString('tr-TR')}` : 'Tartıldı')
+                                                        : 'Tartılmadı'
+                                                }
+                                            >
+            {a.weighed ? 'Tartıldı' : 'Tartılmadı'}
+          </span>
+                                        )}
+
                                         <span className="ml-2 text-xs text-gray-300">Önünüzde {a.athletes_ahead ?? 0} sporcu</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => startCancel(a.id)}
-                                            disabled={busy}
-                                            className="px-3 py-1.5 rounded bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-sm"
-                                        >
-                                            İptal Et
-                                        </button>
-                                    </div>
+
+                                    {/* Sadece tartılmadıysa iptal butonu göster */}
+                                    {!a.weighed && (
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => startCancel(a.id)}
+                                                disabled={busy}
+                                                className="px-3 py-1.5 rounded bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-sm"
+                                            >
+                                                İptal Et
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             ))
                         )}
+
 
                         {/* Geçmiş iptaller */}
                         <div className="pt-2">
@@ -829,6 +868,25 @@ export default function WeighPublicBookPage() {
                                         <div className="text-sm">
                                             {a.gender === 'M' ? 'Erkek' : 'Kadın'} · Kişi: {a.headcount}{' '}
                                             <span className="ml-2 text-[11px] px-2 py-0.5 rounded border border-white/10">İptal</span>
+
+                                            {/* 🆕 İptal listesinde de tartı etiketi */}
+                                            {typeof a.weighed === 'boolean' && (
+                                                <span
+                                                    className={clsx(
+                                                        'ml-2 text-[11px] px-2 py-0.5 rounded border',
+                                                        a.weighed
+                                                            ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/30'
+                                                            : 'bg-white/5 text-gray-300 border-white/10'
+                                                    )}
+                                                    title={
+                                                        a.weighed
+                                                            ? (a.weighed_at ? `Tartı saati: ${new Date(a.weighed_at).toLocaleString('tr-TR')}` : 'Tartıldı')
+                                                            : 'Tartılmadı'
+                                                    }
+                                                >
+                    {a.weighed ? 'Tartıldı' : 'Tartılmadı'}
+                  </span>
+                                            )}
                                         </div>
                                         <div className="text-xs text-gray-400">Sıra no: #{a.seq_no ?? '—'}</div>
                                     </div>
@@ -848,17 +906,14 @@ export default function WeighPublicBookPage() {
                             <div className="text-white font-semibold">
                                 {modalMode === 'create' ? 'Doğrulama' : modalMode === 'cancel' ? 'İptal Doğrulaması' : 'Bilgilendirme'}
                             </div>
-                            <button onClick={closeCodeModal} className="text-white/70 hover:text-white text-xl leading-none">
-                                ×
-                            </button>
+                            <button onClick={closeCodeModal} className="text-white/70 hover:text-white text-xl leading-none">×</button>
                         </div>
 
                         {/* NOTICE CONTENT */}
                         {modalMode === 'notice' && (
                             <>
                                 <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-4 text-amber-100">
-                                    {noticeText ||
-                                        'Bu işlem için aktif randevu bulunuyor. Önce iptal edip sonra yeni randevu alabilirsiniz.'}
+                                    {noticeText || 'Bu işlem için aktif randevu bulunuyor. Önce iptal edip sonra yeni randevu alabilirsiniz.'}
                                 </div>
                                 <div className="mt-5 flex items-center justify-end">
                                     <button
@@ -897,102 +952,18 @@ export default function WeighPublicBookPage() {
                                         onClick={confirmModal}
                                         disabled={busy}
                                         className="px-4 py-2 rounded-lg font-medium shadow text-sm
-                   bg-gradient-to-r from-emerald-600 to-teal-600
-                   hover:from-emerald-500 hover:to-teal-500 text-white"
+                bg-gradient-to-r from-emerald-600 to-teal-600
+                hover:from-emerald-500 hover:to-teal-500 text-white"
                                     >
                                         Onayla
                                     </button>
                                 </div>
                             </>
                         )}
-                        {/*{modalMode !== 'notice' && (*/}
-                        {/*    <>*/}
-                        {/*        <p className="text-sm text-gray-300 mt-2">Telefonunuza gönderilen <b>6 haneli</b> kodu*/}
-                        {/*            girin.</p>*/}
-
-                        {/*        /!* Fancy 6-box input (single hidden input drives UI) *!/*/}
-                        {/*        <div className="mt-4" onClick={() => hiddenCodeInputRef.current?.focus()}>*/}
-                        {/*            <input*/}
-                        {/*                ref={hiddenCodeInputRef}*/}
-                        {/*                value={smsCode}*/}
-                        {/*                onChange={(e) => {*/}
-                        {/*                    const v = e.target.value.replace(/\D/g, '').slice(0, 6);*/}
-                        {/*                    setSmsCode(v);*/}
-                        {/*                    setSmsErr(null);*/}
-                        {/*                }}*/}
-                        {/*                inputMode="numeric"*/}
-                        {/*                className="absolute opacity-0 pointer-events-none"*/}
-                        {/*            />*/}
-                        {/*            <div className="grid grid-cols-6 gap-2">*/}
-                        {/*                {Array.from({length: 6}).map((_, i) => {*/}
-                        {/*                    const ch = smsCode[i] ?? '';*/}
-                        {/*                    const filled = ch !== '';*/}
-                        {/*                    return (*/}
-                        {/*                        <div*/}
-                        {/*                            key={i}*/}
-                        {/*                            className={clsx(*/}
-                        {/*                                'h-12 rounded-xl border flex items-center justify-center text-xl font-semibold shadow-sm',*/}
-                        {/*                                filled ? 'border-emerald-500/40 bg-emerald-500/10 text-white' : 'border-white/15 bg-[#1b1f26] text-white/60'*/}
-                        {/*                            )}*/}
-                        {/*                        >*/}
-                        {/*                            {ch || '•'}*/}
-                        {/*                        </div>*/}
-                        {/*                    );*/}
-                        {/*                })}*/}
-                        {/*            </div>*/}
-                        {/*            {smsErr && (*/}
-                        {/*                <div*/}
-                        {/*                    className="mt-3 text-sm rounded-lg px-3 py-2 border border-red-400/30 bg-red-500/10 text-red-200">*/}
-                        {/*                    {smsErr}*/}
-                        {/*                </div>*/}
-                        {/*            )}*/}
-                        {/*        </div>*/}
-
-                        {/*        <div className="mt-5 flex items-center justify-between">*/}
-                        {/*            <button*/}
-                        {/*                onClick={async () => {*/}
-                        {/*                    if (!weighIn) return;*/}
-                        {/*                    try {*/}
-                        {/*                        await api.post('appointments/sms/send/', {*/}
-                        {/*                            phone,*/}
-                        {/*                            weigh_in: weighIn.id,*/}
-                        {/*                            action: modalMode === 'create' ? 'create' : 'cancel',*/}
-                        {/*                        });*/}
-                        {/*                        setSmsErr(null);*/}
-                        {/*                    } catch {*/}
-                        {/*                        setSmsErr('Kod tekrar gönderilemedi.');*/}
-                        {/*                    }*/}
-                        {/*                }}*/}
-                        {/*                className="text-sm text-blue-300 hover:underline"*/}
-                        {/*            >*/}
-                        {/*                Kodu tekrar gönder*/}
-                        {/*            </button>*/}
-                        {/*            <div className="flex items-center gap-2">*/}
-                        {/*                <button*/}
-                        {/*                    onClick={closeCodeModal}*/}
-                        {/*                    className="px-3 py-2 rounded-lg bg-[#1f2229] border border-white/10 text-sm text-gray-200"*/}
-                        {/*                >*/}
-                        {/*                    İptal*/}
-                        {/*                </button>*/}
-                        {/*                <button*/}
-                        {/*                    onClick={confirmModal}*/}
-                        {/*                    disabled={busy || smsCode.length !== 6}*/}
-                        {/*                    className={clsx(*/}
-                        {/*                        'px-4 py-2 rounded-lg font-medium shadow text-sm',*/}
-                        {/*                        busy || smsCode.length !== 6*/}
-                        {/*                            ? 'bg-gray-600 text-white/80 cursor-not-allowed'*/}
-                        {/*                            : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white'*/}
-                        {/*                    )}*/}
-                        {/*                >*/}
-                        {/*                    Onayla*/}
-                        {/*                </button>*/}
-                        {/*            </div>*/}
-                        {/*        </div>*/}
-                        {/*    </>*/}
-                        {/*)}*/}
                     </div>
                 </div>
             )}
+
         </div>
     );
 }

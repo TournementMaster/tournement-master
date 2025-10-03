@@ -1,4 +1,3 @@
-// src/app/pages/Tournements/LeaderboardPage.tsx
 import { useParams, Link } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
@@ -11,16 +10,55 @@ type ApiLeaderboardItem = {
     age_max?: number | null;
     weight_min?: string | null;
     weight_max?: string | null;
-    top8: { rank: number; first_name: string; club_name: string | null }[];
+    top16: { rank: number; first_name: string; club_name: string | null }[]; // ⬅️ top8 → top16
 };
 
-type Top8Row = {
+// === Excel indirme yardımcıları (İlk 16) ===
+const safeSheetName = (s: string) =>
+    (s || 'Sayfa').replace(/[\\/?*[\]:]/g, '').slice(0, 31) || 'Sayfa';
+
+const safeXlsxFile = (name: string, suffix: string) => {
+    const base = (name || 'siralama')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9._ -]/g, '')
+        .trim()
+        .replace(/\s+/g, '_');
+    return `${base}_${suffix}.xlsx`;
+};
+
+type TopRow = {
     sub_slug: string;
     sub_title: string;
     gender?: 'M' | 'F' | 'O' | string;
     age?: string;
     weight?: string;
     athletes: { name: string; club?: string; rank: number }[];
+};
+
+const rowsForTop16 = (b: TopRow) =>
+    b.athletes.slice(0, 16).map((a) => ({
+        'Sıralama': a.rank,
+        'İsim Soyisim': a.name || '',
+        'Takım': a.club || '',
+    }));
+
+const downloadSubAsExcel = async (b: TopRow) => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rowsForTop16(b));
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(b.sub_title));
+    XLSX.writeFile(wb, safeXlsxFile(b.sub_title, 'ilk16'));
+};
+
+const downloadAllSubsAsExcel = async (list: TopRow[]) => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    list.forEach((b, i) => {
+        const ws = XLSX.utils.json_to_sheet(rowsForTop16(b));
+        XLSX.utils.book_append_sheet(wb, ws, safeSheetName(`${i + 1}-${b.sub_title}`));
+    });
+    XLSX.writeFile(wb, safeXlsxFile('tum_alt_turnuvalar', 'ilk16_toplu'));
 };
 
 type TeamRow = { clubId: number; club: string; played: number; won: number };
@@ -40,20 +78,21 @@ const fmtRange = (lo?: number | string | null, hi?: number | string | null, unit
     return unit ? `${left}–${right} ${unit}` : `${left}–${right}`;
 };
 
-const normalize = (it: ApiLeaderboardItem): Top8Row => ({
+const normalize = (it: ApiLeaderboardItem): TopRow => ({
     sub_slug: it.sub_tournament,
     sub_title: it.title,
     gender: it.gender,
     age: fmtRange(it.age_min ?? '', it.age_max ?? ''),
     weight: fmtRange(it.weight_min ?? '', it.weight_max ?? '', 'kg'),
-    athletes: (it.top8 ?? []).map((a) => ({
+    athletes: (it.top16 ?? []).map((a) => ({
         rank: a.rank,
         name: a.first_name,
         club: a.club_name || undefined,
     })),
 });
 
-// Türkçe büyük harfe çevirme (i → İ vb.)
+
+// Türkçe büyük harfe çevirme
 const toTRUpper = (s: string | undefined | null) => (s ?? '').toLocaleUpperCase('tr-TR');
 
 /* ---------------------------
@@ -159,11 +198,21 @@ const downloadElementAsPNG = async (el: HTMLElement, filename: string) => {
     link.click();
 };
 
+// Oyuncu kartını Excel olarak indir
+const handleDownloadCardExcel = async (b: TopRow) => {
+    await downloadSubAsExcel(b);
+};
+
+// Tüm alt turnuvaları tek Excel'de (çoklu sayfa) indir
+const handleDownloadAllCardsExcel = async () => {
+    await downloadAllSubsAsExcel(items);
+};
+
 type TabKey = 'oyuncu' | 'siklet' | 'genel';
 
 export default function LeaderboardPage() {
     const { public_slug } = useParams();
-    const [items, setItems] = useState<Top8Row[]>([]);
+    const [items, setItems] = useState<TopRow[]>([]);
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -181,17 +230,42 @@ export default function LeaderboardPage() {
     const weightBoxRef = useRef<HTMLDivElement>(null);
     const generalBoxRef = useRef<HTMLDivElement>(null);
 
+    const cardsGridRef = useRef<HTMLDivElement>(null);
+    const handleDownloadCard = async (e: React.MouseEvent<HTMLButtonElement>) => {
+        const card = (e.currentTarget as HTMLElement).closest('article') as HTMLElement | null;
+        if (card) {
+            const title = (card.getAttribute('data-title') || 'ilk16').toString();
+            await downloadElementAsPNG(card, safeFile(title, 'ilk16'));
+        }
+    };
+    const handleDownloadAllCards = async () => {
+        if (cardsGridRef.current) {
+            await downloadElementAsPNG(cardsGridRef.current, safeFile('tum_alt_tur', 'ilk16_toplu'));
+        }
+    };
+    const handleDownloadWeight = async () => {
+        if (weightBoxRef.current) {
+            await downloadElementAsPNG(weightBoxRef.current, safeFile('siklet', 'takim'));
+        }
+    };
+    const handleDownloadGeneral = async () => {
+        if (generalBoxRef.current) {
+            await downloadElementAsPNG(generalBoxRef.current, safeFile('genel', 'takim'));
+        }
+    };
+
     useEffect(() => {
         let cancelled = false;
         (async () => {
             setLoading(true);
             setErr(null);
             try {
-                const res = await api.get<ApiLeaderboardItem[]>(`tournaments/${public_slug}/top8/`);
+                // ⬇️ top8 → top16 endpoint
+                const res = await api.get<ApiLeaderboardItem[]>(`tournaments/${public_slug}/top16/`);
                 let data: ApiLeaderboardItem[] = Array.isArray(res.data) ? res.data : [];
                 if (!data.length) {
                     try {
-                        const alt = await api.get<ApiLeaderboardItem[]>(`leaderboard/${public_slug}/top8/`);
+                        const alt = await api.get<ApiLeaderboardItem[]>(`leaderboard/${public_slug}/top16/`);
                         data = Array.isArray(alt.data) ? alt.data : [];
                     } catch (e: any) {
                         const code = e?.response?.status;
@@ -232,7 +306,7 @@ export default function LeaderboardPage() {
                     setSubs(list);
                     if (!selSub && list.length) setSelSub(list[0].public_slug);
                 }
-            } catch {}
+            } catch { /* empty */ }
         })();
         return () => {
             cancelled = true;
@@ -320,30 +394,6 @@ export default function LeaderboardPage() {
 
     const selSubTitle = useMemo(() => subOptions.find((o) => o.value === (selSub ?? ''))?.label ?? '', [subOptions, selSub]);
 
-    const cardsGridRef = useRef<HTMLDivElement>(null);
-    const handleDownloadCard = async (e: React.MouseEvent<HTMLButtonElement>) => {
-        const card = (e.currentTarget as HTMLElement).closest('article') as HTMLElement | null;
-        if (card) {
-            const title = (card.getAttribute('data-title') || 'ilk8').toString();
-            await downloadElementAsPNG(card, safeFile(title, 'ilk8'));
-        }
-    };
-    const handleDownloadAllCards = async () => {
-        if (cardsGridRef.current) {
-            await downloadElementAsPNG(cardsGridRef.current, safeFile(selSubTitle || 'tum_alt_tur', 'ilk8_toplu'));
-        }
-    };
-    const handleDownloadWeight = async () => {
-        if (weightBoxRef.current) {
-            await downloadElementAsPNG(weightBoxRef.current, safeFile(selSubTitle || 'siklet', 'takim'));
-        }
-    };
-    const handleDownloadGeneral = async () => {
-        if (generalBoxRef.current) {
-            await downloadElementAsPNG(generalBoxRef.current, safeFile('genel', 'takim'));
-        }
-    };
-
     if (loading) return <div className="max-w-6xl mx-auto py-10 text-white subpixel-antialiased text-xl">Yükleniyor…</div>;
     if (err)
         return (
@@ -365,7 +415,7 @@ export default function LeaderboardPage() {
     return (
         <div className="max-w-7xl mx-auto py-8 space-y-8 subpixel-antialiased">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <h1 className="text-2xl md:text-3xl font-extrabold text-white leading-tight">Liderlik Tablosu – İlk 8</h1>
+                <h1 className="text-2xl md:text-3xl font-extrabold text-white leading-tight">Liderlik Tablosu – İlk 16</h1>
                 <Link to={`/tournements/${public_slug}`} className="text-base sm:text-lg text-blue-300 hover:underline">
                     ← Alt Turnuvalar
                 </Link>
@@ -374,15 +424,14 @@ export default function LeaderboardPage() {
             {tab === 'oyuncu' && (
                 <div className="mt-2 flex justify-end">
                     <button
-                        onClick={handleDownloadAllCards}
+                        onClick={handleDownloadAllCardsExcel}
                         className="px-3 py-1.5 rounded-xl border border-sky-500 bg-sky-500 text-white hover:bg-sky-600 text-sm"
                     >
-                        Tüm İlk 8’i İndir
+                        Tüm İlk 16’yı İndir
                     </button>
                 </div>
             )}
 
-            {/* layout: mobilde sütun, md+ yatay */}
             <div className="flex flex-col md:flex-row gap-6">
                 {/* Sidebar */}
                 <aside className="hidden md:block w-72 shrink-0">
@@ -462,7 +511,7 @@ export default function LeaderboardPage() {
                                     {items.map((b) => (
                                         <article
                                             key={b.sub_slug}
-                                            data-top8-card
+                                            data-top16-card
                                             data-title={b.sub_title}
                                             className="group rounded-3xl border border-white/10 bg-[#1b1f27]/95 hover:border-emerald-400/40 hover:shadow-[0_0_0_3px_rgba(16,185,129,.25)] transition"
                                         >
@@ -502,7 +551,7 @@ export default function LeaderboardPage() {
                                                         Bracket →
                                                     </Link>
                                                     <button
-                                                        onClick={handleDownloadCard}
+                                                        onClick={() => handleDownloadCardExcel(b)}
                                                         className="w-full sm:w-auto text-center px-3 py-1.5 rounded-xl border border-sky-500 bg-sky-500 text-white hover:bg-sky-600 text-sm"
                                                     >
                                                         İndir
@@ -510,10 +559,10 @@ export default function LeaderboardPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Top-8 */}
-                                            <div className="px-4 pt-3 text-sm sm:text-base tracking-wide text-slate-300">İLK 8</div>
+                                            {/* Top-16 */}
+                                            <div className="px-4 pt-3 text-sm sm:text-base tracking-wide text-slate-300">İLK 16</div>
                                             <ol className="p-4 pb-6 space-y-2">
-                                                {b.athletes.slice(0, 8).map((a) => (
+                                                {b.athletes.slice(0, 16).map((a) => (
                                                     <li
                                                         key={`${b.sub_slug}-${a.rank}-${a.name}`}
                                                         className="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-white/5 transition"
@@ -534,6 +583,7 @@ export default function LeaderboardPage() {
                             )}
                         </>
                     )}
+
 
                     {/* === SİKLET TAKIM === */}
                     {tab === 'siklet' && (

@@ -26,14 +26,15 @@ type AppointmentDTO = {
     created_at: string;
     cancelled_at: string | null;
     seq_no?: number;
-
-    // 🆕 yeni sistem alanları
     gender: 'M' | 'F';
     phone: string;
     first_name: string;
     last_name: string;
 
-    // (opsiyonel) kuyruğa dair özetler gelebilir
+    // 🆕
+    weighed?: boolean;
+    weighed_at?: string | null;
+
     appointments_ahead?: number;
     athletes_ahead?: number;
 };
@@ -82,6 +83,36 @@ export default function WeighDetailPage() {
     const [showCancelled, setShowCancelled] = useState(false);
     const [sort, setSort] = useState<'time' | 'name' | 'headcount' | 'gender'>('time');
     const [genderFilter, setGenderFilter] = useState<'ALL' | 'M' | 'F'>('ALL');
+
+    const [weighingId, setWeighingId] = useState<number | null>(null);
+
+    // 🆕 "Tartıldı" toggle'ı
+    async function onToggleWeighed(appt: AppointmentDTO, next: boolean) {
+        if (!isManager || !weighIn || appt.cancelled_at) return;
+
+        const prev = !!appt.weighed;
+        setWeighingId(appt.id);
+
+        // Optimistic update
+        setAppointments(list =>
+            list.map(x =>
+                x.id === appt.id
+                    ? { ...x, weighed: next, weighed_at: next ? new Date().toISOString() : null }
+                    : x
+            )
+        );
+
+        try {
+            const res = await api.post<AppointmentDTO>(`appointments/${appt.id}/set-weighed/`, { weighed: next });
+            // Sunucudan döneni senkronla (seq_no vb. değişmişse)
+            setAppointments(list => list.map(x => (x.id === appt.id ? { ...x, ...res.data } : x)));
+        } catch {
+            // Hata: geri al
+            setAppointments(list => list.map(x => (x.id === appt.id ? { ...x, weighed: prev } : x)));
+        } finally {
+            setWeighingId(null);
+        }
+    }
 
     useEffect(() => {
         let cancelled = false;
@@ -448,21 +479,42 @@ export default function WeighDetailPage() {
                                             </div>
                                         </div>
 
+
                                         {/* Right block: chips */}
                                         <div className="flex items-center gap-2 flex-wrap justify-start sm:justify-end">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded text-sm font-medium bg-white/10 text-white">
-                        {a.headcount} sporcu
-                      </span>
+
+                                            {/* 🆕 Yalnızca yönetici ve iptal edilmemiş kayıtlar için göster */}
+                                            {isManager && !cancelled && (
+                                                <label className="inline-flex items-center gap-2 mr-1 text-sm select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!a.weighed}
+                                                        onChange={(e) => onToggleWeighed(a, e.target.checked)}
+                                                        disabled={weighingId === a.id}
+                                                        className="accent-emerald-500"
+                                                        aria-label="Tartıya girdi olarak işaretle"
+                                                        title="Tartıya girdi olarak işaretle"
+                                                    />
+                                                    <span className={clsx(a.weighed ? 'text-emerald-300' : 'text-gray-300')}>
+        Tartıldı
+      </span>
+                                                </label>
+                                            )}
+
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded text-sm font-medium bg-white/10 text-white">
+    {a.headcount} sporcu
+  </span>
                                             <span
                                                 className={clsx(
                                                     'inline-flex items-center px-2.5 py-1 rounded text-sm font-medium',
                                                     g === 'M' ? 'bg-sky-500/15 text-sky-200' : 'bg-pink-500/15 text-pink-200'
                                                 )}
                                             >
-                        {genderLabel(g)}
-                      </span>
+    {genderLabel(g)}
+  </span>
                                         </div>
                                     </div>
+
                                 </li>
                             );
                         })}
