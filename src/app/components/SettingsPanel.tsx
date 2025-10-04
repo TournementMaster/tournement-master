@@ -60,25 +60,64 @@ function firstRoundPairs(nPlayers: number) {
     return pairs;
 }
 
-function clashCount(
+function roundGroups(nPlayers: number): number[][][] {
+    const size = nextPow2(nPlayers);
+    const order = seedOrder(size); // bracket üzerindeki slot dizilimi
+    const rounds: number[][][] = [];
+    let groupSize = 2; // R1: ikililer, R2: 4’lüler, R3: 8’li…
+
+    while (groupSize <= size) {
+        const groups: number[][] = [];
+        for (let i = 0; i < order.length; i += groupSize) {
+            groups.push(order.slice(i, i + groupSize));
+        }
+        rounds.push(groups);
+        groupSize *= 2;
+    }
+    return rounds; // [ [ [slot,slot], ... ], [ [4’lü], ... ], [ [8’li], ... ], ... ]
+}
+
+function clashScore(
     mapping: Record<number, number>,
     clubsBySeed: Record<number, string | undefined>,
     nPlayers: number
 ) {
+    // seed->slot mapping’i tersine çevir: slot -> seed
     const inv: Record<number, number | undefined> = {};
     for (const [sStr, slot] of Object.entries(mapping)) inv[slot] = Number(sStr);
 
-    let c = 0;
-    for (const [sa, sb] of firstRoundPairs(nPlayers)) {
-        const A = inv[sa],
-            B = inv[sb];
-        if (!A || !B) continue;
-        const ca = clubsBySeed[A]?.trim();
-        const cb = clubsBySeed[B]?.trim();
-        if (ca && cb && ca === cb) c++;
+    // Tur ağırlıkları (erken turda çakışma daha ağır cezalansın)
+    const weights = [100, 30, 10, 3, 1]; // R1, R2, R3, ...
+
+    let score = 0;
+    const rounds = roundGroups(nPlayers);
+
+    for (let r = 0; r < rounds.length; r++) {
+        const groups = rounds[r];
+        const w = r < weights.length ? weights[r] : weights[weights.length - 1];
+
+        for (const group of groups) {
+            // Bu grubun içindeki kulüpleri say
+            const counts = new Map<string, number>();
+            for (const slot of group) {
+                const seed = inv[slot];
+                if (!seed) continue;
+                const club = (clubsBySeed[seed] || '').trim();
+                if (!club) continue;
+                counts.set(club, (counts.get(club) || 0) + 1);
+            }
+            // Aynı kulüp -> C(c,2) kadar potansiyel çakışma; tura göre ağırlıklandır
+            for (const c of counts.values()) {
+                if (c >= 2) {
+                    const pairs = (c * (c - 1)) / 2;
+                    score += w * pairs;
+                }
+            }
+        }
     }
-    return c;
+    return score;
 }
+
 
 function reduceClubClashesMapping(
     mapping: Record<number, number>,
@@ -86,37 +125,63 @@ function reduceClubClashesMapping(
     nPlayers: number
 ) {
     const best = { ...mapping };
-    let cur = clashCount(best, clubsBySeed, nPlayers);
+    let cur = clashScore(best, clubsBySeed, nPlayers);
     const seeds = Object.keys(best).map(Number);
-    const MAX = Math.min(400, nPlayers * nPlayers);
 
-    let improved = true,
-        iter = 0;
-    while (improved && iter < MAX) {
-        improved = false;
-        iter++;
-        for (let i = 0; i < seeds.length; i++) {
-            for (let j = i + 1; j < seeds.length; j++) {
-                const s1 = seeds[i],
-                    s2 = seeds[j];
-                const a = best[s1],
-                    b = best[s2];
-                best[s1] = b;
-                best[s2] = a;
-                const score = clashCount(best, clubsBySeed, nPlayers);
-                if (score < cur) {
-                    cur = score;
-                    improved = true;
-                    break;
+    // Yerel aramayla iyileştir (çift swap). Küçük random restart etkisi için birkaç tur döner.
+    const MAX_OUTER = 6;                            // küçük restart sayısı
+    const MAX_INNER = Math.min(800, seeds.length * seeds.length);
+
+    for (let t = 0; t < MAX_OUTER; t++) {
+        let improved = true;
+        let iter = 0;
+
+        while (improved && iter < MAX_INNER) {
+            improved = false;
+            iter++;
+
+            for (let i = 0; i < seeds.length; i++) {
+                for (let j = i + 1; j < seeds.length; j++) {
+                    const s1 = seeds[i], s2 = seeds[j];
+                    const a = best[s1], b = best[s2];
+                    if (a === b) continue;
+
+                    // swap
+                    best[s1] = b;
+                    best[s2] = a;
+
+                    const score = clashScore(best, clubsBySeed, nPlayers);
+                    if (score < cur) {
+                        cur = score;
+                        improved = true;
+                        // kabul et ve iç döngüye devam
+                    } else {
+                        // geri al
+                        best[s1] = a;
+                        best[s2] = b;
+                    }
                 }
-                best[s1] = a;
-                best[s2] = b;
+                if (improved) break;
             }
-            if (improved) break;
+        }
+
+        // Minik “restart”: rastgele iki swap dene (lokal min’den çıkmaya yardımcı)
+        if (t < MAX_OUTER - 1) {
+            for (let k = 0; k < 2; k++) {
+                const i = Math.floor(Math.random() * seeds.length);
+                const j = Math.floor(Math.random() * seeds.length);
+                if (i === j) continue;
+                const s1 = seeds[i], s2 = seeds[j];
+                const a = best[s1], b = best[s2];
+                best[s1] = b; best[s2] = a;
+            }
+            cur = clashScore(best, clubsBySeed, nPlayers);
         }
     }
+
     return best;
 }
+
 
 export default function SettingsPanel() {
     const { settings, set } = useSettings();
