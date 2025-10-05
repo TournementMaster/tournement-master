@@ -618,6 +618,11 @@ export default function TournamentWizard({
                                     <input
                                         value={refInput}
                                         onChange={e => setRefInput(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && refInput.trim() && !busyRef) {
+                                                addReferee();
+                                            }
+                                        }}
                                         className="flex-1 bg-[#1f2229] rounded px-3 py-2"
                                     />
                                     <button

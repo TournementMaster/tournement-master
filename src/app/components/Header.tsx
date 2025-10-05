@@ -402,12 +402,13 @@ export default function Header() {
         </header>
 
         {/* ☝️ header dışına taşındı; artık tüm ekranı kaplar */}
-        <ShareModal
-            open={shareOpen}
-            onClose={() => setShareOpen(false)}
-            url={window.location.href}
-            onCopied={() => showFlash('Bağlantı kopyalandı.')}
-        />
+            <ShareModal
+                open={shareOpen}
+                onClose={() => setShareOpen(false)}
+                url={window.location.href}
+                onCopied={() => showFlash('Bağlantı kopyalandı.')}
+                fileBase={(headerTextNoGender || headerText || 'bracket')}
+            />
         </>
     );
 }
@@ -418,13 +419,17 @@ function ShareModal({
                         onClose,
                         url,
                         onCopied,
+                        fileBase,
                     }: {
     open: boolean;
     onClose: () => void;
     url: string;
     onCopied: () => void;
+    fileBase?: string;
 }) {
     const inputRef = useRef<HTMLInputElement>(null);
+    const [busyPdf, setBusyPdf] = useState(false);
+    const [pdfErr, setPdfErr] = useState<string | null>(null);
 
     // body scroll kilidi
     useEffect(() => {
@@ -446,25 +451,215 @@ function ShareModal({
             await navigator.clipboard.writeText(url);
             onCopied();
         } catch {
-            // eski tarayıcılar için fallback
             const el = inputRef.current;
             if (el) {
                 el.focus(); el.select();
+                // @ts-ignore
                 document.execCommand?.('copy');
                 onCopied();
             }
         }
     };
 
+    // --- Ayarlar (gerekirse oynat) ---
+    const MAX_PDF_PT = 14400;            // tek sayfa PDF kenar limiti (pt ~ 200in)
+    const MAX_SINGLEPAGE_PIXELS = 22_000_000; // tek sayfa raster eşik (~22MP)
+    const PX_TO_PT = 0.75;               // 1px ≈ 0.75pt
+    const MAX_EXPORT_WIDTH = 3200;       // raster genişlik limiti
+    const JPEG_QUALITY = 0.82;           // 0..1
+    const PNG_BG = '#0b0f16';
+
+// Asimetrik bleed: altta daha cömert pay
+    const BLEED_L = 120;
+    const BLEED_T = 50;
+    const BLEED_R = 500;
+    const BLEED_B = 700; // ⬅ en alttaki rozeti/gölgeyi garantiye al
+
+    function tightBBox(svg: SVGSVGElement) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const all = svg.querySelectorAll<SVGGraphicsElement>('*');
+        all.forEach((el) => {
+            // getBBox olmayanları geç
+            const anyEl = el as any;
+            if (!anyEl.getBBox) return;
+            try {
+                const b = anyEl.getBBox();
+                if (!isFinite(b.width) || !isFinite(b.height)) return;
+                minX = Math.min(minX, b.x);
+                minY = Math.min(minY, b.y);
+                maxX = Math.max(maxX, b.x + b.width);
+                maxY = Math.max(maxY, b.y + b.height);
+            } catch {}
+        });
+        if (!isFinite(minX) || !isFinite(minY)) {
+            // fallback: width/height
+            const w = parseFloat(svg.getAttribute('width') || '0') || 1000;
+            const h = parseFloat(svg.getAttribute('height') || '0') || 600;
+            return { x: 0, y: 0, width: w, height: h };
+        }
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    }
+
+    async function svgToRasterDataURL(
+        svg: SVGSVGElement,
+        fmt: 'jpeg' | 'png' = 'jpeg',
+        quality = JPEG_QUALITY,
+        baseScale = 2.5
+    ): Promise<{ url: string; outW: number; outH: number }> {
+
+        // 1) Tüm içerik için sıkı bbox
+        const bb = tightBBox(svg);
+
+        // 2) Clone + görünür taşmaları içerecek asimetrik bleed
+        const vbX = Math.floor(bb.x - BLEED_L);
+        const vbY = Math.floor(bb.y - BLEED_T);
+        const vbW = Math.ceil(bb.width + BLEED_L + BLEED_R);
+        const vbH = Math.ceil(bb.height + BLEED_T + BLEED_B);
+
+        const clone = svg.cloneNode(true) as SVGSVGElement;
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        clone.setAttribute('overflow', 'visible');
+        clone.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+        clone.setAttribute('width', String(vbW));
+        clone.setAttribute('height', String(vbH));
+
+        // 3) Raster ölçüsü (genişliğe göre limitle)
+        let scale = baseScale;
+        if (vbW * scale > MAX_EXPORT_WIDTH) scale = MAX_EXPORT_WIDTH / vbW;
+        const outW = Math.max(1, Math.round(vbW * scale));
+        const outH = Math.max(1, Math.round(vbH * scale));
+
+        // 4) Serialize → <img> → canvas
+        const s = new XMLSerializer().serializeToString(clone);
+        const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+
+        const img = await new Promise<HTMLImageElement>((res, rej) => {
+            const im = new Image();
+            im.onload = () => res(im);
+            im.onerror = () => rej(new Error('SVG rasterize edilemedi.'));
+            im.src = dataUrl;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = PNG_BG;
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.setTransform(outW / vbW, 0, 0, outH / vbH, 0, 0);
+        ctx.drawImage(img, 0, 0, vbW, vbH);
+
+        const url =
+            fmt === 'png'
+                ? canvas.toDataURL('image/png')
+                : canvas.toDataURL('image/jpeg', quality);
+
+        return { url, outW, outH };
+    }
+
+
+// ✔ Tek sayfa (braket boyutunda) — gerekirse otomatik poster
+    const downloadBracketPdfFullPage = async () => {
+        try {
+            setPdfErr(null);
+            setBusyPdf(true);
+
+            const svg = document.querySelector('svg[data-bracket-svg="1"]') as SVGSVGElement | null;
+            if (!svg) { setPdfErr('Braket SVG bulunamadı.'); return; }
+
+            // Raster hazırla (JPEG)
+            const { url, outW, outH } = await svgToRasterDataURL(svg, 'jpeg', JPEG_QUALITY, 2.5);
+
+            // Çok büyük tek sayfa mı? Poster’a düş
+            const totalPx = outW * outH;
+            const needPoster = totalPx > MAX_SINGLEPAGE_PIXELS;
+
+            const { jsPDF } = await import('jspdf');
+
+            if (!needPoster) {
+                // ► TEK SAYFA: PDF sayfa boyutu = görüntü boyutu (pt)
+                let wPt = outW * PX_TO_PT;
+                let hPt = outH * PX_TO_PT;
+
+                // 200 inç sınırı → orantılı küçült
+                const s = Math.min(1, MAX_PDF_PT / Math.max(wPt, hPt));
+                wPt = Math.round(wPt * s);
+                hPt = Math.round(hPt * s);
+
+                const pdf = new jsPDF({ unit: 'pt', format: [wPt, hPt], compress: true });
+                pdf.addImage(url, 'JPEG', 0, 0, wPt, hPt, undefined, 'FAST');
+                const base = (fileBase || document.title || 'bracket')
+                    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-zA-Z0-9._ -]/g, '').trim().replace(/\s+/g, '_');
+                pdf.save(`${base}.pdf`);
+                return;
+            }
+
+            // ► POSTER (çok sayfa, A4; %100 ölçeğe yakın)
+            const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+
+            // px → pt oranı
+            const k = PX_TO_PT;
+            const drawWpt = outW * k;
+            const pages = Math.max(1, Math.ceil((outH * k) / pageH));
+
+            // Dilim canvas
+            const rowPix = Math.floor(pageH / k);
+            const slice = document.createElement('canvas');
+            slice.width = outW;
+            slice.height = rowPix;
+            const sctx = slice.getContext('2d')!;
+            sctx.imageSmoothingEnabled = true;
+
+            // Tüm resmi belleğe tekrar yüklemek yerine <img>’i yeniden kullan
+            const bigImg = await new Promise<HTMLImageElement>((res, rej) => {
+                const im = new Image();
+                im.onload = () => res(im);
+                im.onerror = () => rej(new Error('Görüntü yüklenemedi.'));
+                im.src = url;
+            });
+
+            for (let i = 0; i < pages; i++) {
+                const srcY = i * rowPix;
+                const srcH = Math.min(rowPix, outH - srcY);
+
+                sctx.clearRect(0, 0, slice.width, slice.height);
+                sctx.fillStyle = PNG_BG;
+                sctx.fillRect(0, 0, slice.width, slice.height);
+                // yalnızca görünür parçayı çiz
+                sctx.drawImage(bigImg, 0, -srcY);
+
+                const pageImg = slice.toDataURL('image/jpeg', JPEG_QUALITY);
+                if (i > 0) pdf.addPage();
+                pdf.addImage(pageImg, 'JPEG', 0, 0, drawWpt, srcH * k, undefined, 'FAST');
+            }
+
+            const base = (fileBase || document.title || 'bracket')
+                .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9._ -]/g, '').trim().replace(/\s+/g, '_');
+            pdf.save(`${base}.pdf`);
+        } catch (err: any) {
+            console.error(err);
+            setPdfErr(`PDF oluşturulamadı: ${err?.message || String(err)}`);
+        } finally {
+            setBusyPdf(false);
+        }
+    };
+
+
+
     return createPortal(
         <div className="fixed inset-0 z-[1000] flex items-center justify-center">
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            <div className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#1c222b] border border-white/10 p-5 shadow-2xl">
+            <div className="relative z-10 w-[min(92vw,560px)] rounded-2xl bg-[#1c222b] border border-white/10 p-5 shadow-2xl">
                 <div className="flex items-center justify-between mb-3">
-                    <div className="text-white font-semibold text-lg">Bağlantıyı Paylaş</div>
+                    <div className="text-white font-semibold text-lg">Paylaş / Dışa Aktar</div>
                     <button onClick={onClose} className="text-gray-300 hover:text-white" aria-label="Kapat">✕</button>
                 </div>
 
+                {/* Link paylaş */}
                 <label className="block text-sm text-gray-300 mb-2">Sayfa Bağlantısı</label>
                 <input
                     ref={inputRef}
@@ -481,7 +676,24 @@ function ShareModal({
                     <button onClick={doCopy} className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium" type="button">
                         Kopyala
                     </button>
+                    {/* ✨ Yeni: PDF indir (vektör) */}
+                    <button
+                        onClick={downloadBracketPdfFullPage}
+                        disabled={busyPdf}
+                        className={`px-4 py-2 rounded text-white font-medium ${busyPdf ? 'bg-indigo-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                        type="button"
+                        title="Braketi vektör PDF olarak indir (çok sayfalı)"
+                    >
+                        {busyPdf ? 'Hazırlanıyor…' : 'PDF indir'}
+                    </button>
+
+                    {pdfErr && (
+                        <div className="mt-3 text-sm rounded border border-red-400/30 bg-red-500/10 text-red-200 px-3 py-2">
+                            {pdfErr}
+                        </div>
+                    )}
                 </div>
+
             </div>
         </div>,
         document.body

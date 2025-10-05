@@ -134,7 +134,11 @@ export default memo(function BracketCanvas({
 
 
     return (
-        <svg width={svgDims.width} height={svgDims.height}
+        <svg
+            data-bracket-svg="1"
+            overflow="visible"
+            xmlns="http://www.w3.org/2000/svg"  // svg2pdf için garanti
+            width={svgDims.width} height={svgDims.height}
              style={{ position: 'absolute', left: svgDims.left, top: svgDims.top }}>
             <defs>
                 <style>{`

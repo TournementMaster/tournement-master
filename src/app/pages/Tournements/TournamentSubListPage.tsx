@@ -415,7 +415,29 @@ function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () 
             <div
                 role="button"
                 tabIndex={0}
-                onClick={goView}
+                onClick={(e) => {
+                    if (e.ctrlKey || e.metaKey || e.button === 1) {
+                        // Ctrl+click, Cmd+click veya orta tıklama => yeni sekmede aç
+                        const url = `/bracket/${item.public_slug}`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                    } else {
+                        goView();
+                    }
+                }}
+                onMouseDown={(e) => {
+                    // Middle click desteği
+                    if (e.button === 1) {
+                        e.preventDefault();
+                        const url = `/bracket/${item.public_slug}`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                    }
+                }}
+                onContextMenu={(e) => {
+                    // Sağ tık menüsü
+                    e.preventDefault();
+                    const url = `/bracket/${item.public_slug}`;
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                }}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') goView();
                 }}

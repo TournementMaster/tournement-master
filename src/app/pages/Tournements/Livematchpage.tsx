@@ -25,13 +25,16 @@ type Match = {
 
 type AthleteLite = { id: number; name: string; club?: string };
 type ResolvedKind = 'unknown' | 'sub' | 'tournament';
+// LiveBundle tipini genişlet
 type LiveBundle = {
     scope: 'sub' | 'tournament';
     day?: string;
     subs: Record<string, SubTournament>;
     matches: Record<string, Match[]>;
     athletes: Record<string, Record<number, AthleteLite>>;
+    last_finished_by_court?: Record<number, number>; // ✨ YENİ (opsiyonel)
 };
+
 
 const gLabel = (g?: string) => (g === 'M' ? 'Erkek' : g === 'F' ? 'Kadın' : '—');
 const roundLabel = (r: number, maxR: number) => {
@@ -59,6 +62,7 @@ export default function LiveMatchPage() {
     const refreshingRef = useRef(false);
     const [athletesBySub, setAthletesBySub] =
         useState<Record<string, Record<number, AthleteLite>>>({});
+    const [lastDoneByCourt, setLastDoneByCourt] = useState<Record<number, number>>({});
 
     // Tek seferde hepsini alan akış (+ polling)
     useEffect(() => {
@@ -79,6 +83,7 @@ export default function LiveMatchPage() {
                 setMatches(data.matches || {});
                 setAthletesBySub(data.athletes || {});
                 if (data.day) setDay(data.day);
+                setLastDoneByCourt(data.last_finished_by_court || {});
             } catch {
                 if (!stop && !isPoll) setError('Veri yüklenemedi.');
             } finally {
@@ -107,7 +112,7 @@ export default function LiveMatchPage() {
             sub: SubTournament;
             m: Match;
             maxR: number;
-            playable: boolean; // iki sporcu var mı?
+            playable: boolean;
         };
 
         type Card = {
@@ -128,16 +133,16 @@ export default function LiveMatchPage() {
             nextAthlete2?: number | null;
         };
 
-        // 0) bugün olmayan sub’ları güvence için ele (backend zaten filtreli, bu sadece koruma)
         const today = day || isoToday();
         const todaysSubs = new Set(
             Object.values(subs)
                 .filter((s) => (s.day || today) === today)
-                .map((s) => s.public_slug),
+                .map((s) => s.public_slug)
         );
 
-        // 1) Tüm pending maçları court’a göre grupla (sadece bugünün subs’ları)
-        const buckets = new Map<number, Candidate[]>();
+        // 1) Tüm maçları (bitmiş + pending) ve sadece pending maçları court'a göre grupla
+        const allByCourt = new Map<number, Candidate[]>();
+        const pendingByCourt = new Map<number, Candidate[]>();
 
         for (const subSlug of Object.keys(matches)) {
             if (!todaysSubs.has(subSlug)) continue;
@@ -146,38 +151,70 @@ export default function LiveMatchPage() {
             if (!sub || !list.length) continue;
 
             const maxR = Math.max(...list.map((m) => m.round_no));
-            // pending (winner==null) zaten backend’de; yine de güvence:
-            const pending = list.filter((m) => (m.court_no ?? 0) > 0 && m.winner == null);
+            for (const m of list) {
+                const c = m.court_no ?? 0;
+                if (c <= 0) continue;
 
-            for (const m of pending) {
-                const c = m.court_no as number;
                 const playable = !!(m.athlete1 && m.athlete2);
-                if (!buckets.has(c)) buckets.set(c, []);
-                buckets.get(c)!.push({ subSlug, sub, m, maxR, playable });
+                const cand: Candidate = { subSlug, sub, m, maxR, playable };
+
+                // tüm maçlar (winner null olsa da olmasa da)
+                if (!allByCourt.has(c)) allByCourt.set(c, []);
+                allByCourt.get(c)!.push(cand);
+
+                // sadece pending
+                if (m.winner == null) {
+                    if (!pendingByCourt.has(c)) pendingByCourt.set(c, []);
+                    pendingByCourt.get(c)!.push(cand);
+                }
             }
         }
 
-        // 2) Her court için EN KÜÇÜK match_no’lu PLAYABLE maç ana maç;
-        //    sonra gelen ilk PLAYABLE maç "bir sonraki"
+        // 2) Her kort için: "son biten maç no"dan sonra gelen ilk oynanabilir pending maçı seç
         const entries: Card[] = [];
-        [...buckets.entries()].forEach(([courtNo, arr]) => {
-            arr.sort((a, b) => {
+        [...allByCourt.keys()].forEach((courtNo) => {
+            const all = allByCourt.get(courtNo) || [];
+            const pend = (pendingByCourt.get(courtNo) || []).filter((x) => x.playable);
+
+            if (!pend.length) return; // oynanabilir pending yoksa kart göstermeyelim
+
+            // a) backend'ten geldiyse onu kullan
+            const externalLast = lastDoneByCourt[courtNo];
+
+            // b) yoksa local veriden türet (listede biten maçlar varsa)
+            const finishedNos = all
+                .filter((x) => x.m.winner != null && typeof x.m.match_no === 'number')
+                .map((x) => x.m.match_no as number);
+
+            const lastDoneNo =
+                Number.isFinite(externalLast) ? externalLast as number
+                    : finishedNos.length ? Math.max(...finishedNos)
+                        : -Infinity;
+
+            // Öncelik: lastDoneNo'dan büyük ilk oynanabilir pending
+            const higher = pend
+                .filter((x) => typeof x.m.match_no === 'number' && (x.m.match_no as number) > lastDoneNo)
+                .sort((a, b) => (a.m.match_no as number) - (b.m.match_no as number));
+
+            // Yoksa klasik mantık: en küçük match_no’lu oynanabilir pending
+            const legacySorted = [...pend].sort((a, b) => {
                 const aN = a.m.match_no ?? Number.POSITIVE_INFINITY;
                 const bN = b.m.match_no ?? Number.POSITIVE_INFINITY;
-                if (aN !== bN) return aN - bN;                        // ✨ en küçük match_no öne
+                if (aN !== bN) return aN - bN;
                 if (a.m.round_no !== b.m.round_no) return a.m.round_no - b.m.round_no;
                 return a.m.position - b.m.position;
             });
 
-            const playables = arr.filter((x) => x.playable);
-            const cur = playables[0];
-            if (!cur) return; // playable yoksa bu court’ta kart göstermeyelim
+            const cur = higher[0] ?? legacySorted[0];
+            if (!cur) return;
 
-            const next = playables.find((x) => {
-                const curNo = cur.m.match_no ?? Number.POSITIVE_INFINITY;
-                const nextNo = x.m.match_no ?? Number.POSITIVE_INFINITY;
-                return nextNo > curNo;
-            });
+            // "Bir sonraki maç": seçilen maçtan büyük numaralı ilk oynanabilir pending
+            let next: Candidate | undefined;
+            if (typeof cur.m.match_no === 'number') {
+                next = pend
+                    .filter((x) => typeof x.m.match_no === 'number' && (x.m.match_no as number) > (cur.m.match_no as number))
+                    .sort((a, b) => (a.m.match_no as number) - (b.m.match_no as number))[0];
+            }
 
             entries.push({
                 id: `${cur.subSlug}-${courtNo}-${cur.m.match_no ?? cur.m.position}-${cur.m.round_no}`,
@@ -199,6 +236,7 @@ export default function LiveMatchPage() {
         entries.sort((a, b) => a.court - b.court);
         return entries;
     }, [matches, subs, day]);
+
 
     return (
         <div
