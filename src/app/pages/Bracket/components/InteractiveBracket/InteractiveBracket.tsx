@@ -322,7 +322,7 @@ export default memo(function InteractiveBracket() {
 
     // === Etiket düzeni: 'classic' (tek satır) | 'stacked' (İsim + Kulüp, tam genişlik)
     const labelLayout: 'classic' | 'stacked' =
-        (settings as any)?.labelLayout === 'stacked' ? 'stacked' : 'classic';
+        (settings && settings.labelLayout === 'classic') ? 'classic' : 'stacked';
 
     // Stacked tasarımda genişlikleri tur bazında büyüt (metin asla kesilmesin)
     const stackedRoundWidths = useMemo(() => {

@@ -109,7 +109,7 @@ export default memo(function BracketCanvas({
     const CLUB_FONT = Math.round(MAIN_FONT * 0.86);
 
     // Stacked düzen için nefes payları
-    const STACK_LINE_GAP = Math.max(6, Math.round(MAIN_FONT * 0.28)); // iki satır arası
+    const STACK_LINE_GAP = Math.max(6, Math.round(MAIN_FONT * 0.4)); // iki satır arası
     const STACK_PAD_Y    = Math.max(10, Math.round(MAIN_FONT * 0.70)); // yarı alan başına ekstra boşluk
 
     const MNO_FONT  = useMemo(() => Math.max(13, Math.min(22, Math.round(BOX_H * 0.36))), [BOX_H]);

@@ -24,7 +24,7 @@ export default function ThemePanel() {
     const setTheme = useSetTheme()
     const { settings, set } = useSettings()
     const labelLayout: 'classic' | 'stacked' =
-        (settings as any)?.labelLayout === 'stacked' ? 'stacked' : 'classic'
+        (settings && settings.labelLayout === 'classic') ? 'classic' : 'stacked';
 
     const preview = (k: keyof typeof PALETTES) => {
         const p = PALETTES[k]
