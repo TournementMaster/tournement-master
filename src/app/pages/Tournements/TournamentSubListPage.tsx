@@ -91,7 +91,13 @@ const PHASE_BADGE = {
 /* ──────────────────────────────────────────────────────────────────────────
    IMPORT MODAL (Scrollable + Sticky Footer + Spinner)
    ────────────────────────────────────────────────────────────────────────── */
-type ImportRow = { category: AgeCatKey; weight: string; court: string; key: string };
+type ImportRow = {
+    category: AgeCatKey;
+    weight: string;
+    courtMain: string;
+    courtsDist: string;
+    key: string;
+};
 
 function ImportModal({
                          onClose,
@@ -104,14 +110,19 @@ function ImportModal({
 }) {
     const [file, setFile] = useState<File | null>(null);
     const [rows, setRows] = useState<ImportRow[]>([
-        {category: 'yildizlar', weight: '10-15', court: '1', key: safeUUID()},
-        {category: 'gencler', weight: '15-20', court: '1', key: safeUUID()},
-        {category: 'yildizlar', weight: '20-35', court: '1', key: safeUUID()},
+        { category: 'yildizlar', weight: '32', courtMain: '1', courtsDist: '1', key: safeUUID() },
+        { category: 'gencler',   weight: '45', courtMain: '1', courtsDist: '1,2', key: safeUUID() },
     ]);
     const [useFuzzy, setUseFuzzy] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [result, setResult] = useState<any | null>(null);
+    const [day, setDay] = useState<string>(() => {
+        const d = new Date();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${d.getFullYear()}-${mm}-${dd}`;
+    });
 
     function addRow() {
         setRows((r) => [...r, {category: 'buyukler', weight: '', court: '', key: safeUUID()}]);
@@ -121,16 +132,11 @@ function ImportModal({
         setRows((r) => r.filter((_, i) => i !== idx));
     }
 
-    function parseWeight(s: string) {
+    function parseWeightSingle(s: string) {
         const t = (s || '').trim().toLowerCase().replace(',', '.');
-        if (t.endsWith('+')) {
-            const base = parseFloat(t.slice(0, -1));
-            if (!Number.isFinite(base)) return null;
-            return {weight_min: String(base), weight_max: '45+'};
-        }
-        const m = t.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/);
-        if (!m) return {weight_min: t, weight_max: t};
-        return {weight_min: m[1], weight_max: m[2]};
+        const m = t.match(/^(\d+(?:\.\d+)?)$/);
+        if (!m) return null;
+        return m[1];
     }
 
     async function onSubmit() {
@@ -140,25 +146,33 @@ function ImportModal({
             return;
         }
 
-        const categories = [];
+        const categories: any[] = [];
         for (const r of rows) {
-            if (!r.weight) continue;
             const cat = AGE_CATEGORIES[r.category];
-            const w = parseWeight(r.weight);
+            const w = parseWeightSingle(r.weight);
             if (!cat || !w) {
-                setMsg('Geçersiz satır: kategori veya kilo aralığı hatalı.');
+                setMsg('Geçersiz satır: kategori veya kilo değeri hatalı.');
                 return;
             }
-            const perRowCourt = (r.court || '1').trim();
+            const mainCourt = (r.courtMain || '1').trim();
+            // courtsDist -> [int,int,...]
+            const preferred = (r.courtsDist || '')
+                .split(/[,\s]+/)
+                .map(x => x.trim())
+                .filter(Boolean)
+                .map(x => Number(x))
+                .filter(n => Number.isFinite(n) && n > 0);
+
             categories.push({
                 age_min: cat.min,
-                age_max: (cat.max ?? 999), // üst sınır yoksa büyük bir sayı
-                ...w,
-                court_no: Number(perRowCourt),
+                age_max: (cat.max ?? 200),
+                weight: w,                      // tek kilo
+                court_no: Number(mainCourt),
+                preferred_courts: preferred.length ? preferred : [Number(mainCourt)],
             });
         }
         if (!categories.length) {
-            setMsg('En az bir siklet satırı girin.');
+            setMsg('En az bir satır girin.');
             return;
         }
 
@@ -167,11 +181,13 @@ function ImportModal({
             const fd = new FormData();
             fd.append('file', file);
             fd.append('categories', JSON.stringify(categories));
-            if (useFuzzy) fd.append('use_fuzzy_club_merge', '1');
+            if (day) fd.append('day', day);               // ✨ maç günü
+            // use_fuzzy kaldırıldı
 
-            const {data} = await api.post(
+            const { data } = await api.post(
                 `tournaments/${encodeURIComponent(publicSlug)}/import-subtournaments/`,
-                fd, {headers: {'Content-Type': 'multipart/form-data'}}
+                fd,
+                { headers: { 'Content-Type': 'multipart/form-data' } }
             );
             setResult(data);
             setMsg(null);
@@ -210,55 +226,73 @@ function ImportModal({
                             <span className="text-sm text-white">{file ? file.name : 'Dosya Seç'}</span>
                         </label>
                         <div className="text-xs text-gray-400 mt-2">
-                            Gerekli sütunlar: Sicil, Ad/Soyad, Cinsiyet, Doğum Tarihi/Yılı, Kilo, Kulüp.
+                            Gerekli Excel sütunları: <b>ADI SOYADI, CİNSİYET, KULÜP, SİKLET, YAŞ KATEGORİSİ</b>.
                         </div>
+                    </div>
+                    <div>
+                        <div className="text-sm text-gray-300 mb-2">Maç Günü</div>
+                        <input
+                            type="date"
+                            value={day}
+                            onChange={(e) => setDay(e.target.value)}
+                            className="w-full max-w-[220px] px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                        />
                     </div>
                     <div>
                         <div className="text-sm text-gray-300 mb-2">Siklet Türleri</div>
                         <div className="rounded-xl border border-white/10 overflow-hidden">
-                            <div
-                                className="hidden sm:grid sm:grid-cols-[1fr_1fr_110px_56px] bg-black/20 text-xs text-gray-400 px-4 py-2">
+                            <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_130px_1fr_56px] bg-black/20 text-xs text-gray-400 px-4 py-2">
                                 <div>Yaş Kategorisi</div>
-                                <div>Kilo aralığı (örn. 30-35 veya 45+)</div>
-                                <div>Kort</div>
+                                <div>Kilo (tek)</div>
+                                <div>Ana Kort</div>
+                                <div>Dağıtılacak Kortlar (CSV)</div>
                                 <div className="text-right pr-1">Sil</div>
                             </div>
 
                             <div className="divide-y divide-white/10">
                                 {rows.map((r, idx) => (
-                                    <div key={r.key}
-                                         className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_110px_56px] gap-2 px-4 py-3 items-center">
+                                    <div
+                                        key={r.key}
+                                        className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_130px_1fr_56px] gap-2 px-4 py-3 items-center"
+                                    >
                                         <select
                                             value={r.category}
-                                            onChange={(e) => setRows(list => list.map((x, i) => i === idx ? {
-                                                ...x,
-                                                category: e.target.value as AgeCatKey
-                                            } : x))}
+                                            onChange={(e) => setRows(list => list.map((x, i) => i === idx ? { ...x, category: e.target.value as AgeCatKey } : x))}
                                             className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
                                         >
                                             {Object.entries(AGE_CATEGORIES).map(([k, v]) => (
-                                                <option key={k}
-                                                        value={k}>{k === 'buyukler' ? 'Büyükler' : v.min === 0 ? 'Küçükler' : v.min === 10 ? 'Minikler' : v.min === 13 ? 'Yıldızlar' : v.min === 15 ? 'Gençler' : v.min === 18 && v.max === 20 ? 'Ümitler' : 'Büyükler'}</option>
+                                                <option key={k} value={k}>
+                                                    {k === 'buyukler' ? 'Büyükler' :
+                                                        v.min === 0 ? 'Küçükler' :
+                                                            v.min === 10 ? 'Minikler' :
+                                                                v.min === 13 ? 'Yıldızlar' :
+                                                                    v.min === 15 ? 'Gençler' :
+                                                                        v.min === 18 && v.max === 20 ? 'Ümitler' : 'Büyükler'}
+                                                </option>
                                             ))}
                                         </select>
+
                                         <input
-                                            placeholder="10-15 veya 45+"
+                                            placeholder="örn. 32.0"
                                             value={r.weight}
-                                            onChange={(e) => setRows((list) => list.map((x, i) => i === idx ? {
-                                                ...x,
-                                                weight: e.target.value
-                                            } : x))}
+                                            onChange={(e) => setRows(list => list.map((x,i) => i===idx ? { ...x, weight: e.target.value } : x))}
                                             className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
                                         />
+
                                         <input
                                             placeholder="1"
-                                            value={r.court}
-                                            onChange={(e) => setRows(list => list.map((x, i) => i === idx ? {
-                                                ...x,
-                                                court: e.target.value.replace(/\D/g, '')
-                                            } : x))}
+                                            value={r.courtMain}
+                                            onChange={(e) => setRows(list => list.map((x,i) => i===idx ? { ...x, courtMain: e.target.value.replace(/\D/g,'') } : x))}
                                             className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
                                         />
+
+                                        <input
+                                            placeholder="1,2"
+                                            value={r.courtsDist}
+                                            onChange={(e) => setRows(list => list.map((x,i) => i===idx ? { ...x, courtsDist: e.target.value } : x))}
+                                            className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                        />
+
                                         <div className="flex sm:justify-end">
                                             <button
                                                 onClick={() => removeRow(idx)}
@@ -278,14 +312,6 @@ function ImportModal({
                                     + Satır Ekle
                                 </button>
                             </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                            <label className="flex items-center gap-2 mt-6">
-                                <input type="checkbox" checked={useFuzzy}
-                                       onChange={(e) => setUseFuzzy(e.target.checked)}/>
-                                <span
-                                    className="text-sm text-gray-300">Kulüplerde benzer isimleri birleştir (deneysel)</span>
-                            </label>
                         </div>
                     </div>
 
@@ -563,6 +589,7 @@ export default function TournamentSubListPage() {
     const [q, setQ] = useState('');
     const [canManage, setCanManage] = useState(false);
     const [showImport, setShowImport] = useState(false);
+    const [showShuffle, setShowShuffle] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState(false); // ← mobil filtre çekmecesi
 
     useEffect(() => {
@@ -722,12 +749,22 @@ export default function TournamentSubListPage() {
                             </div>
 
                             {canManage && public_slug && (
+                                <>
+                                <button
+                                    onClick={() => setShowShuffle(true)}
+                                    className="px-3 py-2 rounded-lg border border-white/10 bg-white/10 hover:bg-white/15 text-white text-sm shadow inline-flex items-center gap-2"
+                                    title="Seçtiğin gün için, başlamamış tüm alt turnuvalarda yerleşimi aynı anda karıştır"
+                                    type="button"
+                                >
+                                    Toplu Kura
+                                </button>
                                 <button
                                     onClick={() => setShowImport(true)}
                                     className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
                                 >
-                                    Excel’den İçe Aktar
+                                    Excel’den Aktar
                                 </button>
+                                </>
                             )}
                         </div>
                     </div>
@@ -961,6 +998,19 @@ export default function TournamentSubListPage() {
                     onClose={() => setShowImport(false)}
                 />
             )}
+
+            {/* Toplu Kura (Gün) modal */}
+            {showShuffle && public_slug && (
+                <ShuffleDayModal
+                    open={showShuffle}
+                    slug={public_slug}
+                    onClose={() => setShowShuffle(false)}
+                    onDone={() => {
+                        setShowShuffle(false);
+                        refetch();        // listeyi tazele
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -974,6 +1024,191 @@ function SkeletonList() {
                         className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/10 to-transparent"/>
                 </div>
             ))}
+        </div>
+    );
+}
+
+function ShuffleDayModal({
+                             open,
+                             slug,
+                             onClose,
+                             onDone,
+                         }: {
+    open: boolean;
+    slug: string;
+    onClose: () => void;
+    onDone: () => void;
+}) {
+    const [day, setDay] = useState<string>(() => {
+        const d = new Date();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${d.getFullYear()}-${mm}-${dd}`;
+    });
+    const [seed, setSeed] = useState<string>('');
+    const [phase, setPhase] = useState<'idle' | 'countdown' | 'posting' | 'success' | 'error'>('idle');
+    const [count, setCount] = useState<number>(3);
+    const [err, setErr] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        // body scroll kilidi
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    }, [open]);
+
+    if (!open) return null;
+
+    const startCountdown = () => {
+        if (!day) return;
+        setErr(null);
+        setPhase('countdown');
+        setCount(3);
+
+        let i = 3;
+        const id = window.setInterval(() => {
+            i -= 1;
+            setCount(i);
+            if (i <= 0) {
+                window.clearInterval(id);
+                doPost();
+            }
+        }, 800);
+    };
+
+    const doPost = async () => {
+        setPhase('posting');
+        try {
+            await api.post(
+                `tournaments/${encodeURIComponent(slug)}/shuffle-day/`,
+                null,
+                { params: { day, seed: seed || undefined } }
+            );
+            setPhase('success');
+            // kısa bir kutlama sonra kapat
+            setTimeout(() => {
+                onDone();
+            }, 1000);
+        } catch (e: any) {
+            const msg = e?.response?.data?.detail || 'İşlem başarısız oldu.';
+            setErr(String(msg));
+            setPhase('error');
+        }
+    };
+
+    const disabled = phase !== 'idle';
+
+    return (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/60" onClick={phase === 'idle' ? onClose : undefined} />
+            <div
+                className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#1e232b] border border-white/10 shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* header */}
+                <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                    <div className="text-white font-semibold">Toplu Kura Çek (Gün)</div>
+                    <button
+                        onClick={onClose}
+                        disabled={phase !== 'idle'}
+                        className="text-gray-300 hover:text-white disabled:opacity-40"
+                        aria-label="Kapat"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {/* body */}
+                <div className="px-5 py-5 space-y-4">
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-2">Tarih</label>
+                        <input
+                            type="date"
+                            value={day}
+                            onChange={(e) => setDay(e.target.value)}
+                            disabled={disabled}
+                            className="w-full bg-[#0f141a] border border-white/10 rounded px-3 py-2 text-sm text-white"
+                        />
+                        <p className="text-xs text-gray-400 mt-2">
+                            Bu tarihteki <b>başlamamış</b> tüm alt turnuvalar aynı anda karıştırılır. Aynı kulüp çakışmaları
+                            minimize edilir.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-2">Opsiyonel seed (deterministik)</label>
+                        <input
+                            placeholder="(boş bırakılabilir)"
+                            value={seed}
+                            onChange={(e) => setSeed(e.target.value)}
+                            disabled={disabled}
+                            className="w-full bg-[#0f141a] border border-white/10 rounded px-3 py-2 text-sm text-white"
+                        />
+                    </div>
+
+                    {phase === 'countdown' && (
+                        <div className="mt-2 flex items-center justify-center">
+                            <div className="text-5xl font-extrabold text-emerald-300 drop-shadow-lg select-none">
+                                {count > 0 ? count : '…'}
+                            </div>
+                        </div>
+                    )}
+
+                    {phase === 'posting' && (
+                        <div className="mt-2 flex items-center justify-center text-emerald-200 gap-2">
+                            <span className="inline-block h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                            Kura çekiliyor…
+                        </div>
+                    )}
+
+                    {phase === 'success' && (
+                        <div className="mt-2 text-center">
+                            <div className="text-emerald-300 font-semibold text-lg">Kura başarıyla çekildi 🎉</div>
+                            <div className="text-xs text-gray-400">Pencere otomatik kapanacak…</div>
+                        </div>
+                    )}
+
+                    {phase === 'error' && (
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-sm">
+                            {err}
+                        </div>
+                    )}
+                </div>
+
+                {/* footer */}
+                <div className="px-5 py-4 border-t border-white/10 bg-[#171b22] flex items-center justify-end gap-2">
+                    <button
+                        onClick={onClose}
+                        disabled={phase !== 'idle'}
+                        className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253] text-white/90 disabled:opacity-60"
+                        type="button"
+                    >
+                        Kapat
+                    </button>
+
+                    {phase === 'idle' && (
+                        <button
+                            onClick={startCountdown}
+                            className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold"
+                            type="button"
+                            disabled={!day}
+                        >
+                            Kura Çek
+                        </button>
+                    )}
+
+                    {phase === 'error' && (
+                        <button
+                            onClick={() => { setPhase('idle'); setErr(null); }}
+                            className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold"
+                            type="button"
+                        >
+                            Tekrar Dene
+                        </button>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
