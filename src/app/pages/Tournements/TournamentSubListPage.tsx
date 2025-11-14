@@ -24,7 +24,6 @@ const inCategory = (s: SubTournament, cat: AgeCatKey) => {
     const lo = Number(s.age_min ?? 0);
     const hi = Number.isFinite(s.age_max as never) ? Number(s.age_max) : Infinity;
     const max = (c.max ?? Infinity);
-    // return lo === c.min && hi === max; // birebir eşleşme isteniyorsa
     return !((hi < c.min) || (max < lo));
 };
 
@@ -66,7 +65,7 @@ function inlinePhase(s: any): Phase {
     return 'pending';
 }
 
-// Güvenli UUID: varsa crypto.randomUUID, yoksa getRandomValues, o da yoksa basit fallback
+// Güvenli UUID
 function safeUUID(): string {
     const g: any = (typeof globalThis !== 'undefined') ? globalThis : window;
     const c = g?.crypto || g?.msCrypto;
@@ -89,7 +88,7 @@ const PHASE_BADGE = {
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────────────
-   IMPORT MODAL (Scrollable + Sticky Footer + Spinner)
+   IMPORT MODAL
    ────────────────────────────────────────────────────────────────────────── */
 type ImportRow = {
     category: AgeCatKey;
@@ -113,7 +112,6 @@ function ImportModal({
         { category: 'yildizlar', weight: '32', courtMain: '1', courtsDist: '1', key: safeUUID() },
         { category: 'gencler',   weight: '45', courtMain: '1', courtsDist: '1,2', key: safeUUID() },
     ]);
-    const [useFuzzy, setUseFuzzy] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
     const [result, setResult] = useState<any | null>(null);
@@ -125,7 +123,7 @@ function ImportModal({
     });
 
     function addRow() {
-        setRows((r) => [...r, {category: 'buyukler', weight: '', court: '', key: safeUUID()}]);
+        setRows((r) => [...r, {category: 'buyukler', weight: '', courtMain: '1', courtsDist: '', key: safeUUID()}]);
     }
 
     function removeRow(idx: number) {
@@ -155,7 +153,6 @@ function ImportModal({
                 return;
             }
             const mainCourt = (r.courtMain || '1').trim();
-            // courtsDist -> [int,int,...]
             const preferred = (r.courtsDist || '')
                 .split(/[,\s]+/)
                 .map(x => x.trim())
@@ -166,7 +163,7 @@ function ImportModal({
             categories.push({
                 age_min: cat.min,
                 age_max: (cat.max ?? 200),
-                weight: w,                      // tek kilo
+                weight: w,
                 court_no: Number(mainCourt),
                 preferred_courts: preferred.length ? preferred : [Number(mainCourt)],
             });
@@ -181,8 +178,7 @@ function ImportModal({
             const fd = new FormData();
             fd.append('file', file);
             fd.append('categories', JSON.stringify(categories));
-            if (day) fd.append('day', day);               // ✨ maç günü
-            // use_fuzzy kaldırıldı
+            if (day) fd.append('day', day);
 
             const { data } = await api.post(
                 `tournaments/${encodeURIComponent(publicSlug)}/import-subtournaments/`,
@@ -361,7 +357,6 @@ function ImportModal({
                             <li>Kullanılan/Oluşturulan kulüp: <b>{result.clubs_created_or_used}</b></li>
                         </ul>
 
-                        {/* Rapor indir */}
                         {result.cleaning_report?.base64 && (
                             <div className="mt-4">
                                 <button
@@ -406,16 +401,29 @@ function ImportModal({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Single Row
+   Single Row + çoklu seçim
    ────────────────────────────────────────────────────────────────────────── */
-function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () => void; canManage: boolean; }) {
+function Row({
+                 item,
+                 onChanged,
+                 canManage,
+                 selected,
+                 onToggleSelect,
+             }: {
+    item: SubTournament;
+    onChanged: () => void;
+    canManage: boolean;
+    selected: boolean;
+    onToggleSelect: (slug: string) => void;
+}) {
     const nav = useNavigate();
     const [open, setOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
     const goView = () => nav(`/bracket/${item.public_slug}`);
-    const goEdit = () => nav(`/create?mode=sub&edit=${encodeURIComponent(item.public_slug)}&parent=${item.tournament}`);
+    const goEdit = () =>
+        nav(`/create?mode=sub&edit=${encodeURIComponent(item.public_slug)}&parent=${item.tournament}`);
 
     const gender = String(item.gender || '').toUpperCase() === 'M' ? 'Male'
         : String(item.gender || '').toUpperCase() === 'F' ? 'Female' : 'Mixed';
@@ -443,7 +451,6 @@ function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () 
                 tabIndex={0}
                 onClick={(e) => {
                     if (e.ctrlKey || e.metaKey || e.button === 1) {
-                        // Ctrl+click, Cmd+click veya orta tıklama => yeni sekmede aç
                         const url = `/bracket/${item.public_slug}`;
                         window.open(url, '_blank', 'noopener,noreferrer');
                     } else {
@@ -451,7 +458,6 @@ function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () 
                     }
                 }}
                 onMouseDown={(e) => {
-                    // Middle click desteği
                     if (e.button === 1) {
                         e.preventDefault();
                         const url = `/bracket/${item.public_slug}`;
@@ -459,7 +465,6 @@ function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () 
                     }
                 }}
                 onContextMenu={(e) => {
-                    // Sağ tık menüsü
                     e.preventDefault();
                     const url = `/bracket/${item.public_slug}`;
                     window.open(url, '_blank', 'noopener,noreferrer');
@@ -467,26 +472,54 @@ function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () 
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') goView();
                 }}
-                className="group relative p-4 rounded-lg bg-[#2d3038] border border-white/10 cursor-pointer transition
-                   focus:outline-none hover:border-emerald-400/50 hover:shadow-[0_0_0_2px_rgba(16,185,129,.45),0_0_22px_6px_rgba(168,85,247,.28),0_0_16px_4px_rgba(16,185,129,.28)]
-                   flex items-center justify-between gap-3"
+                className={`group relative p-4 rounded-lg bg-[#2d3038] border cursor-pointer transition
+                   focus:outline-none flex items-center justify-between gap-3
+                   ${
+                    selected
+                        ? 'border-emerald-400/80 shadow-[0_0_0_2px_rgba(16,185,129,.55),0_0_22px_6px_rgba(168,85,247,.35),0_0_16px_4px_rgba(16,185,129,.35)] bg-emerald-500/5'
+                        : 'border-white/10 hover:border-emerald-400/50 hover:shadow-[0_0_0_2px_rgba(16,185,129,.45),0_0_22px_6px_rgba(168,85,247,.28),0_0_16px_4px_rgba(16,185,129,.28)]'
+                }`}
             >
-                {/* SOL: içerik (daralabilir) */}
+                {/* SOL: seçim + içerik */}
                 <div className="pr-3 flex items-start gap-4 flex-1 min-w-0">
                     <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500/15 text-emerald-300 text-xl select-none">🏆
+                        onClick={(e) => {
+                            if (!canManage) return;
+                            e.stopPropagation();
+                            onToggleSelect(item.public_slug);
+                        }}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-xl select-none transition
+                        ${
+                            canManage
+                                ? selected
+                                    ? 'bg-emerald-500/40 text-emerald-50 ring-2 ring-emerald-300 shadow-lg'
+                                    : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                                : 'bg-emerald-500/15 text-emerald-300'
+                        }`}
+                        title={
+                            canManage
+                                ? (selected ? 'Seçimi kaldır' : 'Alt turnuvayı seç')
+                                : undefined
+                        }
+                    >
+                        {canManage ? '🏆' : '🏆'}
                     </div>
                     <div className="min-w-0">
                         <div className="font-semibold text-slate-100 truncate">{item.title}</div>
                         <div className="text-sm text-white/60 flex flex-wrap items-center gap-2 truncate">
-              <span className="truncate">
-                {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
-              </span>
+                            <span className="truncate">
+                                {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
+                            </span>
+                            {selected && canManage && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
+                                    Seçili
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                {/* SAĞ: chip + menü (daralmaz) */}
+                {/* SAĞ: chip + menü */}
                 <div className="relative flex items-center gap-2 sm:gap-3 shrink-0">
                     <span
                         className={`px-2 py-1 rounded text-xs border border-white/10 ${badge.chip}`}>{badge.text}</span>
@@ -564,9 +597,8 @@ function Row({item, onChanged, canManage}: { item: SubTournament; onChanged: () 
     );
 }
 
-
 /* ──────────────────────────────────────────────────────────────────────────
-   Page
+   Ana Sayfa
    ────────────────────────────────────────────────────────────────────────── */
 export default function TournamentSubListPage() {
     const {public_slug} = useParams<{ public_slug: string }>();
@@ -590,7 +622,12 @@ export default function TournamentSubListPage() {
     const [canManage, setCanManage] = useState(false);
     const [showImport, setShowImport] = useState(false);
     const [showShuffle, setShowShuffle] = useState(false);
-    const [drawerOpen, setDrawerOpen] = useState(false); // ← mobil filtre çekmecesi
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+    // Çoklu seçim
+    const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
+    const selectedCount = selectedSlugs.length;
+    const [showCloneModal, setShowCloneModal] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -613,6 +650,58 @@ export default function TournamentSubListPage() {
             cancelled = true;
         };
     }, [public_slug]);
+
+    // canManage false olursa seçimi temizle
+    useEffect(() => {
+        if (!canManage && selectedSlugs.length) {
+            setSelectedSlugs([]);
+        }
+    }, [canManage, selectedSlugs.length]);
+
+    const handleToggleSelect = (slug: string) => {
+        if (!canManage) return;
+        setSelectedSlugs(prev =>
+            prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]
+        );
+    };
+    const clearSelection = () => setSelectedSlugs([]);
+
+    // Toplu SIL
+    const handleBulkDelete = async () => {
+        if (!selectedCount) return;
+        const ok = window.confirm(`Seçili ${selectedCount} alt turnuvayı silmek istediğinizden emin misiniz?`);
+        if (!ok) return;
+        try {
+            for (const slug of selectedSlugs) {
+                await api.delete(`subtournaments/${encodeURIComponent(slug)}/`);
+            }
+            setSelectedSlugs([]);
+            refetch();
+        } catch {
+            alert('Toplu silme sırasında hata oluştu.');
+        }
+    };
+
+    // Toplu BAŞLAT
+    const handleBulkStart = async () => {
+        if (!selectedCount) return;
+        const ok = window.confirm(`Seçili ${selectedCount} alt turnuvayı başlatmak istediğinizden emin misiniz?`);
+        if (!ok) return;
+        try {
+            for (const slug of selectedSlugs) {
+                await api.patch(`subtournaments/${encodeURIComponent(slug)}/`, { started: true });
+            }
+            refetch();
+        } catch {
+            alert('Toplu başlatma sırasında hata oluştu.');
+        }
+    };
+
+    // Toplu KLON aç
+    const handleBulkClone = () => {
+        if (!selectedCount) return;
+        setShowCloneModal(true);
+    };
 
     useEffect(() => {
         if (filters.status === 'all' || !data?.length) return;
@@ -691,7 +780,7 @@ export default function TournamentSubListPage() {
     return (
         <div className="max-w-6xl mx-auto px-3 sm:px-4 lg:px-0">
             <div className="lg:flex lg:gap-6">
-                {/* SOL SİDEBAR — lg ve üstü görünür, mobilde çekmece */}
+                {/* SOL SİDEBAR */}
                 <aside className="hidden lg:block w-[280px] shrink-0">
                     <div className="lg:sticky lg:top-20">
                         <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug}/>
@@ -700,7 +789,7 @@ export default function TournamentSubListPage() {
 
                 {/* SAĞ İÇERİK */}
                 <div className="flex-1">
-                    {/* mobil toolbar: Filtreler butonu */}
+                    {/* mobil toolbar */}
                     <div className="lg:hidden pt-4">
                         <button
                             onClick={() => setDrawerOpen(true)}
@@ -750,24 +839,63 @@ export default function TournamentSubListPage() {
 
                             {canManage && public_slug && (
                                 <>
-                                <button
-                                    onClick={() => setShowShuffle(true)}
-                                    className="px-3 py-2 rounded-lg border border-white/10 bg-white/10 hover:bg-white/15 text-white text-sm shadow inline-flex items-center gap-2"
-                                    title="Seçtiğin gün için, başlamamış tüm alt turnuvalarda yerleşimi aynı anda karıştır"
-                                    type="button"
-                                >
-                                    Toplu Kura
-                                </button>
-                                <button
-                                    onClick={() => setShowImport(true)}
-                                    className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
-                                >
-                                    Excel’den Aktar
-                                </button>
+                                    <button
+                                        onClick={() => setShowShuffle(true)}
+                                        className="px-3 py-2 rounded-lg border border-white/10 bg-white/10 hover:bg-white/15 text-white text-sm shadow inline-flex items-center gap-2"
+                                        title="Seçtiğin gün için, başlamamış tüm alt turnuvalarda yerleşimi aynı anda karıştır"
+                                        type="button"
+                                    >
+                                        Toplu Kura
+                                    </button>
+                                    <button
+                                        onClick={() => setShowImport(true)}
+                                        className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
+                                    >
+                                        Excel’den Aktar
+                                    </button>
                                 </>
                             )}
                         </div>
                     </div>
+
+                    {/* TOPLU İŞLEM BAR */}
+                    {canManage && selectedCount > 0 && (
+                        <div className="mb-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="text-sm text-emerald-100">
+                                <span className="font-semibold">{selectedCount}</span> alt turnuva seçildi.
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    onClick={handleBulkDelete}
+                                    className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-700 text-white text-xs sm:text-sm"
+                                    type="button"
+                                >
+                                    🗑️ Sil
+                                </button>
+                                <button
+                                    onClick={handleBulkStart}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm"
+                                    type="button"
+                                >
+                                    🚀 Turnuvayı Başlat
+                                </button>
+                                <button
+                                    onClick={handleBulkClone}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm"
+                                    type="button"
+                                >
+                                    🎯 Alt Turnuvayı Klonla
+                                </button>
+                                <button
+                                    onClick={clearSelection}
+                                    className="px-3 py-1.5 rounded-lg bg-[#313844] hover:bg-[#394253] text-white/90 text-xs sm:text-sm"
+                                    type="button"
+                                >
+                                    Seçimi Temizle
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* content states */}
                     {isLoading && <SkeletonList/>}
@@ -865,7 +993,6 @@ export default function TournamentSubListPage() {
                             ) : (
                                 <div className="space-y-4 pb-8">
                                     {(() => {
-                                        // ✨ 1) GÜNE göre grupla
                                         const byDay = new Map<string | 'none', SubWithDay[]>();
                                         for (const s of list as SubWithDay[]) {
                                             const raw = (s.day || '').trim();
@@ -875,7 +1002,6 @@ export default function TournamentSubListPage() {
                                             byDay.set(key, arr);
                                         }
 
-                                        // ✨ 2) Günleri sırala (atanmamış en sona)
                                         const orderedDays = [...byDay.entries()].sort(([a], [b]) => {
                                             if (a === 'none') return 1;
                                             if (b === 'none') return -1;
@@ -885,10 +1011,8 @@ export default function TournamentSubListPage() {
                                         return (
                                             <div className="space-y-10 pb-8">
                                                 {orderedDays.map(([dayKey, dayItems]) => {
-                                                    // ✨ 3) Gün başlığı – calendar rozet + vurgu çizgisi
                                                     const dayLabel = dayKey === 'none' ? 'TARİH ATANMAMIŞ' : formatDayLabel(dayKey);
 
-                                                    // ✨ 4) Gün içinde KORT’a göre grupla
                                                     const byCourt = new Map<number | 'none', SubWithDay[]>();
                                                     for (const s of dayItems) {
                                                         const k = Number.isFinite(s.court_no as any) ? (s.court_no as number) : ('none' as const);
@@ -904,9 +1028,9 @@ export default function TournamentSubListPage() {
 
                                                     return (
                                                         <section key={String(dayKey)}>
-                                                            {/* ── GÜN BAŞLIĞI (şık) ───────────────────────────────────────── */}
+                                                            {/* Gün başlığı */}
                                                             <div className="flex items-center gap-2 mb-4">
-              <span className="
+                                                                <span className="
                 inline-flex items-center gap-2 px-3 py-1.5 rounded-full
                 border border-white/10
                 bg-gradient-to-r from-violet-600/25 via-violet-500/15 to-violet-400/10
@@ -914,25 +1038,23 @@ export default function TournamentSubListPage() {
                 shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(139,92,246,.35)]
                 backdrop-blur-[2px]
               ">
-                {/* takvim simgesi */}
-                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-                  <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" fill="none"/>
-                  <path d="M8 3v4M16 3v4M3.5 10.5h17" stroke="currentColor" strokeWidth="1.6"/>
-                </svg>
-                <span className="text-[13px] font-semibold tracking-wide uppercase">
-                  {dayLabel}
-                </span>
-              </span>
+                                                                    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
+                                                                        <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" fill="none"/>
+                                                                        <path d="M8 3v4M16 3v4M3.5 10.5h17" stroke="currentColor" strokeWidth="1.6"/>
+                                                                    </svg>
+                                                                    <span className="text-[13px] font-semibold tracking-wide uppercase">
+                                                                        {dayLabel}
+                                                                    </span>
+                                                                </span>
                                                                 <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-violet-400/40 via-white/10 to-transparent"/>
                                                             </div>
 
-                                                            {/* ── Gün içindeki kort grupları ─────────────────────────────── */}
+                                                            {/* Gün içi kort grupları */}
                                                             <div className="space-y-8">
                                                                 {orderedCourts.map(([courtKey, arr]) => (
                                                                     <div key={String(courtKey)}>
-                                                                        {/* KORT BAŞLIĞI (mevcut şıklık korunarak) */}
                                                                         <div className="flex items-center gap-2 mb-3">
-                    <span className="
+                                                                        <span className="
                       inline-flex items-center gap-2 px-3 py-1.5 rounded-full
                       border border-white/10
                       bg-gradient-to-r from-emerald-600/25 via-emerald-500/15 to-emerald-400/10
@@ -940,20 +1062,27 @@ export default function TournamentSubListPage() {
                       shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(16,185,129,.35)]
                       backdrop-blur-[2px]
                     ">
-                      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-                        <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" fill="none"/>
-                        <path d="M12 6v12M3 12h18" stroke="currentColor" strokeWidth="1.6"/>
-                      </svg>
-                      <span className="text-[13px] font-semibold tracking-wide uppercase">
+                                                                          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
+                                                                              <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" fill="none"/>
+                                                                              <path d="M12 6v12M3 12h18" stroke="currentColor" strokeWidth="1.6"/>
+                                                                          </svg>
+                                                                          <span className="text-[13px] font-semibold tracking-wide uppercase">
                         {courtKey === 'none' ? 'KORT ATANMAMIŞ' : `KORT-${courtKey}`}
                       </span>
-                    </span>
+                                                                        </span>
                                                                             <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-emerald-400/40 via-white/10 to-transparent"/>
                                                                         </div>
 
                                                                         <div className="space-y-4">
                                                                             {arr.map((s) => (
-                                                                                <Row key={s.id} item={s} onChanged={refetch} canManage={canManage}/>
+                                                                                <Row
+                                                                                    key={s.id}
+                                                                                    item={s}
+                                                                                    onChanged={refetch}
+                                                                                    canManage={canManage}
+                                                                                    selected={selectedSlugs.includes(s.public_slug)}
+                                                                                    onToggleSelect={handleToggleSelect}
+                                                                                />
                                                                             ))}
                                                                         </div>
                                                                     </div>
@@ -965,8 +1094,6 @@ export default function TournamentSubListPage() {
                                             </div>
                                         );
                                     })()}
-
-
                                 </div>
                             )}
                         </>
@@ -1007,7 +1134,22 @@ export default function TournamentSubListPage() {
                     onClose={() => setShowShuffle(false)}
                     onDone={() => {
                         setShowShuffle(false);
-                        refetch();        // listeyi tazele
+                        refetch();
+                    }}
+                />
+            )}
+
+            {/* Toplu Klonlama modalı */}
+            {showCloneModal && canManage && (
+                <BulkCloneModal
+                    open={showCloneModal}
+                    selectedCount={selectedSlugs.length}
+                    selectedSlugs={selectedSlugs}
+                    onClose={() => setShowCloneModal(false)}
+                    onDone={() => {
+                        setShowCloneModal(false);
+                        setSelectedSlugs([]);
+                        refetch();
                     }}
                 />
             )}
@@ -1028,6 +1170,9 @@ function SkeletonList() {
     );
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   ShuffleDay Modal
+   ────────────────────────────────────────────────────────────────────────── */
 function ShuffleDayModal({
                              open,
                              slug,
@@ -1052,7 +1197,6 @@ function ShuffleDayModal({
 
     useEffect(() => {
         if (!open) return;
-        // body scroll kilidi
         const prev = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         return () => { document.body.style.overflow = prev; };
@@ -1086,7 +1230,6 @@ function ShuffleDayModal({
                 { params: { day, seed: seed || undefined } }
             );
             setPhase('success');
-            // kısa bir kutlama sonra kapat
             setTimeout(() => {
                 onDone();
             }, 1000);
@@ -1106,7 +1249,6 @@ function ShuffleDayModal({
                 className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#1e232b] border border-white/10 shadow-2xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* header */}
                 <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
                     <div className="text-white font-semibold">Toplu Kura Çek (Gün)</div>
                     <button
@@ -1119,7 +1261,6 @@ function ShuffleDayModal({
                     </button>
                 </div>
 
-                {/* body */}
                 <div className="px-5 py-5 space-y-4">
                     <div>
                         <label className="block text-sm text-gray-300 mb-2">Tarih</label>
@@ -1176,7 +1317,6 @@ function ShuffleDayModal({
                     )}
                 </div>
 
-                {/* footer */}
                 <div className="px-5 py-4 border-t border-white/10 bg-[#171b22] flex items-center justify-end gap-2">
                     <button
                         onClick={onClose}
@@ -1207,6 +1347,181 @@ function ShuffleDayModal({
                             Tekrar Dene
                         </button>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Bulk Clone Modal
+   ────────────────────────────────────────────────────────────────────────── */
+
+type TournamentOption = {
+    id?: number;
+    public_slug: string;
+    title?: string;
+    name?: string;
+    can_edit?: boolean;
+    [k: string]: any;
+};
+
+function BulkCloneModal({
+                            open,
+                            selectedCount,
+                            selectedSlugs,
+                            onClose,
+                            onDone,
+                        }: {
+    open: boolean;
+    selectedCount: number;
+    selectedSlugs: string[];
+    onClose: () => void;
+    onDone: () => void;
+}) {
+    const [loading, setLoading] = useState(false);
+    const [posting, setPosting] = useState(false);
+    const [options, setOptions] = useState<TournamentOption[]>([]);
+    const [targetSlug, setTargetSlug] = useState<string>('');
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    }, [open]);
+
+    useEffect(() => {
+        if (!open) return;
+        let cancelled = false;
+        setLoading(true);
+        setError(null);
+        api.get('tournaments/')
+            .then(({ data }) => {
+                if (cancelled) return;
+                const arr = Array.isArray(data) ? data as TournamentOption[] : [];
+                // yalnızca editleyebildikleri
+                const editable = arr.filter(t => t.can_edit || t.is_owner || t.is_editor);
+                setOptions(editable);
+                setTargetSlug(editable[0]?.public_slug || '');
+            })
+            .catch(() => {
+                if (!cancelled) return;
+                setError('Turnuvalar yüklenemedi.');
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [open]);
+
+    if (!open) return null;
+
+    const doClone = async () => {
+        if (!targetSlug) {
+            setError('Lütfen hedef ana turnuvayı seçin.');
+            return;
+        }
+        setPosting(true);
+        setError(null);
+        try {
+            for (const slug of selectedSlugs) {
+                await api.post(
+                    `subtournaments/${encodeURIComponent(slug)}/clone/`,
+                    { target_tournament_slug: targetSlug }
+                );
+            }
+            onDone();
+        } catch (e: any) {
+            const msg = e?.response?.data?.detail || 'Klonlama sırasında hata oluştu.';
+            setError(String(msg));
+        } finally {
+            setPosting(false);
+        }
+    };
+
+    const disableConfirm = posting || loading || !targetSlug || !options.length;
+
+    return (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/60" onClick={posting ? undefined : onClose} />
+            <div
+                className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#1e232b] border border-white/10 shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                    <div className="text-white font-semibold">Alt Turnuvaları Klonla</div>
+                    <button
+                        onClick={onClose}
+                        disabled={posting}
+                        className="text-gray-300 hover:text-white disabled:opacity-40"
+                        aria-label="Kapat"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                <div className="px-5 py-5 space-y-4">
+                    <p className="text-sm text-gray-300">
+                        <b>{selectedCount}</b> alt turnuva seçtiniz. Bunları hangi ana turnuvaya klonlamak istersiniz?
+                    </p>
+
+                    {loading ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-200">
+                            <span className="inline-block h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                            Turnuvalar yükleniyor…
+                        </div>
+                    ) : options.length === 0 ? (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-100 px-3 py-2 text-sm">
+                            Düzenleyebildiğiniz ana turnuva bulunamadı.
+                        </div>
+                    ) : (
+                        <div>
+                            <label className="block text-sm text-gray-200 mb-2">Hedef Ana Turnuva</label>
+                            <select
+                                value={targetSlug}
+                                onChange={(e) => setTargetSlug(e.target.value)}
+                                className="w-full bg-[#0f141a] border border-white/10 rounded px-3 py-2 text-sm text-white"
+                            >
+                                {options.map((t) => (
+                                    <option key={t.public_slug} value={t.public_slug}>
+                                        {t.title || t.name || t.public_slug}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {error && (
+                        <div className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-100 px-3 py-2 text-sm">
+                            {error}
+                        </div>
+                    )}
+                </div>
+
+                <div className="px-5 py-4 border-t border-white/10 bg-[#171b22] flex items-center justify-end gap-2">
+                    <button
+                        onClick={onClose}
+                        disabled={posting}
+                        className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253] text-white/90 disabled:opacity-60"
+                        type="button"
+                    >
+                        Vazgeç
+                    </button>
+                    <button
+                        onClick={doClone}
+                        disabled={disableConfirm}
+                        className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-2"
+                        type="button"
+                    >
+                        {posting && (
+                            <span className="inline-block h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                        )}
+                        Klonla
+                    </button>
                 </div>
             </div>
         </div>
