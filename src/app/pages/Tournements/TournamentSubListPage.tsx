@@ -19,6 +19,42 @@ const AGE_CATEGORIES: Record<AgeCatKey, { min: number; max: number | null }> = {
     umitler: {min: 18, max: 20},
     buyukler: {min: 18, max: null},
 };
+type GenderKey = 'M' | 'F';
+
+// Her yaş kategorisi + cinsiyet için ön tanımlı sikletler
+const WEIGHT_PRESETS: Record<AgeCatKey, { M: string[]; F: string[] }> = {
+    buyukler: {
+        // a) BÜYÜK ERKEKLER / b) BÜYÜK BAYANLAR
+        M: ['54', '58', '63', '68', '74', '80', '87'],      // +87 → 87 olarak tutuluyor
+        F: ['46', '49', '53', '57', '62', '67', '73'],      // +73 → 73
+    },
+    umitler: {
+        // c/d) ÜMİTLER ERKEKLER/BAYANLAR – BÜYÜK’lerle aynı
+        M: ['54', '58', '63', '68', '74', '80', '87'],
+        F: ['46', '49', '53', '57', '62', '67', '73'],
+    },
+    gencler: {
+        // e/f) GENÇ ERKEKLER/BAYANLAR
+        M: ['45', '48', '51', '55', '59', '63', '68', '73', '78'], // +78 → 78
+        F: ['42', '44', '46', '49', '52', '55', '59', '63', '68'], // +68 → 68
+    },
+    yildizlar: {
+        // g/h) YILDIZ ERKEKLER/BAYANLAR
+        M: ['33', '37', '41', '45', '49', '53', '57', '61', '65'], // +65 → 65
+        F: ['29', '33', '37', '41', '44', '47', '51', '55', '59'], // +59 → 59
+    },
+    minikler: {
+        // ı) MİNİK BAY-BAYANLAR – Erkek/Kadın için aynı sikletler kullanılıyor
+        M: ['27', '30', '33', '36', '40', '45', '50', '57'],       // +57 → 57
+        F: ['27', '30', '33', '36', '40', '45', '50', '57'],
+    },
+    // Küçükler için şu an tanımlı siklet yok – istersen burayı doldurabilirsin
+    kucukler: {
+        M: [],
+        F: [],
+    },
+};
+
 const inCategory = (s: SubTournament, cat: AgeCatKey) => {
     const c = AGE_CATEGORIES[cat];
     const lo = Number(s.age_min ?? 0);
@@ -90,12 +126,13 @@ const PHASE_BADGE = {
 /* ──────────────────────────────────────────────────────────────────────────
    IMPORT MODAL
    ────────────────────────────────────────────────────────────────────────── */
-type ImportRow = {
-    category: AgeCatKey;
-    weight: string;
-    courtMain: string;
-    courtsDist: string;
+type ImportConfig = {
     key: string;
+    day: string;
+    court: string;
+    ageKey: AgeCatKey;
+    gender: GenderKey;
+    selectedWeights: string[]; // bu satırda seçilmiş sikletler
 };
 
 function ImportModal({
@@ -107,35 +144,82 @@ function ImportModal({
     onImported: () => void;
     publicSlug: string;
 }) {
-    const [file, setFile] = useState<File | null>(null);
-    const [rows, setRows] = useState<ImportRow[]>([
-        { category: 'yildizlar', weight: '32', courtMain: '1', courtsDist: '1', key: safeUUID() },
-        { category: 'gencler',   weight: '45', courtMain: '1', courtsDist: '1,2', key: safeUUID() },
-    ]);
-    const [submitting, setSubmitting] = useState(false);
-    const [msg, setMsg] = useState<string | null>(null);
-    const [result, setResult] = useState<any | null>(null);
-    const [day, setDay] = useState<string>(() => {
+    const todayIso = () => {
         const d = new Date();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
         return `${d.getFullYear()}-${mm}-${dd}`;
-    });
+    };
 
-    function addRow() {
-        setRows((r) => [...r, {category: 'buyukler', weight: '', courtMain: '1', courtsDist: '', key: safeUUID()}]);
-    }
+    const [file, setFile] = useState<File | null>(null);
+    const [configs, setConfigs] = useState<ImportConfig[]>(() => [
+        {
+            key: safeUUID(),
+            day: todayIso(),
+            court: '1',
+            ageKey: 'gencler',
+            gender: 'M',
+            selectedWeights: [],
+        },
+    ]);
+    const [submitting, setSubmitting] = useState(false);
+    const [msg, setMsg] = useState<string | null>(null);
+    const [result, setResult] = useState<any | null>(null);
 
-    function removeRow(idx: number) {
-        setRows((r) => r.filter((_, i) => i !== idx));
-    }
+    const addConfig = () => {
+        const baseDay = configs[0]?.day || todayIso();
+        setConfigs((prev) => [
+            ...prev,
+            {
+                key: safeUUID(),
+                day: baseDay,
+                court: '1',
+                ageKey: 'gencler',
+                gender: 'M',
+                selectedWeights: [],
+            },
+        ]);
+    };
 
-    function parseWeightSingle(s: string) {
-        const t = (s || '').trim().toLowerCase().replace(',', '.');
-        const m = t.match(/^(\d+(?:\.\d+)?)$/);
-        if (!m) return null;
-        return m[1];
-    }
+    const removeConfig = (idx: number) => {
+        setConfigs((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
+    };
+
+    const updateConfig = (idx: number, patch: Partial<ImportConfig>) => {
+        setConfigs((prev) =>
+            prev.map((cfg, i) => (i === idx ? { ...cfg, ...patch } : cfg)),
+        );
+    };
+
+    const weightUsedSomewhereElse = (
+        ageKey: AgeCatKey,
+        gender: GenderKey,
+        weight: string,
+        selfKey: string,
+    ) => {
+        return configs.some(
+            (c) =>
+                c.key !== selfKey &&
+                c.ageKey === ageKey &&
+                c.gender === gender &&
+                c.selectedWeights.includes(weight),
+        );
+    };
+
+    const toggleWeight = (idx: number, weight: string) => {
+        setConfigs((prev) =>
+            prev.map((cfg, i) => {
+                if (i !== idx) return cfg;
+                const selected = cfg.selectedWeights.includes(weight);
+                return {
+                    ...cfg,
+                    selectedWeights: selected
+                        ? cfg.selectedWeights.filter((w) => w !== weight)
+                        : [...cfg.selectedWeights, weight],
+                };
+            }),
+        );
+    };
 
     async function onSubmit() {
         setMsg(null);
@@ -144,32 +228,48 @@ function ImportModal({
             return;
         }
 
+        if (!configs.length) {
+            setMsg('En az bir satır (gün/kort/kategori) ekleyin.');
+            return;
+        }
+
         const categories: any[] = [];
-        for (const r of rows) {
-            const cat = AGE_CATEGORIES[r.category];
-            const w = parseWeightSingle(r.weight);
-            if (!cat || !w) {
-                setMsg('Geçersiz satır: kategori veya kilo değeri hatalı.');
+
+        for (const cfg of configs) {
+            const cat = AGE_CATEGORIES[cfg.ageKey];
+            if (!cat) {
+                setMsg('Geçersiz yaş kategorisi bulunan satır var.');
                 return;
             }
-            const mainCourt = (r.courtMain || '1').trim();
-            const preferred = (r.courtsDist || '')
-                .split(/[,\s]+/)
-                .map(x => x.trim())
-                .filter(Boolean)
-                .map(x => Number(x))
-                .filter(n => Number.isFinite(n) && n > 0);
+            if (!cfg.day) {
+                setMsg('Tüm satırlar için maç günü seçmelisiniz.');
+                return;
+            }
+            const courtNo = Number((cfg.court || '').trim());
+            if (!Number.isFinite(courtNo) || courtNo <= 0) {
+                setMsg('Kort numaraları pozitif bir sayı olmalıdır.');
+                return;
+            }
+            if (!cfg.selectedWeights.length) {
+                setMsg('Her satır için en az bir siklet seçmelisiniz.');
+                return;
+            }
 
-            categories.push({
-                age_min: cat.min,
-                age_max: (cat.max ?? 200),
-                weight: w,
-                court_no: Number(mainCourt),
-                preferred_courts: preferred.length ? preferred : [Number(mainCourt)],
-            });
+            for (const w of cfg.selectedWeights) {
+                categories.push({
+                    age_min: cat.min,
+                    age_max: cat.max ?? 200,
+                    weight: w,
+                    court_no: courtNo,
+                    preferred_courts: [courtNo],
+                    gender: cfg.gender,
+                    day: cfg.day,
+                });
+            }
         }
+
         if (!categories.length) {
-            setMsg('En az bir satır girin.');
+            setMsg('En az bir siklet seçmelisiniz.');
             return;
         }
 
@@ -178,12 +278,12 @@ function ImportModal({
             const fd = new FormData();
             fd.append('file', file);
             fd.append('categories', JSON.stringify(categories));
-            if (day) fd.append('day', day);
+            // Artık day satır bazlı geldiği için top-level day göndermeye gerek yok
 
             const { data } = await api.post(
                 `tournaments/${encodeURIComponent(publicSlug)}/import-subtournaments/`,
                 fd,
-                { headers: { 'Content-Type': 'multipart/form-data' } }
+                { headers: { 'Content-Type': 'multipart/form-data' } },
             );
             setResult(data);
             setMsg(null);
@@ -195,24 +295,40 @@ function ImportModal({
         }
     }
 
+    const renderAgeLabel = (k: AgeCatKey, v: { min: number; max: number | null }) => {
+        if (k === 'buyukler') return 'Büyükler';
+        if (k === 'kucukler') return 'Küçükler';
+        if (v.min === 10) return 'Minikler';
+        if (v.min === 13) return 'Yıldızlar';
+        if (v.min === 15) return 'Gençler';
+        if (v.min === 18 && v.max === 20) return 'Ümitler';
+        return 'Büyükler';
+    };
+
     return (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" aria-modal="true" role="dialog">
-            <div className="absolute inset-0 bg-black/60" onClick={onClose}/>
-            <div
-                className="relative z-10 w-[min(92vw,920px)] max-h-[90vh] overflow-hidden rounded-2xl bg-[#20242c] border border-white/10 shadow-2xl flex flex-col">
-                {submitting && <div className="absolute left-0 top-0 h-0.5 w-full overflow-hidden">
-                    <div className="h-full w-1/3 bg-emerald-400/80 animate-[progress_1.2s_ease-in-out_infinite]"/>
-                </div>}
+            <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+            <div className="relative z-10 w-[min(92vw,920px)] max-h-[90vh] overflow-hidden rounded-2xl bg-[#20242c] border border-white/10 shadow-2xl flex flex-col">
+                {submitting && (
+                    <div className="absolute left-0 top-0 h-0.5 w-full overflow-hidden">
+                        <div className="h-full w-1/3 bg-emerald-400/80 animate-[progress_1.2s_ease-in-out_infinite]" />
+                    </div>
+                )}
+
+                {/* HEADER */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
                     <div className="text-lg font-semibold text-white">Excel’den Alt Turnuva İçe Aktar</div>
-                    <button onClick={onClose} className="text-gray-300 hover:text-white" aria-label="Kapat">✕</button>
+                    <button onClick={onClose} className="text-gray-300 hover:text-white" aria-label="Kapat">
+                        ✕
+                    </button>
                 </div>
 
+                {/* BODY */}
                 <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                    {/* 1) Excel dosyası */}
                     <div>
                         <div className="text-sm text-gray-300 mb-2">Excel Dosyası (XLSX)</div>
-                        <label
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2f37] border border-white/10 cursor-pointer hover:bg-[#303644]">
+                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2f37] border border-white/10 cursor-pointer hover:bg-[#303644]">
                             <input
                                 type="file"
                                 accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -225,107 +341,188 @@ function ImportModal({
                             Gerekli Excel sütunları: <b>ADI SOYADI, CİNSİYET, KULÜP, SİKLET, YAŞ KATEGORİSİ</b>.
                         </div>
                     </div>
-                    <div>
-                        <div className="text-sm text-gray-300 mb-2">Maç Günü</div>
-                        <input
-                            type="date"
-                            value={day}
-                            onChange={(e) => setDay(e.target.value)}
-                            className="w-full max-w-[220px] px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                        />
-                    </div>
-                    <div>
-                        <div className="text-sm text-gray-300 mb-2">Siklet Türleri</div>
-                        <div className="rounded-xl border border-white/10 overflow-hidden">
-                            <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_130px_1fr_56px] bg-black/20 text-xs text-gray-400 px-4 py-2">
-                                <div>Yaş Kategorisi</div>
-                                <div>Kilo (tek)</div>
-                                <div>Ana Kort</div>
-                                <div>Dağıtılacak Kortlar (CSV)</div>
-                                <div className="text-right pr-1">Sil</div>
-                            </div>
 
-                            <div className="divide-y divide-white/10">
-                                {rows.map((r, idx) => (
+                    {/* 2–6) Gün / kort / kategori / cinsiyet / siklet seçimi */}
+                    <div>
+                        <div className="text-sm text-gray-300 mb-1">
+                            Gün / Kort / Yaş Kategorisi / Cinsiyet / Siklet Seçimi
+                        </div>
+                        <div className="text-xs text-gray-400 mb-3">
+                            Her satırda önce <b>maç günü</b> ve <b>kortu</b> seçin, ardından <b>yaş kategorisi</b> ve{' '}
+                            <b>cinsiyete</b> göre uygun sikletleri işaretleyin. Aynı yaş+kilo+cinsiyet kombinasyonu yalnızca bir{' '}
+                            <b>gün+kort</b> altında seçilebilir.
+                        </div>
+
+                        <div className="space-y-4">
+                            {configs.map((cfg, idx) => {
+                                const weightsForCfg =
+                                    WEIGHT_PRESETS[cfg.ageKey]?.[cfg.gender] ?? [];
+
+                                return (
                                     <div
-                                        key={r.key}
-                                        className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_130px_1fr_56px] gap-2 px-4 py-3 items-center"
+                                        key={cfg.key}
+                                        className="rounded-xl border border-white/10 bg-[#1b1f24] p-4 space-y-3"
                                     >
-                                        <select
-                                            value={r.category}
-                                            onChange={(e) => setRows(list => list.map((x, i) => i === idx ? { ...x, category: e.target.value as AgeCatKey } : x))}
-                                            className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                                        >
-                                            {Object.entries(AGE_CATEGORIES).map(([k, v]) => (
-                                                <option key={k} value={k}>
-                                                    {k === 'buyukler' ? 'Büyükler' :
-                                                        v.min === 0 ? 'Küçükler' :
-                                                            v.min === 10 ? 'Minikler' :
-                                                                v.min === 13 ? 'Yıldızlar' :
-                                                                    v.min === 15 ? 'Gençler' :
-                                                                        v.min === 18 && v.max === 20 ? 'Ümitler' : 'Büyükler'}
-                                                </option>
-                                            ))}
-                                        </select>
-
-                                        <input
-                                            placeholder="örn. 32.0"
-                                            value={r.weight}
-                                            onChange={(e) => setRows(list => list.map((x,i) => i===idx ? { ...x, weight: e.target.value } : x))}
-                                            className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                                        />
-
-                                        <input
-                                            placeholder="1"
-                                            value={r.courtMain}
-                                            onChange={(e) => setRows(list => list.map((x,i) => i===idx ? { ...x, courtMain: e.target.value.replace(/\D/g,'') } : x))}
-                                            className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                                        />
-
-                                        <input
-                                            placeholder="1,2"
-                                            value={r.courtsDist}
-                                            onChange={(e) => setRows(list => list.map((x,i) => i===idx ? { ...x, courtsDist: e.target.value } : x))}
-                                            className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                                        />
-
-                                        <div className="flex sm:justify-end">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="text-sm text-gray-200 font-semibold">
+                                                Satır {idx + 1}
+                                            </div>
                                             <button
-                                                onClick={() => removeRow(idx)}
-                                                className="px-3 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm"
                                                 type="button"
+                                                onClick={() => removeConfig(idx)}
+                                                className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white text-xs disabled:opacity-50"
+                                                disabled={configs.length <= 1}
                                             >
                                                 Sil
                                             </button>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
 
-                            <div className="px-4 py-3 bg-black/10">
-                                <button onClick={addRow}
-                                        className="px-3 py-2 rounded bg-[#2a2f37] hover:bg-[#303644] border border-white/10 text-sm">
-                                    + Satır Ekle
+                                        {/* Gün + Kort + Kategori + Cinsiyet */}
+                                        <div className="grid gap-3 md:grid-cols-4">
+                                            <div>
+                                                <div className="text-xs text-gray-300 mb-1">Gün</div>
+                                                <input
+                                                    type="date"
+                                                    value={cfg.day}
+                                                    onChange={(e) =>
+                                                        updateConfig(idx, { day: e.target.value })
+                                                    }
+                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-gray-300 mb-1">Kort</div>
+                                                <input
+                                                    placeholder="1"
+                                                    value={cfg.court}
+                                                    onChange={(e) =>
+                                                        updateConfig(idx, {
+                                                            court: e.target.value.replace(/\D/g, ''),
+                                                        })
+                                                    }
+                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-gray-300 mb-1">Yaş Kategorisi</div>
+                                                <select
+                                                    value={cfg.ageKey}
+                                                    onChange={(e) =>
+                                                        updateConfig(idx, {
+                                                            ageKey: e.target.value as AgeCatKey,
+                                                            selectedWeights: [],
+                                                        })
+                                                    }
+                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                                >
+                                                    {Object.entries(AGE_CATEGORIES).map(([k, v]) => (
+                                                        <option key={k} value={k}>
+                                                            {renderAgeLabel(k as AgeCatKey, v)}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-gray-300 mb-1">Cinsiyet</div>
+                                                <select
+                                                    value={cfg.gender}
+                                                    onChange={(e) =>
+                                                        updateConfig(idx, {
+                                                            gender: e.target.value as GenderKey,
+                                                            selectedWeights: [],
+                                                        })
+                                                    }
+                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                                >
+                                                    <option value="M">Erkek</option>
+                                                    <option value="F">Kadın</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Sikletler */}
+                                        <div>
+                                            <div className="text-xs text-gray-300 mb-1">Sikletler</div>
+                                            {weightsForCfg.length === 0 ? (
+                                                <div className="text-[11px] text-gray-500">
+                                                    Bu yaş kategorisi/cinsiyet için tanımlı siklet yok.
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {weightsForCfg.map((w) => {
+                                                        const selected = cfg.selectedWeights.includes(w);
+                                                        const locked = weightUsedSomewhereElse(
+                                                            cfg.ageKey,
+                                                            cfg.gender,
+                                                            w,
+                                                            cfg.key,
+                                                        );
+                                                        return (
+                                                            <button
+                                                                key={w}
+                                                                type="button"
+                                                                disabled={locked && !selected}
+                                                                onClick={() => toggleWeight(idx, w)}
+                                                                className={[
+                                                                    'px-3 py-1.5 rounded-full text-xs border transition',
+                                                                    selected
+                                                                        ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-50'
+                                                                        : locked
+                                                                            ? 'bg-gray-600/40 border-gray-500 text-gray-200 cursor-not-allowed'
+                                                                            : 'bg-[#111822] border-white/15 text-gray-100 hover:bg-[#172131]',
+                                                                ].join(' ')}
+                                                            >
+                                                                {w} kg
+                                                                {locked && !selected && (
+                                                                    <span className="ml-1 text-[10px] opacity-70">
+                                                                        (başka satırda)
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            <div className="text-[11px] text-gray-400 mt-1">
+                                                Bir siklet aynı yaş+kilo+cinsiyet kombinasyonu için sadece bir gün ve kort
+                                                altında seçilebilir.
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            <div className="pt-2">
+                                <button
+                                    type="button"
+                                    onClick={addConfig}
+                                    className="px-3 py-2 rounded bg-[#2a2f37] hover:bg-[#303644] border border-white/10 text-sm"
+                                >
+                                    + Gün / Kort / Kategori Satırı Ekle
                                 </button>
                             </div>
                         </div>
                     </div>
 
                     {msg && (
-                        <div
-                            className="rounded-lg border px-3 py-2 text-sm border-amber-400/20 bg-amber-500/10 text-amber-200">
+                        <div className="rounded-lg border px-3 py-2 text-sm border-amber-400/20 bg-amber-500/10 text-amber-200">
                             {msg}
                         </div>
                     )}
                 </div>
 
+                {/* FOOTER */}
                 <div className="px-6 py-4 border-t border-white/10 bg-[#1b2027] flex items-center justify-between">
-                    <span
-                        className="text-xs text-gray-400">Her satır için hem erkek hem kadın kategorisi oluşturulur.</span>
+                    <span className="text-xs text-gray-400">
+                        Her satır için, seçtiğiniz cinsiyet ve işaretlediğiniz sikletler için alt turnuvalar
+                        <b> KATEGORİ-KİLO-CİNSİYET</b> formatında oluşturulur.
+                    </span>
                     <div className="flex items-center gap-2">
-                        <button onClick={onClose}
-                                className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253] text-white/90"
-                                type="button">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253] text-white/90"
+                            type="button"
+                        >
                             Vazgeç
                         </button>
                         <button
@@ -334,71 +531,92 @@ function ImportModal({
                             className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-60 inline-flex items-center gap-2"
                             type="button"
                         >
-                            {submitting && <span
-                                className="inline-block h-4 w-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin"/>}
+                            {submitting && (
+                                <span className="inline-block h-4 w-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
+                            )}
                             {submitting ? 'Oluşturuluyor…' : 'Oluştur'}
                         </button>
                     </div>
                 </div>
-            </div>
 
-            {result && (
-                <div className="fixed inset-0 z-[95] flex items-center justify-center">
-                    <div className="absolute inset-0 bg-black/60" onClick={() => setResult(null)}/>
-                    <div
-                        className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#2a2f37] border border-white/10 p-6">
-                        <div className="text-lg font-semibold mb-3">İçe Aktarma Sonucu</div>
-                        <ul className="space-y-1 text-sm text-gray-200">
-                            <li>Alt turnuva: <b>{result.created_subtournaments}</b></li>
-                            <li>Maç oluşturuldu: <b>{result.created_matches}</b></li>
-                            <li>Renumbered: <b>{result.renumbered}</b></li>
-                            <li>Geçersiz lisans satırı: <b>{result.invalid_license_rows}</b></li>
-                            <li>Zorunlu eksik nedeniyle düşen: <b>{result.dropped_rows_missing_required}</b></li>
-                            <li>Kullanılan/Oluşturulan kulüp: <b>{result.clubs_created_or_used}</b></li>
-                        </ul>
+                {/* RESULT MODAL (değişmedi, sadece renumbered şimdi backend'den 0 geliyor) */}
+                {result && (
+                    <div className="fixed inset-0 z-[95] flex items-center justify-center">
+                        <div className="absolute inset-0 bg-black/60" onClick={() => setResult(null)} />
+                        <div className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#2a2f37] border border-white/10 p-6">
+                            <div className="text-lg font-semibold mb-3">İçe Aktarma Sonucu</div>
+                            <ul className="space-y-1 text-sm text-gray-200">
+                                <li>
+                                    Alt turnuva: <b>{result.created_subtournaments}</b>
+                                </li>
+                                <li>
+                                    Maç oluşturuldu: <b>{result.created_matches}</b>
+                                </li>
+                                <li>
+                                    Renumbered: <b>{result.renumbered}</b>
+                                </li>
+                                <li>
+                                    Geçersiz lisans satırı: <b>{result.invalid_license_rows}</b>
+                                </li>
+                                <li>
+                                    Zorunlu eksik nedeniyle düşen: <b>{result.dropped_rows_missing_required}</b>
+                                </li>
+                                <li>
+                                    Kullanılan/Oluşturulan kulüp: <b>{result.clubs_created_or_used}</b>
+                                </li>
+                            </ul>
 
-                        {result.cleaning_report?.base64 && (
-                            <div className="mt-4">
+                            {result.cleaning_report?.base64 && (
+                                <div className="mt-4">
+                                    <button
+                                        onClick={() => {
+                                            const b64 = result.cleaning_report.base64 as string;
+                                            const fname = result.cleaning_report.filename || 'import_cleaning_report.xlsx';
+                                            const bin = atob(b64);
+                                            const bytes = new Uint8Array(bin.length);
+                                            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                                            const blob = new Blob([bytes], {
+                                                type:
+                                                    result.cleaning_report.content_type ||
+                                                    'application/octet-stream',
+                                            });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = fname;
+                                            a.click();
+                                            URL.revokeObjectURL(url);
+                                        }}
+                                        className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text:white text-sm"
+                                    >
+                                        Temizlik Raporunu İndir (XLSX)
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="mt-5 flex justify-end gap-2">
                                 <button
                                     onClick={() => {
-                                        const b64 = result.cleaning_report.base64 as string;
-                                        const fname = result.cleaning_report.filename || 'import_cleaning_report.xlsx';
-                                        const bin = atob(b64);
-                                        const bytes = new Uint8Array(bin.length);
-                                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                                        const blob = new Blob([bytes], {type: result.cleaning_report.content_type || 'application/octet-stream'});
-                                        const url = URL.createObjectURL(blob);
-                                        const a = document.createElement('a');
-                                        a.href = url;
-                                        a.download = fname;
-                                        a.click();
-                                        URL.revokeObjectURL(url);
+                                        setResult(null);
+                                        onImported();
+                                        onClose();
                                     }}
-                                    className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm"
+                                    className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253]"
                                 >
-                                    Temizlik Raporunu İndir (XLSX)
+                                    Tamam
                                 </button>
                             </div>
-                        )}
-
-                        <div className="mt-5 flex justify-end gap-2">
-                            <button onClick={() => {
-                                setResult(null);
-                                onImported();
-                                onClose();
-                            }} className="px-4 py-2 rounded bg-[#313844] hover:bg-[#394253]">
-                                Tamam
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
-            <style>{`
+                )}
+                <style>{`
         @keyframes progress { 0%{transform:translateX(-120%)} 50%{transform:translateX(20%)} 100%{transform:translateX(120%)} }
       `}</style>
+            </div>
         </div>
     );
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    Single Row + çoklu seçim
