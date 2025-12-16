@@ -24,36 +24,90 @@ type GenderKey = 'M' | 'F';
 // Her yaş kategorisi + cinsiyet için ön tanımlı sikletler
 const WEIGHT_PRESETS: Record<AgeCatKey, { M: string[]; F: string[] }> = {
     buyukler: {
-        // a) BÜYÜK ERKEKLER / b) BÜYÜK BAYANLAR
-        M: ['54', '58', '63', '68', '74', '80', '87'],      // +87 → 87 olarak tutuluyor
-        F: ['46', '49', '53', '57', '62', '67', '73'],      // +73 → 73
+        M: ['54', '58', '63', '68', '74', '80', '87', '87+'],
+        F: ['46', '49', '53', '57', '62', '67', '73', '73+'],
     },
     umitler: {
-        // c/d) ÜMİTLER ERKEKLER/BAYANLAR – BÜYÜK’lerle aynı
-        M: ['54', '58', '63', '68', '74', '80', '87'],
-        F: ['46', '49', '53', '57', '62', '67', '73'],
+        M: ['54', '58', '63', '68', '74', '80', '87', '87+'],
+        F: ['46', '49', '53', '57', '62', '67', '73', '73+'],
     },
     gencler: {
-        // e/f) GENÇ ERKEKLER/BAYANLAR
-        M: ['45', '48', '51', '55', '59', '63', '68', '73', '78'], // +78 → 78
-        F: ['42', '44', '46', '49', '52', '55', '59', '63', '68'], // +68 → 68
+        M: ['45', '48', '51', '55', '59', '63', '68', '73', '78', '78+'],
+        F: ['42', '44', '46', '49', '52', '55', '59', '63', '68', '68+'],
     },
     yildizlar: {
-        // g/h) YILDIZ ERKEKLER/BAYANLAR
-        M: ['33', '37', '41', '45', '49', '53', '57', '61', '65'], // +65 → 65
-        F: ['29', '33', '37', '41', '44', '47', '51', '55', '59'], // +59 → 59
+        M: ['33', '37', '41', '45', '49', '53', '57', '61', '65', '65+'],
+        F: ['29', '33', '37', '41', '44', '47', '51', '55', '59', '59+'],
     },
     minikler: {
-        // ı) MİNİK BAY-BAYANLAR – Erkek/Kadın için aynı sikletler kullanılıyor
-        M: ['27', '30', '33', '36', '40', '45', '50', '57'],       // +57 → 57
-        F: ['27', '30', '33', '36', '40', '45', '50', '57'],
+        M: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],
+        F: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],
     },
-    // Küçükler için şu an tanımlı siklet yok – istersen burayı doldurabilirsin
     kucukler: {
-        M: [],
-        F: [],
+        M: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],       // +57 → 57
+        F: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],
     },
 };
+
+const AGE_LABELS: Record<AgeCatKey, string> = {
+    kucukler: 'Küçükler',
+    minikler: 'Minikler',
+    yildizlar: 'Yıldızlar',
+    gencler: 'Gençler',
+    umitler: 'Ümitler',
+    buyukler: 'Büyükler',
+};
+
+function trGenderLabel(g: unknown) {
+    const x = String(g || '').toUpperCase();
+    if (x === 'M') return 'Erkek';
+    if (x === 'F') return 'Kadın';
+    return 'Karma';
+}
+
+function ageCategoryLabelFromMinMax(ageMin: unknown, ageMax: unknown) {
+    const lo = Number(ageMin);
+    const hiNum = Number(ageMax);
+    const hi = Number.isFinite(hiNum) ? hiNum : Infinity;
+
+    // 1) Tam eşleşme (en güvenlisi)
+    for (const k of Object.keys(AGE_CATEGORIES) as AgeCatKey[]) {
+        const c = AGE_CATEGORIES[k];
+        const cMax = c.max ?? Infinity;
+        if (c.min === lo && cMax === hi) return AGE_LABELS[k];
+    }
+
+    // 2) İçerme (backend bazen 200 gibi "üst sınır" döndürür)
+    for (const k of Object.keys(AGE_CATEGORIES) as AgeCatKey[]) {
+        const c = AGE_CATEGORIES[k];
+        const cMax = c.max ?? Infinity;
+        if (Number.isFinite(lo) && lo >= c.min && hi <= cMax) return AGE_LABELS[k];
+    }
+
+    // 3) Fallback
+    if (Number.isFinite(lo) && Number.isFinite(hi) && hi !== Infinity) return `Yaş ${lo}–${hi}`;
+    if (Number.isFinite(lo)) return `Yaş ${lo}+`;
+    return 'Yaş';
+}
+
+function weightLabelMaxOnly(s: SubTournament) {
+    // Eğer backend/model "weight" stringini (87+) taşıyorsa direkt onu göster
+    const raw = (s as any).weight;
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+
+    const wmin = parseNum((s as any).weight_min, NaN);
+    const wmax = parseNum((s as any).weight_max, NaN);
+
+    // Normal sınıflar: sadece max göster (örn: 74)
+    if (Number.isFinite(wmax) && wmax > 0 && wmax < 200) return String(wmax);
+
+    // Açık uç (+) sınıflar: min+
+    if (Number.isFinite(wmin) && wmin > 0) return `${wmin}+`;
+
+    // Fallback
+    if (Number.isFinite(wmax) && wmax > 0) return String(wmax);
+    return '?';
+}
 
 const inCategory = (s: SubTournament, cat: AgeCatKey) => {
     const c = AGE_CATEGORIES[cat];
@@ -126,15 +180,22 @@ const PHASE_BADGE = {
 /* ──────────────────────────────────────────────────────────────────────────
    IMPORT MODAL
    ────────────────────────────────────────────────────────────────────────── */
+type RefereeMini = { id: number; username: string };
+
 type ImportConfig = {
     key: string;
     day: string;
     court: string;
     ageKey: AgeCatKey;
     gender: GenderKey;
-    selectedWeights: string[]; // bu satırda seçilmiş sikletler
-};
+    selectedWeights: string[];
 
+    // Hakem alanları (satır bazlı)
+    referees: RefereeMini[];
+    refInput: string;
+    refFeedback: string | null;
+    busyRef: boolean;
+};
 function ImportModal({
                          onClose,
                          onImported,
@@ -160,6 +221,10 @@ function ImportModal({
             ageKey: 'gencler',
             gender: 'M',
             selectedWeights: [],
+            referees: [],
+            refInput: '',
+            refFeedback: null,
+            busyRef: false,
         },
     ]);
     const [submitting, setSubmitting] = useState(false);
@@ -177,6 +242,10 @@ function ImportModal({
                 ageKey: 'gencler',
                 gender: 'M',
                 selectedWeights: [],
+                referees: [],
+                refInput: '',
+                refFeedback: null,
+                busyRef: false,
             },
         ]);
     };
@@ -221,6 +290,57 @@ function ImportModal({
         );
     };
 
+    const patchConfigByKey = (key: string, fn: (c: ImportConfig) => ImportConfig) => {
+        setConfigs(prev => prev.map(c => (c.key === key ? fn(c) : c)));
+    };
+
+    async function addRefereeForRow(rowKey: string) {
+        const cfgNow = configs.find(c => c.key === rowKey);
+        const u = (cfgNow?.refInput || '').trim();
+
+        patchConfigByKey(rowKey, c => ({ ...c, refFeedback: null }));
+
+        if (!u) return;
+
+        patchConfigByKey(rowKey, c => ({ ...c, busyRef: true, refFeedback: null }));
+
+        try {
+            const { data } = await api.get<{ id: number }>(
+                `users/lookup/${encodeURIComponent(u)}/`
+            );
+            const uid = typeof data?.id === 'number' ? data.id : -1;
+
+            patchConfigByKey(rowKey, c => {
+                if (uid <= 0) return { ...c, refFeedback: 'Kullanıcı bulunamadı.' };
+
+                const exists = c.referees.some(
+                    r => r.id === uid || r.username.toLowerCase() === u.toLowerCase()
+                );
+                if (exists) return { ...c, refFeedback: 'Bu kullanıcı zaten hakem listesinde.' };
+
+                return {
+                    ...c,
+                    referees: [...c.referees, { id: uid, username: u }],
+                    refInput: '',
+                    refFeedback: null,
+                };
+            });
+        } catch {
+            patchConfigByKey(rowKey, c => ({ ...c, refFeedback: 'Sunucu hatası, tekrar deneyin.' }));
+        } finally {
+            patchConfigByKey(rowKey, c => ({ ...c, busyRef: false }));
+        }
+    }
+
+    function removeRefereeFromRow(rowKey: string, uid: number) {
+        patchConfigByKey(rowKey, c => ({
+            ...c,
+            referees: c.referees.filter(r => r.id !== uid),
+            refFeedback: null,
+        }));
+    }
+
+
     async function onSubmit() {
         setMsg(null);
         if (!file) {
@@ -256,7 +376,11 @@ function ImportModal({
             }
 
             for (const w of cfg.selectedWeights) {
-                categories.push({
+                const refIds = (cfg.referees || [])
+                    .map(r => r.id)
+                    .filter((id) => typeof id === 'number' && id > 0);
+
+                const payload: any = {
                     age_min: cat.min,
                     age_max: cat.max ?? 200,
                     weight: w,
@@ -264,7 +388,11 @@ function ImportModal({
                     preferred_courts: [courtNo],
                     gender: cfg.gender,
                     day: cfg.day,
-                });
+                };
+
+                if (refIds.length) payload.referees = refIds; // opsiyonel
+
+                categories.push(payload);
             }
         }
 
@@ -438,6 +566,87 @@ function ImportModal({
                                                     <option value="F">Kadın</option>
                                                 </select>
                                             </div>
+                                        </div>
+
+                                        {/* Hakemler (opsiyonel) */}
+                                        <div className="rounded-xl border border-white/10 bg-[#151a21] p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs text-gray-300 font-semibold">Hakemler (opsiyonel)</div>
+                                                    <div className="text-[11px] text-gray-500 mt-0.5">
+                                                        Bu satırdaki seçili tüm sikletlere uygulanır.
+                                                    </div>
+                                                </div>
+                                                {cfg.referees.length > 0 && (
+                                                    <div className="text-[11px] text-emerald-200 bg-emerald-500/10 border border-emerald-400/20 px-2 py-1 rounded-full">
+                                                        {cfg.referees.length} hakem
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                                                <div className="relative flex-1">
+                                                    <input
+                                                        value={cfg.refInput}
+                                                        onChange={(e) =>
+                                                            updateConfig(idx, { refInput: e.target.value, refFeedback: null })
+                                                        }
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                addRefereeForRow(cfg.key);
+                                                            }
+                                                        }}
+                                                        placeholder="Kullanıcı adı yaz (örn: hakem_ali)"
+                                                        className="w-full px-3 py-2 rounded bg-[#0f141a] border border-white/10 text-white text-sm
+                           placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                    />
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => addRefereeForRow(cfg.key)}
+                                                    disabled={cfg.busyRef || !cfg.refInput.trim()}
+                                                    className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm
+                       disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                                                    title="Kullanıcı adından hakem ekle"
+                                                >
+                                                    {cfg.busyRef && (
+                                                        <span className="inline-block h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                                                    )}
+                                                    Ekle
+                                                </button>
+                                            </div>
+
+                                            {cfg.refFeedback && (
+                                                <div className="mt-2 text-[11px] text-amber-200 bg-amber-500/10 border border-amber-400/20 px-3 py-2 rounded-lg">
+                                                    {cfg.refFeedback}
+                                                </div>
+                                            )}
+
+                                            {cfg.referees.length > 0 && (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {cfg.referees.map((r) => (
+                                                        <span
+                                                            key={r.id}
+                                                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full
+                               bg-white/5 border border-white/10 text-gray-100 text-xs"
+                                                            title={`ID: ${r.id}`}
+                                                        >
+                    <span className="text-emerald-200">@{r.username}</span>
+                    <button
+                        type="button"
+                        onClick={() => removeRefereeFromRow(cfg.key, r.id)}
+                        className="text-gray-300 hover:text-white"
+                        aria-label="Hakemi kaldır"
+                        title="Kaldır"
+                    >
+                        ✕
+                    </button>
+                </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Sikletler */}
@@ -643,8 +852,9 @@ function Row({
     const goEdit = () =>
         nav(`/create?mode=sub&edit=${encodeURIComponent(item.public_slug)}&parent=${item.tournament}`);
 
-    const gender = String(item.gender || '').toUpperCase() === 'M' ? 'Male'
-        : String(item.gender || '').toUpperCase() === 'F' ? 'Female' : 'Mixed';
+    const gender = trGenderLabel(item.gender);
+    const ageCat = ageCategoryLabelFromMinMax(item.age_min, item.age_max);
+    const weightLbl = weightLabelMaxOnly(item);
 
     const confirmDelete = async () => {
         try {
@@ -726,7 +936,7 @@ function Row({
                         <div className="font-semibold text-slate-100 truncate">{item.title}</div>
                         <div className="text-sm text-white/60 flex flex-wrap items-center gap-2 truncate">
                             <span className="truncate">
-                                {gender} · Age {Number(item.age_min || 0)}–{Number(item.age_max || 0)} · Weight {(item.weight_min || '?') + '–' + (item.weight_max || '?')}
+                                {gender} · {ageCat} · {weightLbl} kg
                             </span>
                             {selected && canManage && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
@@ -1493,17 +1703,6 @@ function ShuffleDayModal({
                             Bu tarihteki <b>başlamamış</b> tüm alt turnuvalar aynı anda karıştırılır. Aynı kulüp çakışmaları
                             minimize edilir.
                         </p>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm text-gray-300 mb-2">Opsiyonel seed (deterministik)</label>
-                        <input
-                            placeholder="(boş bırakılabilir)"
-                            value={seed}
-                            onChange={(e) => setSeed(e.target.value)}
-                            disabled={disabled}
-                            className="w-full bg-[#0f141a] border border-white/10 rounded px-3 py-2 text-sm text-white"
-                        />
                     </div>
 
                     {phase === 'countdown' && (

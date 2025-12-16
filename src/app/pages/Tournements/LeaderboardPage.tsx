@@ -54,10 +54,17 @@ const downloadSubAsExcel = async (b: TopRow) => {
 const downloadAllSubsAsExcel = async (list: TopRow[]) => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
+
     list.forEach((b, i) => {
-        const ws = XLSX.utils.json_to_sheet(rowsForTop16(b));
+        const data = rowsForTop16(b);
+        const ws =
+            data.length > 0
+                ? XLSX.utils.json_to_sheet(data)
+                : XLSX.utils.aoa_to_sheet([['Sıralama', 'İsim Soyisim', 'Takım']]);
+
         XLSX.utils.book_append_sheet(wb, ws, safeSheetName(`${i + 1}-${b.sub_title}`));
     });
+
     XLSX.writeFile(wb, safeXlsxFile('tum_alt_turnuvalar', 'ilk16_toplu'));
 };
 
@@ -203,10 +210,7 @@ const handleDownloadCardExcel = async (b: TopRow) => {
     await downloadSubAsExcel(b);
 };
 
-// Tüm alt turnuvaları tek Excel'de (çoklu sayfa) indir
-const handleDownloadAllCardsExcel = async () => {
-    await downloadAllSubsAsExcel(items);
-};
+
 
 type TabKey = 'oyuncu' | 'siklet' | 'genel';
 
@@ -229,6 +233,7 @@ export default function LeaderboardPage() {
 
     const weightBoxRef = useRef<HTMLDivElement>(null);
     const generalBoxRef = useRef<HTMLDivElement>(null);
+    const [downloadingAllExcel, setDownloadingAllExcel] = useState(false);
 
     const cardsGridRef = useRef<HTMLDivElement>(null);
     const handleDownloadCard = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -241,6 +246,52 @@ export default function LeaderboardPage() {
     const handleDownloadAllCards = async () => {
         if (cardsGridRef.current) {
             await downloadElementAsPNG(cardsGridRef.current, safeFile('tum_alt_tur', 'ilk16_toplu'));
+        }
+    };
+
+    const handleDownloadAllCardsExcel = async () => {
+        if (downloadingAllExcel) return;
+        setDownloadingAllExcel(true);
+        try {
+            // 1) items -> map
+            const bySlug = new Map<string, TopRow>();
+            for (const it of items) bySlug.set(it.sub_slug, it);
+
+            // 2) Turnuvadaki tüm alt turnuvaları baz al (subs varsa onu kullan)
+            const baseSubs = subs.length
+                ? subs
+                : items.map((i) => ({ public_slug: i.sub_slug, title: i.sub_title }));
+
+            const baseSlugSet = new Set(baseSubs.map((s) => s.public_slug));
+
+            // 3) Her alt turnuva için TopRow üret:
+            // - varsa leaderboard (items) kullan
+            // - yoksa boş sheet olsun ama title/sub_slug dahil olsun
+            const exportList: TopRow[] = baseSubs.map((s) => {
+                const found = bySlug.get(s.public_slug);
+                if (found) {
+                    return {
+                        ...found,
+                        sub_title: s.title || found.sub_title, // subs title daha doğruysa onu bas
+                    };
+                }
+                return {
+                    sub_slug: s.public_slug,
+                    sub_title: s.title || s.public_slug,
+                    athletes: [],
+                };
+            });
+
+            // 4) Güvenlik: items'ta olup subs'ta olmayanları da ekle (olmazsa bile sorun değil)
+            for (const it of items) {
+                if (!baseSlugSet.has(it.sub_slug)) exportList.push(it);
+            }
+
+            await downloadAllSubsAsExcel(exportList);
+        } catch {
+            alert('Toplu Excel indirilemedi.');
+        } finally {
+            setDownloadingAllExcel(false);
         }
     };
     const handleDownloadWeight = async () => {
@@ -425,9 +476,13 @@ export default function LeaderboardPage() {
                 <div className="mt-2 flex justify-end">
                     <button
                         onClick={handleDownloadAllCardsExcel}
-                        className="px-3 py-1.5 rounded-xl border border-sky-500 bg-sky-500 text-white hover:bg-sky-600 text-sm"
+                        disabled={downloadingAllExcel}
+                        className={[
+                            "px-3 py-1.5 rounded-xl border border-sky-500 bg-sky-500 text-white hover:bg-sky-600 text-sm",
+                            downloadingAllExcel ? "opacity-60 cursor-not-allowed" : "",
+                        ].join(" ")}
                     >
-                        Tüm İlk 16’yı İndir
+                        {downloadingAllExcel ? "Hazırlanıyor…" : "Tüm İlk 16’yı İndir"}
                     </button>
                 </div>
             )}

@@ -17,6 +17,35 @@ const AGE_CATEGORIES: Record<AgeCatKey, { label: string; min: number; max: numbe
     umitler:  { label: 'Ümitler',  min: 18, max: 20 },
     buyukler: { label: 'Büyükler',   min: 18, max: null }, // null = üst sınır yok
 };
+
+// Her yaş kategorisi + cinsiyet için ön tanımlı sikletler
+const WEIGHT_PRESETS: Record<AgeCatKey, { M: string[]; F: string[] }> = {
+    buyukler: {
+        M: ['54', '58', '63', '68', '74', '80', '87', '87+'],
+        F: ['46', '49', '53', '57', '62', '67', '73', '73+'],
+    },
+    umitler: {
+        M: ['54', '58', '63', '68', '74', '80', '87', '87+'],
+        F: ['46', '49', '53', '57', '62', '67', '73', '73+'],
+    },
+    gencler: {
+        M: ['45', '48', '51', '55', '59', '63', '68', '73', '78', '78+'],
+        F: ['42', '44', '46', '49', '52', '55', '59', '63', '68', '68+'],
+    },
+    yildizlar: {
+        M: ['33', '37', '41', '45', '49', '53', '57', '61', '65', '65+'],
+        F: ['29', '33', '37', '41', '44', '47', '51', '55', '59', '59+'],
+    },
+    minikler: {
+        M: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],
+        F: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],
+    },
+    kucukler: {
+        M: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],       // +57 → 57
+        F: ['27', '30', '33', '36', '40', '45', '50', '57', '57+'],
+    },
+};
+
 const categoryFromRange = (lo?: number | null, hi?: number | null): AgeCatKey | '' => {
     const l = Number.isFinite(lo as number) ? Number(lo) : undefined;
     const h = Number.isFinite(hi as number) ? Number(hi) : null;
@@ -24,6 +53,51 @@ const categoryFromRange = (lo?: number | null, hi?: number | null): AgeCatKey | 
         .find(([,v]) => v.min === (l ?? NaN) && v.max === (h ?? null));
     return entry ? entry[0] : '';
 };
+
+function parsePresetToRange(w: string): { min: string; max: string } {
+    const t = (w || '').trim();
+    if (!t) return { min: '', max: '' };
+    if (t.endsWith('+')) {
+        const n = t.slice(0, -1).trim();
+        return { min: n, max: '999' };
+    }
+    return { min: t, max: t };
+}
+
+function prettyWeight(minStr: string, maxStr: string): string {
+    const lo = Number(minStr);
+    const hi = Number(maxStr);
+    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+        if (hi >= 999 && lo > 0) return `${lo}+ kg`;
+        if (lo === hi) return `${lo} kg`;
+        return `${lo}–${hi} kg`;
+    }
+    return `${(minStr || '?')}–${(maxStr || '?')} kg`;
+}
+
+function inferPresetFromRange(
+    ageCat: AgeCatKey | '',
+    gender: 'M' | 'F' | 'O',
+    weightMin: string,
+    weightMax: string
+): string {
+    if (!ageCat || (gender !== 'M' && gender !== 'F')) return '';
+    const opts = WEIGHT_PRESETS[ageCat]?.[gender] ?? [];
+    const lo = Number(weightMin);
+    const hi = Number(weightMax);
+
+    if (Number.isFinite(lo) && Number.isFinite(hi)) {
+        if (hi >= 999) {
+            const cand = `${lo}+`;
+            return opts.includes(cand) ? cand : '';
+        }
+        if (lo === hi) {
+            const cand = String(lo);
+            return opts.includes(cand) ? cand : '';
+        }
+    }
+    return '';
+}
 
 
 export default function TournamentWizard({
@@ -200,6 +274,8 @@ export default function TournamentWizard({
     const [ageCat, setAgeCat] = useState<AgeCatKey | ''>('')
     const [weightMin, setWeightMin] = useState('')
     const [weightMax, setWeightMax] = useState('')
+    const [weightMode, setWeightMode] = useState<'manual' | 'preset'>('preset');
+    const [presetWeight, setPresetWeight] = useState<string>('');
     const [gender, setGender] = useState<'M' | 'F' | 'O'>('M')
     const [subPublic, setSubPublic] = useState(true)
     const [defaultCourt, setDefaultCourt] = useState('')
@@ -227,6 +303,20 @@ export default function TournamentWizard({
                 setWeightMin((data.weight_min ?? '').toString())
                 setWeightMax((data.weight_max ?? '').toString())
                 setGender((data.gender as never) || 'M')
+                const wMinStr = (data.weight_min ?? '').toString();
+                const wMaxStr = (data.weight_max ?? '').toString();
+                const g = ((data.gender as never) || 'M') as 'M'|'F'|'O';
+                const cat = categoryFromRange(lo, hi);
+
+                const inferred = inferPresetFromRange(cat, g, wMinStr, wMaxStr);
+                if (inferred) {
+                    setWeightMode('preset');
+                    setPresetWeight(inferred);
+                } else {
+                    setWeightMode('manual');
+                    setPresetWeight('');
+                }
+
                 setSubPublic(!!data.public)
                 setDefaultCourt(String(data.court_no ?? ''))
                 setSubDay((data.day as string) ?? '') // ← YENİ: API’den oku
@@ -251,6 +341,25 @@ export default function TournamentWizard({
             } catch { /* empty */ }
         })()
     }, [mode, editSlug])
+
+    useEffect(() => {
+        if (weightMode !== 'preset') return;
+        if (!ageCat || (gender !== 'M' && gender !== 'F')) return;
+
+        const opts = WEIGHT_PRESETS[ageCat]?.[gender] ?? [];
+        if (!opts.length) {
+            setPresetWeight('');
+            return;
+        }
+
+        if (!presetWeight || !opts.includes(presetWeight)) {
+            const w = opts[0];
+            setPresetWeight(w);
+            const { min, max } = parsePresetToRange(w);
+            setWeightMin(min);
+            setWeightMax(max);
+        }
+    }, [weightMode, ageCat, gender]);
 
     // Alt turnuva için parentId
     const subParentId = (() => {
@@ -292,6 +401,12 @@ export default function TournamentWizard({
     }, [mode, step, steps, title, seasonYear, startDate, endDate, subTitle, ageCat, subParentId, editSlug, weighEnabled, weighDate, weighStart, weighEnd])
 
     async function save() {
+        const resolvedWeight = (() => {
+            if (mode !== 'sub') return { min: weightMin, max: weightMax };
+            if (weightMode === 'preset' && presetWeight) return parsePresetToRange(presetWeight);
+            return { min: weightMin, max: weightMax };
+        })();
+
         if (mode === 'main') {
             // owner id'yi çöz
             async function resolveOwnerId(): Promise<number> {
@@ -384,8 +499,8 @@ export default function TournamentWizard({
                         const c = ageCat ? AGE_CATEGORIES[ageCat] : null;
                         return c ? { age_min: c.min, age_max: (c.max ?? 999) } : {};
                     })() ),
-                    weight_min: weightMin,
-                    weight_max: weightMax,
+                    weight_min: resolvedWeight.min,
+                    weight_max: resolvedWeight.max,
                     gender,
                     public: subPublic,
                     ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
@@ -417,8 +532,8 @@ export default function TournamentWizard({
                     const c = ageCat ? AGE_CATEGORIES[ageCat] : null;
                     return c ? { age_min: c.min, age_max: (c.max ?? 999) } : {};
                 })() ),
-                weight_min: weightMin,
-                weight_max: weightMax,
+                weight_min: resolvedWeight.min,
+                weight_max: resolvedWeight.max,
                 gender,
                 public: subPublic,
                 ...(defaultCourt ? { court_no: Number(defaultCourt) } : {}),
@@ -566,20 +681,126 @@ export default function TournamentWizard({
                                 options={Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label]))}
                                 placeholder="Seçiniz"
                             />
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <Labeled
-                                    label="Kilo Min (kg)"
-                                    value={weightMin}
-                                    set={(v) => setWeightMin(v.replace(/\D/g, '').slice(0, 3))}
-                                    type="number"
-                                />
-                                <Labeled
-                                    label="Kilo Max (kg)"
-                                    value={weightMax}
-                                    set={(v) => setWeightMax(v.replace(/\D/g, '').slice(0, 3))}
-                                    type="number"
-                                />
-                            </div>
+                            {(() => {
+                                const presetOptions =
+                                    ageCat && (gender === 'M' || gender === 'F')
+                                        ? (WEIGHT_PRESETS[ageCat]?.[gender] ?? [])
+                                        : [];
+
+                                const resolved =
+                                    weightMode === 'preset' && presetWeight
+                                        ? parsePresetToRange(presetWeight)
+                                        : { min: weightMin, max: weightMax };
+
+                                return (
+                                    <div className="rounded-xl border border-white/10 bg-[#23252b] p-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                            <div>
+                                                <div className="text-sm font-medium text-gray-200">Siklet Seçimi</div>
+                                                <div className="text-[11px] text-gray-400 mt-0.5">
+                                                    Manuel kilo aralığı girebilir veya yaş kategorisi/cinsiyete göre hazır siklet seçebilirsin.
+                                                </div>
+                                            </div>
+
+                                            {/* Segmented toggle */}
+                                            <div className="inline-flex rounded-full bg-[#1a1d23] border border-white/10 p-1 w-fit">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setWeightMode('manual')}
+                                                    className={[
+                                                        'px-3 py-1.5 rounded-full text-xs transition',
+                                                        weightMode === 'manual'
+                                                            ? 'bg-sky-600 text-white'
+                                                            : 'text-gray-200 hover:bg-white/5',
+                                                    ].join(' ')}
+                                                >
+                                                    Manuel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setWeightMode('preset')}
+                                                    className={[
+                                                        'px-3 py-1.5 rounded-full text-xs transition',
+                                                        weightMode === 'preset'
+                                                            ? 'bg-emerald-600 text-white'
+                                                            : 'text-gray-200 hover:bg-white/5',
+                                                    ].join(' ')}
+                                                >
+                                                    Hazır Siklet
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Manuel */}
+                                        {weightMode === 'manual' && (
+                                            <div className="mt-4 grid gap-6 md:grid-cols-2">
+                                                <Labeled
+                                                    label="Kilo Min (kg)"
+                                                    value={weightMin}
+                                                    set={(v) => setWeightMin(v.replace(/\D/g, '').slice(0, 3))}
+                                                    type="number"
+                                                />
+                                                <Labeled
+                                                    label="Kilo Max (kg)"
+                                                    value={weightMax}
+                                                    set={(v) => setWeightMax(v.replace(/\D/g, '').slice(0, 3))}
+                                                    type="number"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Preset */}
+                                        {weightMode === 'preset' && (
+                                            <div className="mt-4">
+                                                {(!ageCat || gender === 'O') ? (
+                                                    <div className="text-xs text-gray-400 bg-white/5 border border-white/10 rounded-lg p-3">
+                                                        Hazır siklet için önce <b>Yaş Kategorisi</b> ve <b>Cinsiyet (Erkek/Kadın)</b> seçmelisin.
+                                                    </div>
+                                                ) : presetOptions.length === 0 ? (
+                                                    <div className="text-xs text-gray-400 bg-white/5 border border-white/10 rounded-lg p-3">
+                                                        Bu yaş kategorisi / cinsiyet için tanımlı siklet yok.
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex flex-wrap gap-2 max-h-44 overflow-auto pr-1">
+                                                            {presetOptions.map((w) => {
+                                                                const selected = presetWeight === w;
+                                                                return (
+                                                                    <button
+                                                                        key={w}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setPresetWeight(w);
+                                                                            const { min, max } = parsePresetToRange(w);
+                                                                            setWeightMin(min);
+                                                                            setWeightMax(max);
+                                                                        }}
+                                                                        className={[
+                                                                            'px-3 py-1.5 rounded-full text-xs border transition',
+                                                                            selected
+                                                                                ? 'bg-emerald-500/25 border-emerald-400/60 text-emerald-100'
+                                                                                : 'bg-[#111822] border-white/15 text-gray-100 hover:bg-[#172131]',
+                                                                        ].join(' ')}
+                                                                        title="Siklet seç"
+                                                                    >
+                                                                        {w} kg
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        <div className="mt-2 text-[11px] text-gray-400">
+                                                            Seçili: <b className="text-gray-200">{presetWeight ? `${presetWeight} kg` : '—'}</b>
+                                                            <span className="mx-2 opacity-60">•</span>
+                                                            Backend: <b className="text-gray-200">{resolved.min || '?'}</b>–<b className="text-gray-200">{resolved.max || '?'}</b>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Labeled
                                     label="Varsayılan Kort No (ops.)"
@@ -794,7 +1015,7 @@ function SummaryCard({
                     <div><b>Başlık:</b> {subTitle}</div>
                     <div><b>Cinsiyet:</b> {gender === 'M' ? 'Erkek' : gender === 'F' ? 'Kadın' : 'Karma'}</div>
                     <div><b>Yaş:</b> {ageLabel}</div>
-                    <div><b>Kilo:</b> {(weightMin || '?') + '–' + (weightMax || '?')} kg</div>
+                    <div><b>Kilo:</b> {prettyWeight(weightMin, weightMax)}</div>
                     <div><b>Gün:</b> {day || '—'}</div>
                     <div><b>Herkes:</b> {subPublic ? 'Evet' : 'Hayır'}</div>
                     <div><b>Dağıtım Kortları:</b> {propsSub.prefCourts || '—'}</div>

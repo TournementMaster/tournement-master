@@ -9,22 +9,51 @@ const premiumText =
     'bg-gradient-to-r from-amber-200 via-emerald-200 to-violet-300 bg-clip-text text-transparent';
 
 function genderLabel(g: string) {
-    if (g === 'M') return 'Male';
-    if (g === 'F') return 'Female';
-    return 'Mixed';
+    if (g === 'M') return 'Erkek';
+    if (g === 'F') return 'Kadın';
+    return 'Karma';
+}
+
+function ageCategoryFromAges(ageMin: unknown, ageMax: unknown) {
+    const lo = Number(ageMin);
+    const hiNum = Number(ageMax);
+    const hi = Number.isFinite(hiNum) ? hiNum : Infinity;
+
+    // ÖNCE daha spesifik olanlar
+    if (lo === 0 && hi === 10) return 'Küçükler';
+    if (lo === 10 && hi === 13) return 'Minikler';
+    if (lo === 13 && hi === 15) return 'Yıldızlar';
+    if (lo === 15 && hi === 18) return 'Gençler';
+    if (lo === 18 && hi === 20) return 'Ümitler';
+
+    // Büyükler: genelde age_max 200/Infinity gibi gelir
+    if (lo === 18 && hi >= 200) return 'Büyükler';
+
+    if (Number.isFinite(lo) && Number.isFinite(hi) && hi !== Infinity) return `Yaş ${lo}–${hi}`;
+    if (Number.isFinite(lo)) return `Yaş ${lo}+`;
+    return 'Yaş';
+}
+
+function weightMaxOnly(s: SubTournament) {
+    const raw = (s as any).weight;
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+
+    const wmin = Number((s.weight_min ?? '').toString().replace(',', '.'));
+    const wmax = Number((s.weight_max ?? '').toString().replace(',', '.'));
+
+    if (Number.isFinite(wmax) && wmax > 0 && wmax < 200) return String(wmax);
+    if (Number.isFinite(wmin) && wmin > 0) return `${wmin}+`;
+    if (Number.isFinite(wmax) && wmax > 0) return String(wmax);
+    return '-';
 }
 
 function buildSubtitle(s: SubTournament) {
-    const age =
-        Number.isFinite(s.age_min) && Number.isFinite(s.age_max)
-            ? `Age ${s.age_min}–${s.age_max}`
-            : undefined;
+    const pieces = [
+        genderLabel(s.gender),
+        ageCategoryFromAges(s.age_min, s.age_max),
+        `${weightMaxOnly(s)} kg`,
+    ].filter(Boolean);
 
-    const wmin = (s.weight_min ?? '').toString().trim();
-    const wmax = (s.weight_max ?? '').toString().trim();
-    const weight = wmin || wmax ? `Weight ${wmin || '-'}–${wmax || '-'}` : undefined;
-
-    const pieces = [genderLabel(s.gender), age, weight].filter(Boolean);
     return pieces.join(' · ');
 }
 
