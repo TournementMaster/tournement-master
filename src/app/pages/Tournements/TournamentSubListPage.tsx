@@ -189,6 +189,7 @@ type ImportConfig = {
     ageKey: AgeCatKey;
     gender: GenderKey;
     selectedWeights: string[];
+    isPublic: boolean; // ✅ YENİ (default true)
 
     // Hakem alanları (satır bazlı)
     referees: RefereeMini[];
@@ -225,6 +226,7 @@ function ImportModal({
             refInput: '',
             refFeedback: null,
             busyRef: false,
+            isPublic: true,
         },
     ]);
     const [submitting, setSubmitting] = useState(false);
@@ -246,6 +248,7 @@ function ImportModal({
                 refInput: '',
                 refFeedback: null,
                 busyRef: false,
+                isPublic: true,
             },
         ]);
     };
@@ -388,6 +391,7 @@ function ImportModal({
                     preferred_courts: [courtNo],
                     gender: cfg.gender,
                     day: cfg.day,
+                    ...(!cfg.isPublic ? { public: false } : {}),
                 };
 
                 if (refIds.length) payload.referees = refIds; // opsiyonel
@@ -565,6 +569,45 @@ function ImportModal({
                                                     <option value="M">Erkek</option>
                                                     <option value="F">Kadın</option>
                                                 </select>
+                                            </div>
+                                        </div>
+
+                                        {/* ✅ Görünürlük */}
+                                        <div>
+                                            <div className="text-xs text-gray-300 mb-1">Görünürlük</div>
+                                            <button
+                                                type="button"
+                                                onClick={() => updateConfig(idx, { isPublic: !cfg.isPublic })}
+                                                className={[
+                                                    "w-full px-3 py-2 rounded-lg border text-sm transition flex items-center justify-between",
+                                                    cfg.isPublic
+                                                        ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-100 hover:bg-emerald-500/20"
+                                                        : "bg-red-500/10 border-red-400/30 text-red-100 hover:bg-red-500/15",
+                                                ].join(" ")}
+                                                aria-pressed={cfg.isPublic}
+                                                title={cfg.isPublic ? "Herkese Açık" : "Özel"}
+                                            >
+      <span className="font-medium">
+        {cfg.isPublic ? "Herkese Açık" : "Özel"}
+      </span>
+
+                                                {/* küçük switch görseli */}
+                                                <span
+                                                    className={[
+                                                        "relative inline-flex h-5 w-10 items-center rounded-full transition",
+                                                        cfg.isPublic ? "bg-emerald-500/60" : "bg-red-500/60",
+                                                    ].join(" ")}
+                                                >
+        <span
+            className={[
+                "inline-block h-4 w-4 transform rounded-full bg-white transition",
+                cfg.isPublic ? "translate-x-5" : "translate-x-1",
+            ].join(" ")}
+        />
+      </span>
+                                            </button>
+                                            <div className="text-[11px] text-gray-400 mt-1">
+                                                Özel seçilirse alt turnuva gizli oluşturulur.
                                             </div>
                                         </div>
 
@@ -836,12 +879,14 @@ function Row({
                  canManage,
                  selected,
                  onToggleSelect,
+                 highlightMatchNo,
              }: {
     item: SubTournament;
     onChanged: () => void;
     canManage: boolean;
     selected: boolean;
     onToggleSelect: (slug: string) => void;
+    highlightMatchNo?: number | null; // ✅
 }) {
     const nav = useNavigate();
     const [open, setOpen] = useState(false);
@@ -855,6 +900,11 @@ function Row({
     const gender = trGenderLabel(item.gender);
     const ageCat = ageCategoryLabelFromMinMax(item.age_min, item.age_max);
     const weightLbl = weightLabelMaxOnly(item);
+
+    const matchHit =
+        typeof highlightMatchNo === 'number' &&
+        Array.isArray((item as any).match_nos) &&
+        (item as any).match_nos.some((n: any) => Number(n) === highlightMatchNo);
 
     const confirmDelete = async () => {
         try {
@@ -938,6 +988,11 @@ function Row({
                             <span className="truncate">
                                 {gender} · {ageCat} · {weightLbl} kg
                             </span>
+                            {matchHit && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-sky-500/15 text-sky-200 border border-sky-400/30">
+      Maç #{highlightMatchNo}
+    </span>
+                            )}
                             {selected && canManage && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
                                     Seçili
@@ -946,6 +1001,7 @@ function Row({
                         </div>
                     </div>
                 </div>
+
 
                 {/* SAĞ: chip + menü */}
                 <div className="relative flex items-center gap-2 sm:gap-3 shrink-0">
@@ -1057,6 +1113,15 @@ export default function TournamentSubListPage() {
     const selectedCount = selectedSlugs.length;
     const [showCloneModal, setShowCloneModal] = useState(false);
 
+    const qTrim = q.trim();
+    const qLower = qTrim.toLowerCase();
+    const qMatchNo = /^\d+$/.test(qTrim) ? Number(qTrim) : null;
+
+    const hasMatchNo = (s: SubTournament, no: number) => {
+        const arr = Array.isArray((s as any).match_nos) ? (s as any).match_nos : [];
+        return arr.some((x: any) => Number(x) === no);
+    };
+
     useEffect(() => {
         let cancelled = false;
 
@@ -1167,7 +1232,16 @@ export default function TournamentSubListPage() {
     }
 
     const list = useMemo(() => {
-        const base = (data ?? []).filter((s) => !q ? true : s.title.toLowerCase().includes(q.toLowerCase()));
+        const base = (data ?? []).filter((s) => {
+            if (!qTrim) return true;
+
+            const titleOk = (s.title || '').toLowerCase().includes(qLower);
+
+            if (qMatchNo == null) return titleOk;
+
+            // q sadece sayı ise: başlık eşleşmesi VEYA match_nos içinde o maç no
+            return titleOk || hasMatchNo(s, qMatchNo);
+        });
         const byStatus = base.filter((s) => filters.status === 'all' ? true : getPhaseFromItemOrCache(s, statusMap) === filters.status);
         const byGender = byStatus.filter((s) => filters.gender === 'all' ? true : String(s.gender || '').toUpperCase() === filters.gender);
         const byAge = filters.ageCategory === 'all'
@@ -1183,6 +1257,12 @@ export default function TournamentSubListPage() {
         });
         const arr = [...byWeight];
         arr.sort((a, b) => {
+            if (qMatchNo != null) {
+                const aHas = hasMatchNo(a, qMatchNo);
+                const bHas = hasMatchNo(b, qMatchNo);
+                if (aHas !== bHas) return aHas ? -1 : 1;
+            }
+
             switch (sort) {
                 case 'alpha':
                     return a.title.localeCompare(b.title, 'tr');
@@ -1240,7 +1320,7 @@ export default function TournamentSubListPage() {
                                 <input
                                     value={q}
                                     onChange={(e) => setQ(e.target.value)}
-                                    placeholder="Hızlı ara (başlık)…"
+                                    placeholder="Hızlı ara (başlık veya maç no)…"
                                     className="w-full bg-gray-700/70 px-3 py-2 rounded text-sm placeholder:text-gray-300"
                                     aria-label="Alt turnuva ara"
                                 />
@@ -1509,6 +1589,7 @@ export default function TournamentSubListPage() {
                                                                                     onChanged={refetch}
                                                                                     canManage={canManage}
                                                                                     selected={selectedSlugs.includes(s.public_slug)}
+                                                                                    highlightMatchNo={qMatchNo}
                                                                                     onToggleSelect={handleToggleSelect}
                                                                                 />
                                                                             ))}

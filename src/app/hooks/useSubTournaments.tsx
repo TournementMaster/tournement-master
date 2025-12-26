@@ -14,6 +14,7 @@ export interface SubTournament {
     public_slug: string;
     tournament: number;
     created_at?: string;     // ← sıralama için opsiyonel
+    match_nos?: number[];
 }
 
 export function useSubTournaments(publicSlug: string | undefined) {

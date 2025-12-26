@@ -27,6 +27,73 @@ const safeXlsxFile = (name: string, suffix: string) => {
     return `${base}_${suffix}.xlsx`;
 };
 
+// Excel (Toplu) — Tek sayfa formatı
+type BulkRow = {
+    'KATEGORİ': string;
+    'CİNSİYET': string;
+    'AD-SOYAD': string;
+    'KULÜP': string;
+    'DERECE': number | '';
+};
+
+const genderTRExcel = (g?: string) => (g === 'F' ? 'BAYAN' : g === 'M' ? 'ERKEK' : 'KARMA');
+
+const categoryFromTopRow = (b: TopRow) => {
+    // 1) Önce weight stringinden çözmeye çalış (örn: "46–46 kg", "87–999 kg")
+    const w = (b.weight ?? '').toString().trim().toLowerCase();
+    if (w) {
+        const cleaned = w.replace('kg', '').trim();     // "46–46", "87–999"
+        const parts = cleaned.split('–').map(x => x.trim()).filter(Boolean);
+        const lo = parts[0] ?? '';
+        const hi = parts[1] ?? '';
+        if (lo && (hi === '' || hi === lo)) return `${lo} KG`;
+        if (lo && (hi === '999' || hi === '1000')) return `${lo}+ KG`;
+        if (lo && hi) return `${hi} KG`;
+    }
+
+    // 2) Olmazsa başlıktan yakala (örn: "... 46 KG", "... 87+ KG")
+    const t = (b.sub_title ?? '').toString();
+    const m = t.match(/(\d{2,3}\s*\+?)\s*kg/i);
+    if (m?.[1]) return `${m[1].replace(/\s+/g, '')} KG`;
+
+    // 3) Fallback
+    return (b.sub_title ?? '').toString().trim() || '—';
+};
+
+const rowsForAllTop16SingleSheet = (list: TopRow[]) => {
+    const groups = list.filter(b => (b.athletes ?? []).slice(0, 16).length > 0);
+
+    const out: BulkRow[] = [];
+    groups.forEach((b, idx) => {
+        const cat = categoryFromTopRow(b);
+        const gen = genderTRExcel(String(b.gender || ''));
+
+        b.athletes.slice(0, 16).forEach((a) => {
+            out.push({
+                'KATEGORİ': cat,
+                'CİNSİYET': gen,
+                'AD-SOYAD': a.name || '',
+                'KULÜP': a.club || '',
+                'DERECE': a.rank,
+            });
+        });
+
+        // alt turnuva değişince 1 boş satır
+        if (idx < groups.length - 1) {
+            out.push({
+                'KATEGORİ': '',
+                'CİNSİYET': '',
+                'AD-SOYAD': '',
+                'KULÜP': '',
+                'DERECE': '',
+            });
+        }
+    });
+
+    return out;
+};
+
+
 type TopRow = {
     sub_slug: string;
     sub_title: string;
@@ -55,16 +122,14 @@ const downloadAllSubsAsExcel = async (list: TopRow[]) => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
-    list.forEach((b, i) => {
-        const data = rowsForTop16(b);
-        const ws =
-            data.length > 0
-                ? XLSX.utils.json_to_sheet(data)
-                : XLSX.utils.aoa_to_sheet([['Sıralama', 'İsim Soyisim', 'Takım']]);
+    const data = rowsForAllTop16SingleSheet(list);
 
-        XLSX.utils.book_append_sheet(wb, ws, safeSheetName(`${i + 1}-${b.sub_title}`));
-    });
+    const ws =
+        data.length > 0
+            ? XLSX.utils.json_to_sheet(data)
+            : XLSX.utils.aoa_to_sheet([['KATEGORİ', 'CİNSİYET', 'AD-SOYAD', 'KULÜP', 'DERECE']]);
 
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName('ILK16'));
     XLSX.writeFile(wb, safeXlsxFile('tum_alt_turnuvalar', 'ilk16_toplu'));
 };
 
