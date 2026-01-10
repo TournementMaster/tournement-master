@@ -976,29 +976,26 @@ export default memo(function InteractiveBracket() {
             const isStarted = startedRef.current;
             const keyOf = (rIdx: number, iIdx: number) => `${rIdx + 1}:${iIdx + 1}`;
 
-            // Bir match'in winner'ını (athlete id olarak) hesapla
-            const winnerIdOf = (m: Match): number | null => {
-                const isVoid =
-                    (m as any)?.meta?.void === true ||
-                    (m as any)?.meta?.manual === -1;
+            // ✅ "değişti mi" kıyasını sadece meta üzerinden yap
+            // (players[].winner propagate tarafından otomatik set edilebildiği için KULLANMA)
+            const choiceOf = (m: Match): -1 | 0 | 1 | undefined => {
+                if (!m?.meta) return undefined;
 
-                if (isVoid) return -1;
+                // void öncelikli
+                if (m.meta.void === true || m.meta.manual === -1) return -1;
 
-                const a1 = getAthleteIdFor(m.players[0]);
-                const a2 = getAthleteIdFor(m.players[1]);
+                if (m.meta.manual === 0 || m.meta.manual === 1) return m.meta.manual;
 
-                if (m.players[0]?.winner) return a1;
-                if (m.players[1]?.winner) return a2;
-                return null;
+                // meta.manual yoksa -> kullanıcı seçim yapmamış say
+                return undefined;
             };
 
             // Backend'den en son gelen matristeki winner'ları baz al (raw backendMatrixRef)
-            const baselineWinnerByKey = new Map<string, number | null>();
+            const baselineChoiceByKey = new Map<string, -1 | 0 | 1 | undefined>();
             const baseMat: Matrix = backendMatrixRef.current || [];
             for (let r = 0; r < baseMat.length; r++) {
                 for (let i = 0; i < (baseMat[r] || []).length; i++) {
-                    const bm = baseMat[r][i];
-                    baselineWinnerByKey.set(keyOf(r, i), winnerIdOf(bm));
+                    baselineChoiceByKey.set(keyOf(r, i), choiceOf(baseMat[r][i]));
                 }
             }
 
@@ -1007,10 +1004,9 @@ export default memo(function InteractiveBracket() {
                     const a1 = getAthleteIdFor(m.players[0]);
                     const a2 = getAthleteIdFor(m.players[1]);
 
-                    const currentWinnerId = winnerIdOf(m);
-
-                    const baselineWinnerId = baselineWinnerByKey.get(keyOf(rIdx, iIdx)) ?? null;
-                    const winnerChanged = currentWinnerId !== baselineWinnerId;
+                    const currentChoice = choiceOf(m);
+                    const baselineChoice = baselineChoiceByKey.get(keyOf(rIdx, iIdx));
+                    const winnerChanged = currentChoice !== baselineChoice;
 
                     const metaCourt = (() => {
                         const raw = (m.meta?.court as any)?.toString?.().trim?.();
@@ -1030,12 +1026,17 @@ export default memo(function InteractiveBracket() {
                         sub_tournament: subId,
                     };
 
-                    // ✅ winner sadece değiştiyse gönder:
-                    // - winnerChanged=true ve currentWinnerId null ise -> { winner: null } (temizle)
-                    // - winnerChanged=true ve currentWinnerId dolu ise -> { winner: <id> }
-                    // - winnerChanged=false ise -> winner key'i yok (omit)
+                    // ✅ winner sadece değiştiyse gönder
                     if (winnerChanged) {
-                        row.winner = currentWinnerId;
+                        if (currentChoice === -1) {
+                            row.winner = -1;              // void
+                        } else if (currentChoice === 0) {
+                            row.winner = a1 ?? null;      // 1. sporcu
+                        } else if (currentChoice === 1) {
+                            row.winner = a2 ?? null;      // 2. sporcu
+                        } else {
+                            row.winner = null;            // temizle
+                        }
                     }
 
                     if (!isStarted) {
