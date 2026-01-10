@@ -170,6 +170,7 @@ export default memo(function BracketCanvas({
     .done {opacity:.92}
     .tick {fill:#22c55e}
     .hl { fill:#fff; stroke:#22d3ee; stroke-width:1.2; paint-order:stroke fill }
+    .void { opacity: .55 }
 
     .mno-bg {
       fill: rgba(34,197,94,.14);
@@ -235,7 +236,8 @@ export default memo(function BracketCanvas({
                     const mid  = BASE + span + i * span * 2;
                     const y1   = mid - span / 2;
                     const y2   = mid + span / 2;
-                    const finished = m.players.some(p => p.winner != null);
+                    const isVoid = (m as any)?.meta?.void === true;
+                    const finished = isVoid || m.players.some(p => p.winner != null);
 
                     const x0 = x0base;
                     const BOX_W_EFF = roundW;
@@ -261,7 +263,10 @@ export default memo(function BracketCanvas({
                     const dims   = (typeof mnoVal === 'number') ? badgeDims(mnoVal, MNO_FONT) : null;
 
                     return (
-                        <g key={`${r}-${i}`} className={finished ? 'done' : ''}>
+                        <g
+                            key={`${r}-${i}`}
+                            className={`${finished ? 'done' : ''} ${isVoid ? 'void' : ''}`.trim()}
+                        >
                             {showMatchNo && typeof mnoVal === 'number' && dims && (
                                 <g transform={`translate(${x0 - 34}, ${mid}) rotate(-90)`}>
                                     <rect className="mno-bg" x={-dims.w/2} y={-dims.h/2} width={dims.w} height={dims.h} rx={dims.rx}/>

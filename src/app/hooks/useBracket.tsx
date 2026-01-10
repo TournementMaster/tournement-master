@@ -21,9 +21,9 @@ export interface Meta {
     teamNames?: [string, string];
     scores?: [number, number][];
     manual?: 0 | 1;
-    // ↓ eklendi
     time?: string;   // "HH.MM" (örn. "14.00")
     court?: string;  // "1", "A", "3B" vb.
+    void?: boolean;
 }
 
 export interface Match  { players:Player[]; meta?:Meta; }

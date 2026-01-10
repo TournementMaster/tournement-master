@@ -14,10 +14,11 @@ export interface Player {
 }
 export interface Meta {
     scores?: [number, number][];
-    manual?: 0 | 1;
+    manual?: -1 | 0 | 1;
     time?: string;
     court?: string;
     matchNo?: number;
+    void?: boolean;
 }
 export interface Match {
     players: Player[];
@@ -50,6 +51,7 @@ type ApiMatch = {
     athlete2: number | null;
     winner: number | null;
     match_no?: number | null;
+    void?: boolean | null;
 };
 
 /* ------------------------------- Helpers --------------------------------- */
@@ -172,7 +174,19 @@ export function propagate(matrix: Matrix, opts?: { autoByes?: boolean }): Matrix
                 else if (bBye && !aBye) winner = 0;
             }
 
-            if (winner == null && m.meta?.manual != null) winner = m.meta.manual as 0 | 1;
+            // ✅ manual: -1 (void) ise winner seçme / üst tura taşıma
+            if (winner == null && m.meta?.manual != null) {
+                if (m.meta.manual === -1) {
+                    (m.meta ??= {});
+                    m.meta.void = true;
+
+                    m.players[0] = { ...m.players[0], winner: undefined };
+                    m.players[1] = { ...m.players[1], winner: undefined };
+                    continue; // ✅ propagate etme
+                } else {
+                    winner = m.meta.manual; // 0 | 1
+                }
+            }
             if (winner == null && m.meta?.scores?.length) {
                 const [a, b] = m.meta.scores[0];
                 if (a !== b) winner = a > b ? 0 : 1;
@@ -323,7 +337,20 @@ export function buildFromBackend(
             if (typeof m.match_no === 'number' && Number.isFinite(m.match_no))
                 meta.matchNo = m.match_no;
 
-            if (m.winner != null) {
+            // ✅ void state’i: yeni backend (void:true) + eski backend (winner:-1) uyumlu
+            const isVoid = (m.void === true) || (m.winner === -1);
+
+            if (isVoid) {
+                meta.void = true;
+                meta.manual = -1;
+
+                // ⚠️ IMPORTANT: winner flag’leri undefined kalmalı.
+                // false yaparsan "finished" hesaplarına girer ve UI’da yanlış davranır.
+                players[0] = { ...players[0], winner: undefined };
+                players[1] = { ...players[1], winner: undefined };
+            } else if (m.winner != null) {
+                meta.void = false;
+
                 if (m.winner === m.athlete1) {
                     players[0] = { ...players[0], winner: true };
                     players[1] = { ...players[1], winner: false };
@@ -332,7 +359,16 @@ export function buildFromBackend(
                     players[1] = { ...players[1], winner: true };
                     players[0] = { ...players[0], winner: false };
                     meta.manual = 1;
+                } else {
+                    // winner dolu ama athlete1/2 ile eşleşmiyor → güvenli davran
+                    players[0] = { ...players[0], winner: undefined };
+                    players[1] = { ...players[1], winner: undefined };
                 }
+            } else {
+                // winner null ve void değil → seçili yok
+                meta.void = false;
+                players[0] = { ...players[0], winner: undefined };
+                players[1] = { ...players[1], winner: undefined };
             }
 
             // güvenli yerleştir

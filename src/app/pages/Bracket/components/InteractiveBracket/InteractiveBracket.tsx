@@ -87,16 +87,18 @@ function BigTick({ checked, onClick, title }: { checked: boolean; onClick: () =>
 }
 
 function WinnerModal({
-                         open, match, onPick, onReset, onClose,
+                         open, match, onPick, onReset, onVoid, onClose,
                      }: {
     open: boolean;
     match: Match | null;
     onPick: (manualIndex: 0 | 1) => void;
     onReset: () => void;
+    onVoid: () => void;
     onClose: () => void;
 }) {
     if (!open || !match) return null;
     const { players, meta } = match;
+    const isVoid = (match.meta as any)?.void === true;
     const winnerIdx =
         typeof meta?.manual === 'number'
             ? meta!.manual
@@ -114,32 +116,46 @@ function WinnerModal({
                 </div>
 
                 <div className="p-5 space-y-4">
-                    {players.map((p, idx) => (
-                        <div key={idx} className="flex items-center gap-3">
-                            <div className="text-white/70 w-6 text-right">{idx === 0 ? '1' : '2'}</div>
-                            <div className="flex-1 min-w-0">
-                                {(() => {
-                                    return (
-                                        <div className="w-full rounded-md bg-[#1f2229] px-4 py-2 select-none">
-                                            <div className="text-white font-medium truncate">{p?.name || '—'}</div>
-                                            {p?.club ? (
-                                                <div className="mt-0.5 text-xs text-emerald-300/90 font-medium truncate">
-                                                    {p.club}
-                                                </div>
-                                            ) : null}
-                                        </div>
-                                    );
-                                })()}
-
+                    {([0, 1] as const).map((idx) => {
+                        const p = players[idx];
+                        return (
+                            <div key={idx} className="flex items-center gap-3">
+                                <div className="text-white/70 w-6 text-right">{idx === 0 ? '1' : '2'}</div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="w-full rounded-md bg-[#1f2229] px-4 py-2 select-none">
+                                        <div className="text-white font-medium truncate">{p?.name || '—'}</div>
+                                        {p?.club ? (
+                                            <div className="mt-0.5 text-xs text-emerald-300/90 font-medium truncate">
+                                                {p.club}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                <BigTick
+                                    checked={winnerIdx === idx}
+                                    title="Kazanan olarak işaretle"
+                                    onClick={() => onPick(idx)}
+                                />
                             </div>
-                            <BigTick
-                                checked={winnerIdx === idx}
-                                title="Kazanan olarak işaretle"
-                                onClick={() => onPick(idx as 0 | 1)}
-                            />
-                        </div>
-                    ))}
+                        );
+                    })}
 
+                    <div className="flex items-center gap-3 pt-2 border-t border-white/10">
+                        <div className="text-white/70 w-6 text-right">Ø</div>
+                        <div className="flex-1 min-w-0">
+                            <div className="w-full rounded-md bg-[#1f2229] px-4 py-2 select-none">
+                                <div className="text-white font-medium truncate">Boş geçti</div>
+                                <div className="mt-0.5 text-xs text-white/60 font-medium truncate">
+                                    İki sporcu da gelmedi
+                                </div>
+                            </div>
+                        </div>
+                        <BigTick
+                            checked={isVoid}
+                            title="Boş geçti olarak işaretle"
+                            onClick={() => onVoid()}
+                        />
+                    </div>
                     <div className="pt-2 flex items-center justify-between">
                         <button type="button" onClick={onReset} className="text-sm text-red-400 hover:text-red-300">
                             Reset
@@ -919,7 +935,7 @@ export default memo(function InteractiveBracket() {
             }
 
             // 5) Sporcuları (athletes/bulk) artık kulüp id’leriyle gönder
-            let seedToAthlete: Record<number, number> = {};
+            const seedToAthlete: Record<number, number> = {};
             if (!startedRef.current) {
                 const athletePayload = sorted.map((p) => {
                     const k = normClubKey(p.club || '');
@@ -958,22 +974,53 @@ export default memo(function InteractiveBracket() {
             };
 
             const isStarted = startedRef.current;
+            const keyOf = (rIdx: number, iIdx: number) => `${rIdx + 1}:${iIdx + 1}`;
+
+            // Bir match'in winner'ını (athlete id olarak) hesapla
+            const winnerIdOf = (m: Match): number | null => {
+                const isVoid =
+                    (m as any)?.meta?.void === true ||
+                    (m as any)?.meta?.manual === -1;
+
+                if (isVoid) return -1;
+
+                const a1 = getAthleteIdFor(m.players[0]);
+                const a2 = getAthleteIdFor(m.players[1]);
+
+                if (m.players[0]?.winner) return a1;
+                if (m.players[1]?.winner) return a2;
+                return null;
+            };
+
+            // Backend'den en son gelen matristeki winner'ları baz al (raw backendMatrixRef)
+            const baselineWinnerByKey = new Map<string, number | null>();
+            const baseMat: Matrix = backendMatrixRef.current || [];
+            for (let r = 0; r < baseMat.length; r++) {
+                for (let i = 0; i < (baseMat[r] || []).length; i++) {
+                    const bm = baseMat[r][i];
+                    baselineWinnerByKey.set(keyOf(r, i), winnerIdOf(bm));
+                }
+            }
 
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
                     const a1 = getAthleteIdFor(m.players[0]);
                     const a2 = getAthleteIdFor(m.players[1]);
-                    const winner = m.players[0]?.winner ? a1 : m.players[1]?.winner ? a2 : null;
+
+                    const currentWinnerId = winnerIdOf(m);
+
+                    const baselineWinnerId = baselineWinnerByKey.get(keyOf(rIdx, iIdx)) ?? null;
+                    const winnerChanged = currentWinnerId !== baselineWinnerId;
+
                     const metaCourt = (() => {
                         const raw = (m.meta?.court as any)?.toString?.().trim?.();
                         const n = raw ? parseInt(raw, 10) : NaN;
                         return Number.isFinite(n) ? n : null;
                     })();
 
-                    // court_no önceliği: alt turnuva court_no → meta.court → null
                     const court_no_final = (courtNo ?? metaCourt) ?? null;
-
                     const scheduled_at = timeToISO(m.meta?.time);
+
                     const row: any = {
                         round_no: rIdx + 1,
                         position: iIdx + 1,
@@ -981,12 +1028,21 @@ export default memo(function InteractiveBracket() {
                         scheduled_at,
                         extra_note: '',
                         sub_tournament: subId,
-                        winner: winner ?? null,
                     };
+
+                    // ✅ winner sadece değiştiyse gönder:
+                    // - winnerChanged=true ve currentWinnerId null ise -> { winner: null } (temizle)
+                    // - winnerChanged=true ve currentWinnerId dolu ise -> { winner: <id> }
+                    // - winnerChanged=false ise -> winner key'i yok (omit)
+                    if (winnerChanged) {
+                        row.winner = currentWinnerId;
+                    }
+
                     if (!isStarted) {
                         row.athlete1 = a1;
                         row.athlete2 = a2;
                     }
+
                     return row;
                 })
             );
@@ -1172,10 +1228,38 @@ export default memo(function InteractiveBracket() {
                 players: match.players.map(p => ({ ...p })),
                 meta: match.meta ? { ...match.meta } : {},
             })));
-            copy[r][m].meta = { ...(copy[r][m].meta ?? {}), manual: idx };
+            copy[r][m].meta = { ...(copy[r][m].meta ?? {}), manual: idx, void: false, winnerTouched: true };
+
             clearUpstream(copy, r, m);
             return propagate(copy, { autoByes: startedRef.current }); // başlamadıysa BYE yok
         });
+        setDirty(true);
+    };
+
+    const setVoidMatch = (r: number, m: number) => {
+        setRounds(prev => {
+            const copy = prev.map(rnd => rnd.map(match => ({
+                players: match.players.map(p => ({ ...p })),
+                meta: match.meta ? { ...match.meta } : {},
+            })));
+
+            // 1) void işaretle
+            (copy[r][m].meta ??= {});
+            (copy[r][m].meta as any).void = true;
+
+            // 2) manuel/scores gibi winner türeten şeyleri kaldır
+            delete (copy[r][m].meta as any).manual;
+            delete (copy[r][m].meta as any).scores;
+
+            // 3) iki oyuncunun winner bayrağını temizle
+            copy[r][m].players = copy[r][m].players.map(p => ({ ...p, winner: undefined }));
+
+            // 4) üst turları da temizle
+            clearUpstream(copy, r, m);
+
+            return propagate(copy, { autoByes: startedRef.current });
+        });
+
         setDirty(true);
     };
 
@@ -1189,6 +1273,7 @@ export default memo(function InteractiveBracket() {
             (copy[r][m].meta ??= {});
             delete copy[r][m].meta!.manual;
             delete copy[r][m].meta!.scores;
+            delete (copy[r][m].meta as any).void;
             clearUpstream(copy, r, m);
             return propagate(copy, { autoByes: startedRef.current }); // başlamadıysa BYE yok
         });
@@ -1566,6 +1651,7 @@ export default memo(function InteractiveBracket() {
                     open={true}
                     match={rounds[selected.r][selected.m]}
                     onPick={(idx) => setManualWinner(selected.r, selected.m, idx)}
+                    onVoid={() => setVoidMatch(selected.r, selected.m)}
                     onReset={() => resetMatch(selected.r, selected.m)}
                     onClose={() => setSelected(null)}
                 />
