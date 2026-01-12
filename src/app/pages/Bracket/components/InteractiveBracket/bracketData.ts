@@ -17,7 +17,10 @@ export interface Meta {
     manual?: -1 | 0 | 1;
     time?: string;
     court?: string;
-    matchNo?: number;
+    matchNo?: number;             // backend match_no (orijinal)
+    movedMatchNo?: string | null; // ✅ taşınan (örn "405.1")
+    matchId?: number;             // ✅ conflict kontrolünde "kendisi mi?" ayırt etmek için
+    mnoAccepted?: boolean; // ✅ çakışmayı kullanıcı kabul etti mi?
     void?: boolean;
 }
 export interface Match {
@@ -51,6 +54,8 @@ type ApiMatch = {
     athlete2: number | null;
     winner: number | null;
     match_no?: number | null;
+    moved_match_no?: string | number | null;
+
     void?: boolean | null;
 };
 
@@ -334,8 +339,15 @@ export function buildFromBackend(
             const t = toHHMM(m.scheduled_at);
             if (t) meta.time = t;
             if (m.court_no != null) meta.court = String(m.court_no);
-            if (typeof m.match_no === 'number' && Number.isFinite(m.match_no))
+            if (typeof m.match_no === 'number' && Number.isFinite(m.match_no)) {
                 meta.matchNo = m.match_no;
+            }
+
+            const movedRaw = (m as any).moved_match_no;
+            if (movedRaw !== null && movedRaw !== undefined) {
+                const s = String(movedRaw).trim();
+                if (s) meta.movedMatchNo = s;
+            }
 
             // ✅ void state’i: yeni backend (void:true) + eski backend (winner:-1) uyumlu
             const isVoid = (m.void === true) || (m.winner === -1);

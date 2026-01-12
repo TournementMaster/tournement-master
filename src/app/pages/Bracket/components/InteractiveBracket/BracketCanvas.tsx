@@ -65,8 +65,8 @@ function luminance(c: string): number {
     return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
 }
 
-function badgeDims(matchNo: number, fontPx: number) {
-    const digits = String(matchNo ?? '').length || 1;
+function badgeDims(label: string, fontPx: number) {
+    const digits = String(label ?? '').length || 1;
     const padX = Math.round(fontPx * 0.90);
     const textW = Math.round(digits * fontPx * 0.70);
     const w = Math.max(36, textW + padX * 2);
@@ -74,6 +74,7 @@ function badgeDims(matchNo: number, fontPx: number) {
     const rx = Math.max(7, Math.round(h * 0.35));
     return { w, h, rx };
 }
+
 
 const normalizeClub = (club?: string) => {
     const s = fixTurkishIDot((club || '').trim()).toLocaleLowerCase('tr');
@@ -189,6 +190,29 @@ export default memo(function BracketCanvas({
       text-rendering: geometricPrecision;
       fill:#eafff3;
     }
+    .mno-bg-moved{
+  fill: rgba(245,158,11,.16);
+  stroke: rgba(245,158,11,.95);
+  stroke-width: 1.8;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+.mno-txt-moved{
+  font-weight: 900;
+  font-size: ${MNO_FONT}px;
+  letter-spacing:.35px;
+  dominant-baseline:middle;
+  paint-order: stroke fill;
+  stroke: rgba(0,0,0,.45);
+  stroke-width:.7;
+  text-rendering: geometricPrecision;
+  fill:#fff7ed;
+}
+.mno-moved-mark{
+  font-size: ${Math.max(10, Math.round(MNO_FONT * 0.75))}px;
+  font-weight: 900;
+  fill: rgba(245,158,11,.95);
+}
 
     .ptag-shadow { filter:url(#tagShadow); }
     .ptag-ring   { fill:none; stroke:rgba(255,255,255,.75); stroke-width:.9; }
@@ -259,21 +283,43 @@ export default memo(function BracketCanvas({
                         ? Math.max(BOX_H, (HALF_CORE * 2) + (STACK_PAD_Y * 2))
                         : BOX_H;
 
-                    const mnoVal = (m as any)?.meta?.matchNo as number | undefined;
-                    const dims   = (typeof mnoVal === 'number') ? badgeDims(mnoVal, MNO_FONT) : null;
+                    const movedNo = (m as any)?.meta?.movedMatchNo as string | null | undefined;
+                    const baseNo  = (m as any)?.meta?.matchNo as number | undefined;
+
+                    const displayNo = (movedNo != null && String(movedNo).trim())
+                        ? String(movedNo).trim()
+                        : (typeof baseNo === 'number' ? String(baseNo) : undefined);
+
+                    const isMoved = !!(movedNo != null && String(movedNo).trim());
+                    const dims = displayNo ? badgeDims(displayNo, MNO_FONT) : null;
 
                     return (
                         <g
                             key={`${r}-${i}`}
                             className={`${finished ? 'done' : ''} ${isVoid ? 'void' : ''}`.trim()}
                         >
-                            {showMatchNo && typeof mnoVal === 'number' && dims && (
+                            {showMatchNo && displayNo && dims && (
                                 <g transform={`translate(${x0 - 34}, ${mid}) rotate(-90)`}>
-                                    <rect className="mno-bg" x={-dims.w/2} y={-dims.h/2} width={dims.w} height={dims.h} rx={dims.rx}/>
-                                    <text className="mno-txt" x={0} y={0} textAnchor="middle">{mnoVal}</text>
-                                    <title>{`Maç ${mnoVal}`}</title>
+                                    <rect
+                                        className={isMoved ? "mno-bg-moved" : "mno-bg"}
+                                        x={-dims.w/2} y={-dims.h/2} width={dims.w} height={dims.h} rx={dims.rx}
+                                    />
+                                    <text
+                                        className={isMoved ? "mno-txt-moved" : "mno-txt"}
+                                        x={0} y={0} textAnchor="middle"
+                                    >
+                                        {displayNo}
+                                        {isMoved ? <tspan className="mno-moved-mark" dx="6">↪</tspan> : null}
+                                    </text>
+
+                                    <title>
+                                        {isMoved
+                                            ? `Taşındı: ${displayNo} (Asıl: ${typeof baseNo === 'number' ? baseNo : '—'})`
+                                            : `Maç ${displayNo}`}
+                                    </title>
                                 </g>
                             )}
+
 
                             {/* Kutu ve yan şeritler */}
                             <rect className="rect" x={x0} y={mid - BOX_H_EFF/2} width={BOX_W_EFF} height={BOX_H_EFF} rx={CORNER}/>

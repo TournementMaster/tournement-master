@@ -88,6 +88,9 @@ function BigTick({ checked, onClick, title }: { checked: boolean; onClick: () =>
 
 function WinnerModal({
                          open, match, onPick, onReset, onVoid, onClose,
+                         tournamentSlug,
+                         day,
+                         onSetMovedMatchNo,
                      }: {
     open: boolean;
     match: Match | null;
@@ -95,7 +98,122 @@ function WinnerModal({
     onReset: () => void;
     onVoid: () => void;
     onClose: () => void;
+    tournamentSlug: string | null;
+    day: string | null;
+    onSetMovedMatchNo: (moved: string | null, accepted: boolean) => void;
 }) {
+    const [movedInput, setMovedInput] = useState<string>('');         // kullanıcı inputu
+    const [checkState, setCheckState] = useState<'idle'|'checking'|'ok'|'conflict'|'invalid'|'error'>('idle');
+    const [checkMsg, setCheckMsg] = useState<string>('');
+    const lastCheckedRef = useRef<string>('');
+    const [mnoOpen, setMnoOpen] = useState(false);
+    useEffect(() => {
+        if (!open || !match) return;
+        const hasMoved = !!(match.meta as any)?.movedMatchNo;
+        setMnoOpen(hasMoved);
+    }, [open, match]);
+
+// "405.1" / "405,1" / "405" kabul, max 2 decimal
+    const normalizeMovedNo = (v: any): string | null => {
+        if (v === undefined || v === null) return null;
+        const s = String(v).trim().replace(',', '.');
+        if (!s) return null;
+        if (!/^\d+(\.\d{1,2})?$/.test(s)) return '__INVALID__';
+        return s;
+    };
+
+// modal açılınca inputu backend state’inden doldur
+    useEffect(() => {
+        if (!open || !match) return;
+        const cur = (match.meta as any)?.movedMatchNo;
+        setMovedInput(cur ? String(cur) : '');
+        setCheckState('idle');
+        setCheckMsg('');
+        lastCheckedRef.current = '';
+    }, [open, match?.meta]);
+
+// backend find-match kontrolü
+    const checkMovedNo = async (raw: string) => {
+        const norm = normalizeMovedNo(raw);
+
+        if (norm === '__INVALID__') {
+            setCheckState('invalid');
+            setCheckMsg('Geçersiz format. Örn: 405 veya 405.1');
+            return { ok: false, norm: null, conflict: true };
+        }
+
+        // boş -> taşınanı temizleme, kontrol gerek yok
+        if (norm === null) {
+            setCheckState('ok');
+            setCheckMsg('Taşınan numara temizlenecek.');
+            return { ok: true, norm: null, conflict: false };
+        }
+
+        // day/tournament yoksa kontrol edemeyiz, ama kullanıcı isterse yine de yazabilir
+        if (!tournamentSlug || !day) {
+            setCheckState('error');
+            setCheckMsg('Çakışma kontrolü yapılamadı (turnuva/day bilgisi yok).');
+            return { ok: true, norm, conflict: false };
+        }
+
+        // aynı şeyi tekrar tekrar kontrol etme
+        if (lastCheckedRef.current === norm) {
+            return { ok: checkState === 'ok', norm, conflict: checkState === 'conflict' };
+        }
+
+        setCheckState('checking');
+        setCheckMsg('Kontrol ediliyor…');
+
+        try {
+            const { data } = await api.get<any>(
+                `tournaments/${encodeURIComponent(tournamentSlug)}/find-match/`,
+                { params: { day, match_no: norm } }
+            );
+
+            const found =
+                data?.found === true ||
+                data?.exists === true ||
+                data?.match_id != null ||
+                !!data?.sub_tournament_slug ||
+                !!data?.match;
+
+            if (!found) {
+                setCheckState('ok');
+                setCheckMsg('Uygun ✓');
+                lastCheckedRef.current = norm;
+                return { ok: true, norm, conflict: false };
+            }
+
+            // Aynı maç mı? (matchId eşleşirse çakışma saymayalım)
+            const selfId = (match?.meta as any)?.matchId ?? null;
+            const foundId = data?.match_id ?? data?.match?.id ?? data?.id ?? null;
+
+            if (selfId && foundId && Number(selfId) === Number(foundId)) {
+                setCheckState('ok');
+                setCheckMsg('Bu numara zaten bu maçta ✓');
+                lastCheckedRef.current = norm;
+                return { ok: true, norm, conflict: false };
+            }
+
+            const stTitle =
+                data?.sub_tournament_title ??
+                data?.sub_tournament?.title ??
+                data?.title ??
+                data?.results[0]?.sub_tournament?.title ??
+                'başka bir alt turnuva';
+
+            setCheckState('conflict');
+            setCheckMsg(`Çakışma: ${day} tarihinde "${stTitle}" içinde zaten var.`);
+            lastCheckedRef.current = norm;
+            return { ok: false, norm, conflict: true };
+        } catch {
+            setCheckState('error');
+            setCheckMsg('Kontrol sırasında hata oluştu. Yine de kaydedebilirsiniz.');
+            return { ok: true, norm, conflict: false };
+        }
+    };
+
+
     if (!open || !match) return null;
     const { players, meta } = match;
     const isVoid = (match.meta as any)?.void === true;
@@ -107,6 +225,8 @@ function WinnerModal({
                 : players[1]?.winner
                     ? 1
                     : undefined;
+
+
 
     return (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center">
@@ -156,6 +276,130 @@ function WinnerModal({
                             onClick={() => onVoid()}
                         />
                     </div>
+
+                    {/* --- MAÇ NUMARASI TAŞIMA (AKORDİYON) --- */}
+                    <div className="pt-3 mt-2 border-t border-white/10">
+                        <button
+                            type="button"
+                            onClick={() => setMnoOpen(v => !v)}
+                            className="w-full flex items-center justify-between text-left"
+                        >
+                            <div className="text-sm font-semibold text-white/90">Maç numarası taşı</div>
+
+                            <div className="flex items-center gap-2">
+                                {/* küçük durum rozeti (opsiyonel ama faydalı) */}
+                                {(() => {
+                                    const v = (match?.meta as any)?.movedMatchNo;
+                                    if (!v) return null;
+                                    return (
+                                        <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-600/15 text-emerald-200">
+            Taşındı: {String(v)}
+          </span>
+                                    );
+                                })()}
+
+                                <span className="text-white/60 text-lg leading-none">
+        {mnoOpen ? '▾' : '▸'}
+      </span>
+                            </div>
+                        </button>
+
+                        {/* içerik */}
+                        {mnoOpen && (
+                            <div className="space-y-2 mt-2">
+                                <div className="text-xs text-white/60">
+                                    Asıl numara değişmez. Buraya yazdığınız numara sadece görünürde “taşınmış” olarak gösterilir.
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <div className="text-xs text-white/60 min-w-[90px]">Asıl</div>
+                                    <div className="px-3 py-2 rounded-md bg-[#1f2229] border border-white/10 text-white/90 font-mono">
+                                        {(() => {
+                                            const base = (match?.meta as any)?.matchNo;
+                                            return (typeof base === 'number' || typeof base === 'string') ? String(base) : '—';
+                                        })()}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <div className="text-xs text-white/60 min-w-[90px]">Taşınan</div>
+
+                                    <input
+                                        value={movedInput}
+                                        onChange={(e) => {
+                                            setMovedInput(e.target.value);
+                                            setCheckState('idle');
+                                            setCheckMsg('');
+                                        }}
+                                        onBlur={async () => {
+                                            const res = await checkMovedNo(movedInput);
+                                            if (res.norm === null) {
+                                                onSetMovedMatchNo(null, false);
+                                                return;
+                                            }
+                                            if (res.norm && res.ok) {
+                                                onSetMovedMatchNo(res.norm, false);
+                                            }
+                                        }}
+                                        placeholder="örn: 405.1"
+                                        className="flex-1 h-10 px-3 rounded-md bg-[#1f2229] border border-white/10 text-white/90 font-mono
+                     focus:outline-none focus:border-emerald-400"
+                                    />
+
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const res = await checkMovedNo(movedInput);
+                                            if (res.norm === null) {
+                                                onSetMovedMatchNo(null, false);
+                                                return;
+                                            }
+                                            if (res.norm && res.ok) {
+                                                onSetMovedMatchNo(res.norm, false);
+                                            }
+                                        }}
+                                        className="px-3 h-10 rounded-md bg-[#1f2229] border border-white/10 text-white/80 hover:border-white/30"
+                                        title="Bu numaranın aynı gün içinde başka maçta olup olmadığını kontrol et"
+                                    >
+                                        Kontrol
+                                    </button>
+
+                                    {checkState === 'conflict' && (
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const norm = normalizeMovedNo(movedInput);
+                                                if (!norm || norm === '__INVALID__') return;
+                                                onSetMovedMatchNo(norm, true);
+                                                setCheckState('ok');
+                                                setCheckMsg('Çakışma kabul edildi ve taşınan numara kaydedildi.');
+                                            }}
+                                            className="px-3 h-10 rounded-md bg-amber-600/80 hover:bg-amber-600 text-white font-semibold"
+                                            title="Çakışmayı kabul et ve yine de kullan"
+                                        >
+                                            Yine de kullan
+                                        </button>
+                                    )}
+                                </div>
+
+                                {checkState !== 'idle' && (
+                                    <div
+                                        className={`text-xs ${
+                                            checkState === 'ok' ? 'text-emerald-300'
+                                                : checkState === 'conflict' ? 'text-amber-300'
+                                                    : checkState === 'invalid' ? 'text-red-300'
+                                                        : checkState === 'checking' ? 'text-white/70'
+                                                            : 'text-white/70'
+                                        }`}
+                                    >
+                                        {checkMsg}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+
                     <div className="pt-2 flex items-center justify-between">
                         <button type="button" onClick={onReset} className="text-sm text-red-400 hover:text-red-300">
                             Reset
@@ -171,6 +415,9 @@ function WinnerModal({
                             </button>
                         </div>
                     </div>
+
+
+
                 </div>
             </div>
         </div>
@@ -239,6 +486,58 @@ function ShuffleCountdownModal({
     );
 }
 
+type MatchNoConflict = {
+    no: string;
+    reason: string;
+};
+
+function MatchNoConflictModal({
+                                  open, items, onCancel, onProceed,
+                              }: {
+    open: boolean;
+    items: MatchNoConflict[];
+    onCancel: () => void;
+    onProceed: () => void;
+}) {
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center">
+            <div className="bg-[#0f1217] text-white rounded-xl p-5 w-[min(92vw,620px)] shadow-2xl border border-white/10">
+                <div className="text-lg font-semibold mb-2">Maç numarası çakışması</div>
+                <div className="text-sm text-white/80 mb-4">
+                    Bazı taşınan maç numaraları aynı gün içinde başka bir maçla çakışıyor olabilir.
+                    Yine de kaydetmek istiyor musunuz?
+                </div>
+
+                <div className="max-h-[240px] overflow-auto rounded-lg border border-white/10 bg-white/5 p-3 text-sm space-y-2">
+                    {items.map((x, i) => (
+                        <div key={i} className="flex gap-3">
+                            <div className="font-mono text-amber-200 min-w-[90px]">{x.no}</div>
+                            <div className="text-white/80">{x.reason}</div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4">
+                    <button
+                        onClick={onCancel}
+                        className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15"
+                    >
+                        Vazgeç
+                    </button>
+                    <button
+                        onClick={onProceed}
+                        className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500"
+                    >
+                        Yine de kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
 /* -------------------------------- Component ------------------------------- */
 export default memo(function InteractiveBracket() {
     const { players, setPlayers } = usePlayers();
@@ -277,6 +576,17 @@ export default memo(function InteractiveBracket() {
     const ignoreNextEnterViewRef = useRef<boolean>(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+    const [mnoConflictOpen, setMnoConflictOpen] = useState(false);
+    const [mnoConflicts, setMnoConflicts] = useState<MatchNoConflict[]>([]);
+    const mnoResolveRef = useRef<((ok: boolean) => void) | null>(null);
+
+    const confirmProceedDespiteConflicts = useCallback((items: MatchNoConflict[]) => {
+        return new Promise<boolean>((resolve) => {
+            mnoResolveRef.current = resolve;
+            setMnoConflicts(items);
+            setMnoConflictOpen(true);
+        });
+    }, []);
 
     useEffect(() => {
         const el = containerRef.current;
@@ -852,10 +1162,16 @@ export default memo(function InteractiveBracket() {
                         toInt(it.matchNo) ??
                         toInt(it.number) ??
                         toInt(it.no);
+                    const movedRaw = (it as any).moved_match_no ?? (it as any).movedMatchNo ?? null;
+                    const movedStr = movedRaw != null ? String(movedRaw).trim() : null;
 
-                    if (r >= 0 && p >= 0 && no != null && copy[r]?.[p]) {
+                    if (r >= 0 && p >= 0 && copy[r]?.[p]) {
                         (copy[r][p].meta ??= {});
-                        (copy[r][p].meta as any).matchNo = no;
+
+                        if (no != null) (copy[r][p].meta as any).matchNo = no;
+
+                        // ✅ moved backend'den dolu geldiyse yaz (null geldiyse local'i ezme)
+                        if (movedStr) (copy[r][p].meta as any).movedMatchNo = movedStr;
                     }
                 }
                 return copy;
@@ -867,6 +1183,15 @@ export default memo(function InteractiveBracket() {
 
 
     const persistBracket = useCallback(async () => {
+        const normalizeMovedNo = (v: any): string | null => {
+            if (v === undefined || v === null) return null;
+            const s = String(v).trim().replace(',', '.');
+            if (!s) return null;
+            // 12, 405.1, 405.12 (max 2 decimal)
+            if (!/^\d+(\.\d{1,2})?$/.test(s)) throw new Error(`Geçersiz maç numarası: "${s}"`);
+            return s;
+        };
+
         if (!(canEdit || isReferee)) {
             setSaveMsg('Bu turnuvayı düzenleme yetkiniz yok.');
             return;
@@ -966,6 +1291,8 @@ export default memo(function InteractiveBracket() {
                     ? rounds
                     : buildMatrix([...players].sort((a, b) => a.seed - b.seed) as Participant[], settings.placementMap);
 
+
+
             const getAthleteIdFor = (p?: Player): number | null => {
                 if (!p) return null;
                 if ((p as any).athleteId != null) return (p as any).athleteId as number;
@@ -990,14 +1317,100 @@ export default memo(function InteractiveBracket() {
                 return undefined;
             };
 
-            // Backend'den en son gelen matristeki winner'ları baz al (raw backendMatrixRef)
-            const baselineChoiceByKey = new Map<string, -1 | 0 | 1 | undefined>();
+            const dayParam = (subDetail as any)?.day || '2025-01-01';
+
+            // backend baseline moved map
+            const baselineMovedByKey = new Map<string, string | null>();
             const baseMat: Matrix = backendMatrixRef.current || [];
             for (let r = 0; r < baseMat.length; r++) {
                 for (let i = 0; i < (baseMat[r] || []).length; i++) {
-                    baselineChoiceByKey.set(keyOf(r, i), choiceOf(baseMat[r][i]));
+                    const bm = baseMat[r][i];
+                    const raw = (bm?.meta as any)?.movedMatchNo;
+                    const s = raw != null ? String(raw).trim() : '';
+                    baselineMovedByKey.set(`${r + 1}:${i + 1}`, s ? s : null);
                 }
             }
+
+            // moved değişiklikleri
+            type MovedChange = { key: string; no: string | null; selfMatchId?: number | null };
+            const movedChanges: MovedChange[] = [];
+
+            for (let r = 0; r < roundsForSave.length; r++) {
+                for (let i = 0; i < (roundsForSave[r] || []).length; i++) {
+                    const m = roundsForSave[r][i];
+                    const curRaw = (m.meta as any)?.movedMatchNo;
+                    const cur = normalizeMovedNo(curRaw); // string | null
+                    const base = baselineMovedByKey.get(`${r + 1}:${i + 1}`) ?? null;
+
+                    if (cur !== base) {
+                        movedChanges.push({
+                            key: `${r + 1}:${i + 1}`,
+                            no: cur,
+                            selfMatchId: ((m.meta as any)?.matchId ?? null) as any,
+                        });
+                    }
+                }
+            }
+
+            // Çakışma kontrolü: sadece yeni/changed ve null olmayanlar
+            const wanted = movedChanges.filter(x => x.no != null).map(x => x.no!) as string[];
+            const conflicts: MatchNoConflict[] = [];
+
+            // 1) local duplicate
+            const cnt = new Map<string, number>();
+            for (const n of wanted) cnt.set(n, (cnt.get(n) ?? 0) + 1);
+            for (const [n, c] of cnt.entries()) {
+                if (c > 1) conflicts.push({ no: n, reason: `Bu braket içinde ${c} farklı maça aynı numara verildi.` });
+            }
+
+            // 2) remote find-match (tournamentSlug varsa)
+            if (tournamentSlug && wanted.length) {
+                const uniq = [...new Set(wanted)];
+
+                await Promise.all(uniq.map(async (no) => {
+                    try {
+                        const { data } = await api.get<any>(
+                            `tournaments/${encodeURIComponent(tournamentSlug)}/find-match/`,
+                            { params: { day: dayParam, match_no: no } }
+                        );
+
+                        const found =
+                            data?.found === true ||
+                            data?.exists === true ||
+                            !!data?.match ||
+                            data?.match_id != null ||
+                            data?.sub_tournament_slug;
+
+                        if (!found) return;
+
+                        const foundId = data?.match_id ?? data?.match?.id ?? data?.id ?? null;
+                        const stTitle = data?.sub_tournament_title ?? data?.title ?? data?.sub_tournament?.title ?? 'Bilinmeyen alt turnuva';
+
+                        // Eğer endpoint match_id döndürüyorsa ve bu numara zaten aynı maça aitse (self) sayma.
+                        // (match_id yoksa güvenli tarafta kalıp conflict sayıyoruz)
+                        const anySelf = movedChanges.some(x => x.no === no && x.selfMatchId && foundId && x.selfMatchId === foundId);
+                        if (anySelf && movedChanges.filter(x => x.no === no).length === 1) return;
+
+                        conflicts.push({ no, reason: `Aynı gün içinde zaten kullanılıyor: ${stTitle}` });
+                    } catch {
+                        conflicts.push({ no, reason: 'Çakışma kontrolü yapılamadı (sunucu hatası). Yine de kaydedebilirsiniz.' });
+                    }
+                }));
+            } else if (!tournamentSlug && wanted.length) {
+                conflicts.push({ no: wanted[0], reason: 'Ana turnuva slug bulunamadı; çakışma kontrolü atlandı.' });
+            }
+
+            // Çakışma varsa kullanıcıya sor
+            if (conflicts.length) {
+                const ok = await confirmProceedDespiteConflicts(conflicts);
+                if (!ok) {
+                    setSaveMsg('Kaydetme iptal edildi.');
+                    setSaving(false);
+                    setTimeout(() => setSaveMsg(null), 1800);
+                    return;
+                }
+            }
+
 
             const matchPayload = roundsForSave.flatMap((round, rIdx) =>
                 round.map((m, iIdx) => {
@@ -1005,7 +1418,7 @@ export default memo(function InteractiveBracket() {
                     const a2 = getAthleteIdFor(m.players[1]);
 
                     const currentChoice = choiceOf(m);
-                    const baselineChoice = baselineChoiceByKey.get(keyOf(rIdx, iIdx));
+                    const baselineChoice = baselineMovedByKey.get(keyOf(rIdx, iIdx));
                     const winnerChanged = currentChoice !== baselineChoice;
 
                     const metaCourt = (() => {
@@ -1025,6 +1438,14 @@ export default memo(function InteractiveBracket() {
                         extra_note: '',
                         sub_tournament: subId,
                     };
+
+                    const movedNowRaw = (m.meta as any)?.movedMatchNo;
+                    const movedNow = normalizeMovedNo(movedNowRaw);
+                    const movedBase = baselineMovedByKey.get(keyOf(rIdx, iIdx)) ?? null;
+
+                    if (movedNow !== movedBase) {
+                        row.moved_match_no = movedNow; // string | null (null -> temizle)
+                    }
 
                     // ✅ winner sadece değiştiyse gönder
                     if (winnerChanged) {
@@ -1236,6 +1657,30 @@ export default memo(function InteractiveBracket() {
         });
         setDirty(true);
     };
+
+    const setMovedMatchNoForSelected = useCallback((moved: string | null, accepted: boolean) => {
+        if (!selected) return;
+
+        setRounds(prev => {
+            const copy: Matrix = prev.map(rnd =>
+                rnd.map(mm => ({
+                    players: mm.players.map(p => ({ ...p })),
+                    meta: mm.meta ? { ...mm.meta } : {},
+                }))
+            );
+
+            const m = copy[selected.r]?.[selected.m];
+            if (!m) return prev;
+
+            (m.meta ??= {});
+            (m.meta as any).movedMatchNo = moved;          // string | null
+            (m.meta as any).mnoAccepted = accepted;        // ✅ kullanıcı kabul etti mi
+
+            return copy;
+        });
+
+        setDirty(true);
+    }, [selected]);
 
     const setVoidMatch = (r: number, m: number) => {
         setRounds(prev => {
@@ -1655,9 +2100,12 @@ export default memo(function InteractiveBracket() {
                     onVoid={() => setVoidMatch(selected.r, selected.m)}
                     onReset={() => resetMatch(selected.r, selected.m)}
                     onClose={() => setSelected(null)}
+
+                    tournamentSlug={tournamentSlug}
+                    day={(subDetail as any)?.day ?? null}
+                    onSetMovedMatchNo={setMovedMatchNoForSelected}
                 />
             )}
-
             {/* Maçı başlat onayı */}
             <StartConfirmModal
                 open={startConfirmOpen}
@@ -1675,6 +2123,23 @@ export default memo(function InteractiveBracket() {
             />
             {/* Karıştır geri sayım modalı */}
             <ShuffleCountdownModal open={shuffleOpen} count={shuffleCount} />
+
+            <MatchNoConflictModal
+                open={mnoConflictOpen}
+                items={mnoConflicts}
+                onCancel={() => {
+                    setMnoConflictOpen(false);
+                    const r = mnoResolveRef.current;
+                    mnoResolveRef.current = null;
+                    r?.(false);
+                }}
+                onProceed={() => {
+                    setMnoConflictOpen(false);
+                    const r = mnoResolveRef.current;
+                    mnoResolveRef.current = null;
+                    r?.(true);
+                }}
+            />
 
             {/* Mini + / − (sadece mobilde) */}
             <div
