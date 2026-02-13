@@ -190,29 +190,7 @@ export default memo(function BracketCanvas({
       text-rendering: geometricPrecision;
       fill:#eafff3;
     }
-    .mno-bg-moved{
-  fill: rgba(245,158,11,.16);
-  stroke: rgba(245,158,11,.95);
-  stroke-width: 1.8;
-  stroke-dasharray: 6 4;
-  vector-effect: non-scaling-stroke;
-}
-.mno-txt-moved{
-  font-weight: 900;
-  font-size: ${MNO_FONT}px;
-  letter-spacing:.35px;
-  dominant-baseline:middle;
-  paint-order: stroke fill;
-  stroke: rgba(0,0,0,.45);
-  stroke-width:.7;
-  text-rendering: geometricPrecision;
-  fill:#fff7ed;
-}
-.mno-moved-mark{
-  font-size: ${Math.max(10, Math.round(MNO_FONT * 0.75))}px;
-  font-weight: 900;
-  fill: rgba(245,158,11,.95);
-}
+    /* movedMatchNo artık "asıl maç no" gibi davranır: özel işaret/renk yok */
 
     .ptag-shadow { filter:url(#tagShadow); }
     .ptag-ring   { fill:none; stroke:rgba(255,255,255,.75); stroke-width:.9; }
@@ -289,8 +267,6 @@ export default memo(function BracketCanvas({
                     const displayNo = (movedNo != null && String(movedNo).trim())
                         ? String(movedNo).trim()
                         : (typeof baseNo === 'number' ? String(baseNo) : undefined);
-
-                    const isMoved = !!(movedNo != null && String(movedNo).trim());
                     const dims = displayNo ? badgeDims(displayNo, MNO_FONT) : null;
 
                     return (
@@ -301,21 +277,18 @@ export default memo(function BracketCanvas({
                             {showMatchNo && displayNo && dims && (
                                 <g transform={`translate(${x0 - 34}, ${mid}) rotate(-90)`}>
                                     <rect
-                                        className={isMoved ? "mno-bg-moved" : "mno-bg"}
+                                        className="mno-bg"
                                         x={-dims.w/2} y={-dims.h/2} width={dims.w} height={dims.h} rx={dims.rx}
                                     />
                                     <text
-                                        className={isMoved ? "mno-txt-moved" : "mno-txt"}
+                                        className="mno-txt"
                                         x={0} y={0} textAnchor="middle"
                                     >
                                         {displayNo}
-                                        {isMoved ? <tspan className="mno-moved-mark" dx="6">↪</tspan> : null}
                                     </text>
 
                                     <title>
-                                        {isMoved
-                                            ? `Taşındı: ${displayNo} (Asıl: ${typeof baseNo === 'number' ? baseNo : '—'})`
-                                            : `Maç ${displayNo}`}
+                                        {`Maç ${displayNo}`}
                                     </title>
                                 </g>
                             )}

@@ -38,6 +38,30 @@ type BulkRow = {
 
 const genderTRExcel = (g?: string) => (g === 'F' ? 'BAYAN' : g === 'M' ? 'ERKEK' : 'KARMA');
 
+// Yaş kategorisi etiketi (Toplu İLK16 export için)
+const AGE_CATS: Array<{ label: string; min: number; max: number | null }> = [
+    { label: 'Küçükler', min: 0, max: 10 },
+    { label: 'Minikler', min: 10, max: 13 },
+    { label: 'Yıldızlar', min: 13, max: 15 },
+    { label: 'Gençler', min: 15, max: 18 },
+    { label: 'Ümitler', min: 18, max: 20 },
+    { label: 'Büyükler', min: 18, max: null },
+];
+
+const ageCategoryFromAgeRange = (age?: string) => {
+    const s = (age ?? '').toString().trim();
+    if (!s) return undefined;
+    const parts = s.split('–').map(x => x.trim());
+    const lo = Number(parts[0]);
+    const hiRaw = Number(parts[1]);
+    if (!Number.isFinite(lo)) return undefined;
+    const hi = Number.isFinite(hiRaw) && hiRaw >= 999 ? null : (Number.isFinite(hiRaw) ? hiRaw : null);
+    const exact = AGE_CATS.find(c => c.min === lo && c.max === hi);
+    if (exact) return exact.label;
+    const fallback = AGE_CATS.find(c => c.min === lo && (c.max === hi || c.max === null));
+    return fallback?.label;
+};
+
 const categoryFromTopRow = (b: TopRow) => {
     // 1) Önce weight stringinden çözmeye çalış (örn: "46–46 kg", "87–999 kg")
     const w = (b.weight ?? '').toString().trim().toLowerCase();
@@ -65,7 +89,8 @@ const rowsForAllTop16SingleSheet = (list: TopRow[]) => {
 
     const out: BulkRow[] = [];
     groups.forEach((b, idx) => {
-        const cat = categoryFromTopRow(b);
+        const ageCat = ageCategoryFromAgeRange(b.age);
+        const cat = `${ageCat ? ageCat : (b.age ? `Yaş ${b.age}` : '—')} · ${categoryFromTopRow(b)}`;
         const gen = genderTRExcel(String(b.gender || ''));
 
         b.athletes.slice(0, 16).forEach((a) => {
@@ -147,6 +172,11 @@ const fmtRange = (lo?: number | string | null, hi?: number | string | null, unit
     if (!L && !H) return undefined;
     const left = L ? String(L).replace(/\.0+$/, '') : '–';
     const right = H ? String(H).replace(/\.0+$/, '') : '–';
+    // "+’lı" kilo aralıkları backend'de genelde 999 ile geliyor → UI/Export'ta "87+ kg" gibi göster
+    if (unit.toLowerCase() === 'kg') {
+        const hiNum = Number(right);
+        if (left !== '–' && Number.isFinite(hiNum) && hiNum >= 999) return `${left}+ ${unit}`;
+    }
     return unit ? `${left}–${right} ${unit}` : `${left}–${right}`;
 };
 
@@ -651,7 +681,7 @@ export default function LeaderboardPage() {
                                                         )}
                                                         {b.age && (
                                                             <span className="px-2 py-1 rounded-full bg-violet-500/15 text-violet-200 border border-violet-400/30">
-                                Yaş {b.age}
+                                Yaş {ageCategoryFromAgeRange(b.age) ? `${ageCategoryFromAgeRange(b.age)} (${b.age})` : b.age}
                               </span>
                                                         )}
                                                         {b.weight && (

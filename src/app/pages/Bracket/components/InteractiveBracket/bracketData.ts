@@ -435,56 +435,59 @@ export function BackendBracketLoader({
     useEffect(() => { onBuiltRef.current = onBuilt; }, [onBuilt]);
     useEffect(() => { onAuthErrRef.current = onAuthError; }, [onAuthError]);
 
-    // Tek interval + overlap koruması
+    const fetchAllRef = useRef<(() => void) | null>(null);
+
     useEffect(() => {
         if (!slug || !enabled) return;
 
         let timer: number | null = null;
         let mounted = true;
         const inflightRef = { current: false };
-        let abortCtrl: AbortController | null = null;
+        const abortCtrl = new AbortController();
 
-        const fetchAll = async () => {
+        const fetchAll = () => {
             if (!mounted || inflightRef.current) return;
-            if (document.hidden) return; // sekme gizliyken bekle
-
+            if (document.hidden) return;
             inflightRef.current = true;
-            abortCtrl?.abort();
-            abortCtrl = new AbortController();
-            try {
-                const [athRes, matchRes] = await Promise.all([
-                    api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`, { signal: abortCtrl.signal }),
-                    api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`,  { signal: abortCtrl.signal }),
-                ]);
-                if (!mounted) return;
-                const built = buildFromBackend(
-                    Array.isArray(athRes.data) ? athRes.data : [],
-                    Array.isArray(matchRes.data) ? matchRes.data : [],
-                );
-                onBuiltRef.current?.(built.matrix, built.firstRound);
-            } catch (e: unknown) {
-                const code = (e as { response?: { status?: number } })?.response?.status;
-                if (code) onAuthErrRef.current?.(code);
-            } finally {
-                inflightRef.current = false;
-            }
+            Promise.all([
+                api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`, { signal: abortCtrl.signal }),
+                api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`,  { signal: abortCtrl.signal }),
+            ])
+                .then(([athRes, matchRes]) => {
+                    if (!mounted) return;
+                    const built = buildFromBackend(
+                        Array.isArray(athRes.data) ? athRes.data : [],
+                        Array.isArray(matchRes.data) ? matchRes.data : [],
+                    );
+                    onBuiltRef.current?.(built.matrix, built.firstRound);
+                })
+                .catch((e: unknown) => {
+                    if ((e as { name?: string })?.name === 'AbortError' || (e as { code?: string })?.code === 'ERR_CANCELED') return;
+                    const code = (e as { response?: { status?: number } })?.response?.status;
+                    if (code) onAuthErrRef.current?.(code);
+                })
+                .finally(() => { inflightRef.current = false; });
         };
 
-        // hemen bir kez çek
+        fetchAllRef.current = () => void fetchAll();
         void fetchAll();
-        // periyodik
         timer = window.setInterval(fetchAll, pollMs);
-        // görünürlük değişince görünür olduğunda bir kez daha çek
         const onVis = () => { if (!document.hidden) void fetchAll(); };
         document.addEventListener('visibilitychange', onVis);
 
         return () => {
             mounted = false;
+            fetchAllRef.current = null;
             if (timer) window.clearInterval(timer);
             document.removeEventListener('visibilitychange', onVis);
-            abortCtrl?.abort();
+            abortCtrl.abort();
         };
-    }, [slug, enabled, pollMs, refreshKey]);
+    }, [slug, enabled, pollMs]);
+
+    useEffect(() => {
+        if (!slug || !enabled) return;
+        fetchAllRef.current?.();
+    }, [refreshKey, slug, enabled]);
 
     return null;
 }

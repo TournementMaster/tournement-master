@@ -14,7 +14,7 @@ function Icon({ d, className = 'w-8 h-8' }: { d: string; className?: string }) {
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={1.6}
+            strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
             className={className}
@@ -38,11 +38,11 @@ const PATH = {
 }
 
 function IconButton({
-                        title,
-                        active,
-                        onClick,
-                        children,
-                    }: {
+    title,
+    active,
+    onClick,
+    children,
+}: {
     title: string
     active?: boolean
     onClick: () => void
@@ -55,11 +55,11 @@ function IconButton({
             title={title}
             aria-label={title}
             className={[
-                'w-12 h-12 flex items-center justify-center rounded-full transition',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30',
+                'w-12 h-12 flex items-center justify-center rounded-2xl transition-all duration-300',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-premium-accent/50',
                 active
-                    ? 'text-teal-300 bg-white/5 shadow-[0_0_0_1px_rgba(255,255,255,.12)]'
-                    : 'text-gray-300 hover:text-white hover:bg-white/5',
+                    ? 'text-white bg-white/[0.08] border border-white/15 shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
+                    : 'text-slate-300 hover:text-white hover:bg-white/[0.06] border border-transparent hover:border-white/10',
             ].join(' ')}
         >
             {children}
@@ -100,7 +100,7 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
     }, []);
     // Canlı role event'i
     useEffect(() => {
-        const h = (e:any) => { setIsReferee(!!e?.detail?.isReferee); setCanEdit(!!e?.detail?.canEdit); };
+        const h = (e: any) => { setIsReferee(!!e?.detail?.isReferee); setCanEdit(!!e?.detail?.canEdit); };
         window.addEventListener('bracket:role', h);
         return () => window.removeEventListener('bracket:role', h);
     }, []);
@@ -184,15 +184,17 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
           flex md:flex-col items-center
           md:w-16 md:h-auto
           px-0 py-3
-          bg-[#222831] text-white
-          shadow-[inset_-1px_0_0_0_rgba(255,255,255,.06)]
+          bg-white/[0.03] backdrop-blur-xl text-white
+          border-r border-white/10
+          shadow-[4px_0_24px_rgba(0,0,0,0.35)]
+          font-display
         "
                 >
                     {/* Aç/Kapat */}
                     <button
                         onClick={onToggle}
                         title={isOpen ? 'Sidebari kapat' : 'Sidebari aç'}
-                        className="mb-4 w-12 h-12 flex items-center justify-center rounded-full border border-white/25 hover:bg-white/10 focus:outline-none transition shrink-0"
+                        className="mb-4 w-12 h-12 flex items-center justify-center rounded-2xl border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] focus:outline-none transition shrink-0"
                     >
                         <Icon d={PATH.chevronL} className={`w-7 h-7 transition ${isOpen ? '' : 'rotate-180'}`} />
                     </button>
@@ -201,39 +203,39 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                     <div className="flex-none flex md:flex-col gap-4">
                         {isAuth && !paletteOnly && (
                             <>
-                                <IconButton title="Katılımcılar" active={active==='participants'} onClick={()=>{ if(!isOpen) onToggle(); setActive('participants'); }}>
-                                    <Icon d={PATH.users}/>
+                                <IconButton title="Katılımcılar" active={active === 'participants'} onClick={() => { if (!isOpen) onToggle(); setActive('participants'); }}>
+                                    <Icon d={PATH.users} />
                                 </IconButton>
 
-                                <IconButton title="Alt Turnuva Bilgileri" active={active==='sub'} onClick={()=>{ if(!isOpen) onToggle(); setActive('sub'); }}>
-                                    <Icon d={PATH.info}/>
+                                <IconButton title="Alt Turnuva Bilgileri" active={active === 'sub'} onClick={() => { if (!isOpen) onToggle(); setActive('sub'); }}>
+                                    <Icon d={PATH.info} />
                                 </IconButton>
 
                                 {!hideSettings && (
-                                    <IconButton title="Ayarlar" active={active==='settings'} onClick={()=>{ if(!isOpen) onToggle(); setActive('settings'); }}>
-                                        <Icon d={PATH.cog}/>
+                                    <IconButton title="Ayarlar" active={active === 'settings'} onClick={() => { if (!isOpen) onToggle(); setActive('settings'); }}>
+                                        <Icon d={PATH.cog} />
                                     </IconButton>
                                 )}
                                 {!hideSettings && (
-                                <IconButton title="Excel'den içe aktar" onClick={()=>{ if(!isOpen) onToggle(); triggerImport(); }}>
-                                    <Icon d={PATH.sheet}/>
-                                </IconButton>
+                                    <IconButton title="Excel'den içe aktar" onClick={() => { if (!isOpen) onToggle(); triggerImport(); }}>
+                                        <Icon d={PATH.sheet} />
+                                    </IconButton>
                                 )}
 
-                                <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e)=>onFile(e.target.files?.[0] ?? null)} />
+                                <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
                             </>
                         )}
 
                         {/* Tema her zaman açık */}
-                        <IconButton title="Şablon & Renk" active={active==='theme'} onClick={()=>{ if(!isOpen) onToggle(); setActive('theme'); }}>
-                            <Icon d={PATH.palette}/>
+                        <IconButton title="Şablon & Renk" active={active === 'theme'} onClick={() => { if (!isOpen) onToggle(); setActive('theme'); }}>
+                            <Icon d={PATH.palette} />
                         </IconButton>
                     </div>
 
                     {/* Tam ekran */}
                     <div className="mt-auto">
-                        <IconButton title="Tam ekran" onClick={()=>setFull(true)}>
-                            <Icon d={PATH.fullscreen}/>
+                        <IconButton title="Tam ekran" onClick={() => setFull(true)}>
+                            <Icon d={PATH.fullscreen} />
                         </IconButton>
                     </div>
                 </nav>
@@ -242,10 +244,14 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                 {isOpen && (
                     <div
                         className="
-            bg-[#2a303a] text-slate-100 p-4
+            bg-white/[0.03] backdrop-blur-xl
+            border-l border-white/10 rounded-none h-full
+            text-slate-100 p-4
             md:w-72
             md:h-[calc(100vh-64px)]
             overflow-hidden
+            shadow-[-4px_0_20px_rgba(0,0,0,0.25)]
+            font-display text-sm
           "
                     >
                         <div className="h-full overflow-y-auto">
@@ -253,10 +259,10 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                                 <ThemePanel />
                             ) : (
                                 <>
-                                    {active==='participants' && <ParticipantsPanel />}
-                                    {active==='sub' && <SubTournamentSettingsPanel />}
-                                    {active==='settings' && <SettingsPanel />}
-                                    {active==='theme' && <ThemePanel />}
+                                    {active === 'participants' && <ParticipantsPanel />}
+                                    {active === 'sub' && <SubTournamentSettingsPanel />}
+                                    {active === 'settings' && <SettingsPanel />}
+                                    {active === 'theme' && <ThemePanel />}
                                 </>
                             )}
                         </div>
@@ -277,10 +283,11 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                     className="
           md:hidden fixed left-0 right-0 bottom-14  /* alt bar yüksekliği kadar yukarıda */
           z-[90]
-          bg-[#2a303a] text-slate-100 p-4
-          rounded-t-2xl border-t border-white/10
+          bg-white/[0.04] backdrop-blur-xl text-slate-100 p-4
+          rounded-t-3xl border-t border-white/12
           h-[70vh] pb-[calc(env(safe-area-inset-bottom)+12px)]
           overflow-hidden shadow-2xl
+          font-display
         "
                 >
                     <div className="h-full overflow-y-auto">
@@ -288,10 +295,10 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
                             <ThemePanel />
                         ) : (
                             <>
-                                {active==='participants' && <ParticipantsPanel />}
-                                {active==='sub' && <SubTournamentSettingsPanel />}
-                                {active==='settings' && <SettingsPanel />}
-                                {active==='theme' && <ThemePanel />}
+                                {active === 'participants' && <ParticipantsPanel />}
+                                {active === 'sub' && <SubTournamentSettingsPanel />}
+                                {active === 'settings' && <SettingsPanel />}
+                                {active === 'theme' && <ThemePanel />}
                             </>
                         )}
                     </div>
@@ -299,32 +306,32 @@ export default function Sidebar({ isOpen, onToggle }: Props) {
             )}
 
             {/* Bottom navigation bar */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 z-[80] bg-[#222831] text-white border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 z-[80] bg-white/[0.04] backdrop-blur-xl text-white border-t border-white/12 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(0,0,0,0.3)] font-display">
                 <div className="h-full flex items-center justify-between px-2 overflow-x-auto gap-1">
                     <button
                         onClick={onToggle}
                         title={isOpen ? 'Paneli kapat' : 'Paneli aç'}
-                        className="w-10 h-10 flex items-center justify-center rounded-full border border-white/20"
+                        className="w-10 h-10 flex items-center justify-center rounded-2xl border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] transition-colors"
                     >
                         <Icon d={PATH.chevronL} className={`w-6 h-6 ${isOpen ? '' : 'rotate-180'}`} />
                     </button>
 
                     {isAuth && !paletteOnly && (
                         <>
-                            <IconButton title="Katılımcılar" active={active==='participants'} onClick={()=>{ if(!isOpen) onToggle(); setActive('participants'); }}><Icon d={PATH.users}/></IconButton>
-                            <IconButton title="Alt Turnuva"   active={active==='sub'}          onClick={()=>{ if(!isOpen) onToggle(); setActive('sub'); }}><Icon d={PATH.info}/></IconButton>
+                            <IconButton title="Katılımcılar" active={active === 'participants'} onClick={() => { if (!isOpen) onToggle(); setActive('participants'); }}><Icon d={PATH.users} /></IconButton>
+                            <IconButton title="Alt Turnuva" active={active === 'sub'} onClick={() => { if (!isOpen) onToggle(); setActive('sub'); }}><Icon d={PATH.info} /></IconButton>
                             {!hideSettings && (
-                                <IconButton title="Ayarlar" active={active==='settings'} onClick={()=>{ if(!isOpen) onToggle(); setActive('settings'); }}>
-                                    <Icon d={PATH.cog}/>
+                                <IconButton title="Ayarlar" active={active === 'settings'} onClick={() => { if (!isOpen) onToggle(); setActive('settings'); }}>
+                                    <Icon d={PATH.cog} />
                                 </IconButton>
                             )}
-                            <IconButton title="Excel içe aktar" onClick={()=>{ if(!isOpen) onToggle(); triggerImport(); }}><Icon d={PATH.sheet}/></IconButton>
-                            <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e)=>onFile(e.target.files?.[0] ?? null)} />
+                            <IconButton title="Excel içe aktar" onClick={() => { if (!isOpen) onToggle(); triggerImport(); }}><Icon d={PATH.sheet} /></IconButton>
+                            <input ref={fileRef} type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
                         </>
                     )}
 
-                    <IconButton title="Tema" active={active==='theme'} onClick={()=>{ if(!isOpen) onToggle(); setActive('theme'); }}>
-                        <Icon d={PATH.palette}/>
+                    <IconButton title="Tema" active={active === 'theme'} onClick={() => { if (!isOpen) onToggle(); setActive('theme'); }}>
+                        <Icon d={PATH.palette} />
                     </IconButton>
                 </div>
             </nav>

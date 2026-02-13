@@ -12,7 +12,7 @@ const SIDEBAR_KEY = 'tm.sidebar.collapsed'; // '1' => collapsed/kapalı
 export default function RootLayout() {
     const { pathname } = useLocation();
     const isBracket = pathname.startsWith('/bracket');
-    const isCreate  = pathname.startsWith('/create');
+    const isCreate = pathname.startsWith('/create');
 
     // ↙️ EKRAN GENİŞLİĞİ: desktop mı? (md:768px+)
     const isDesktop = useMemo(() => {
@@ -72,14 +72,14 @@ export default function RootLayout() {
                                     isOpen={sidebarOpen}
                                     onToggle={() => setSidebarOpen(o => !o)}
                                 />
-                                <main className="flex-1 overflow-visible bg-[#1f2229] p-4">
+                                <main className="flex-1 overflow-visible bg-transparent p-4">
                                     <Outlet />
                                 </main>
                             </BracketThemeProvider>
                         </BracketSettingsProvider>
                     </BracketPlayersProvider>
                 ) : (
-                    <main className="flex-1 overflow-auto bg-[#1f2229] p-4">
+                    <main className="flex-1 overflow-auto bg-transparent p-4">
                         {!isCreate && null}
                         <Outlet />
                     </main>

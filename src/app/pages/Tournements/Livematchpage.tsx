@@ -18,6 +18,7 @@ type Match = {
     position: number;
     court_no: number | null;
     match_no: number | null;
+    moved_match_no?: string | number | null;
     winner: number | null;
     athlete1?: number | null;
     athlete2?: number | null;
@@ -32,7 +33,7 @@ type LiveBundle = {
     subs: Record<string, SubTournament>;
     matches: Record<string, Match[]>;
     athletes: Record<string, Record<number, AthleteLite>>;
-    last_finished_by_court?: Record<number, number>; // ✨ YENİ (opsiyonel)
+    last_finished_by_court?: Record<number, string | number | null>; // ✨ moved destekli (opsiyonel)
 };
 
 
@@ -74,16 +75,23 @@ export default function LiveMatchPage() {
         const fetchBundle = async (isPoll = false) => {
             try {
                 refreshingRef.current = true;
-                const { data } = await api.get<LiveBundle>(`live/${slug}/`, {
-                    params: { day },
-                });
+                const params = isPoll ? { day, lite: 1 } : { day };
+                const { data } = await api.get<LiveBundle>(`live/${slug}/`, { params });
                 if (stop) return;
                 setResolved(data.scope);
-                setSubs(data.subs || {});
+                if (!isPoll) setSubs(data.subs || {});
                 setMatches(data.matches || {});
-                setAthletesBySub(data.athletes || {});
+                if (!isPoll) setAthletesBySub(data.athletes || {});
                 if (data.day) setDay(data.day);
-                setLastDoneByCourt(data.last_finished_by_court || {});
+                // backend string/number dönebilir → number'a çevir
+                const raw = data.last_finished_by_court || {};
+                const mapped: Record<number, number> = {};
+                for (const [k, v] of Object.entries(raw as any)) {
+                    const ck = Number(k);
+                    const n = v == null ? NaN : Number(String(v).replace(',', '.'));
+                    if (Number.isFinite(ck) && Number.isFinite(n)) mapped[ck] = n;
+                }
+                setLastDoneByCourt(mapped);
             } catch {
                 if (!stop && !isPoll) setError('Veri yüklenemedi.');
             } finally {
@@ -178,28 +186,26 @@ export default function LiveMatchPage() {
 
             if (!pend.length) return; // oynanabilir pending yoksa kart göstermeyelim
 
+            // moved_match_no varsa onu, yoksa match_no kullan (decimal destekli)
+            const effNo = (c: Candidate) => {
+                const raw = (c.m.moved_match_no ?? c.m.match_no) as any;
+                const n = raw == null ? NaN : Number(String(raw).replace(',', '.'));
+                return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+            };
+
             // a) backend'ten geldiyse onu kullan
             const externalLast = lastDoneByCourt[courtNo];
-
-            // b) yoksa local veriden türet (listede biten maçlar varsa)
-            const finishedNos = all
-                .filter((x) => x.m.winner != null && typeof x.m.match_no === 'number')
-                .map((x) => x.m.match_no as number);
-
-            const lastDoneNo =
-                Number.isFinite(externalLast) ? externalLast as number
-                    : finishedNos.length ? Math.max(...finishedNos)
-                        : -Infinity;
+            const lastDoneNo = Number.isFinite(externalLast) ? (externalLast as number) : -Infinity;
 
             // Öncelik: lastDoneNo'dan büyük ilk oynanabilir pending
             const higher = pend
-                .filter((x) => typeof x.m.match_no === 'number' && (x.m.match_no as number) > lastDoneNo)
-                .sort((a, b) => (a.m.match_no as number) - (b.m.match_no as number));
+                .filter((x) => effNo(x) > lastDoneNo)
+                .sort((a, b) => effNo(a) - effNo(b));
 
-            // Yoksa klasik mantık: en küçük match_no’lu oynanabilir pending
+            // Yoksa klasik mantık: en küçük "effective" numaralı oynanabilir pending
             const legacySorted = [...pend].sort((a, b) => {
-                const aN = a.m.match_no ?? Number.POSITIVE_INFINITY;
-                const bN = b.m.match_no ?? Number.POSITIVE_INFINITY;
+                const aN = effNo(a);
+                const bN = effNo(b);
                 if (aN !== bN) return aN - bN;
                 if (a.m.round_no !== b.m.round_no) return a.m.round_no - b.m.round_no;
                 return a.m.position - b.m.position;
@@ -210,16 +216,14 @@ export default function LiveMatchPage() {
 
             // "Bir sonraki maç": seçilen maçtan büyük numaralı ilk oynanabilir pending
             let next: Candidate | undefined;
-            if (typeof cur.m.match_no === 'number') {
-                next = pend
-                    .filter((x) => typeof x.m.match_no === 'number' && (x.m.match_no as number) > (cur.m.match_no as number))
-                    .sort((a, b) => (a.m.match_no as number) - (b.m.match_no as number))[0];
-            }
+            next = pend
+                .filter((x) => effNo(x) > effNo(cur))
+                .sort((a, b) => effNo(a) - effNo(b))[0];
 
             entries.push({
                 id: `${cur.subSlug}-${courtNo}-${cur.m.match_no ?? cur.m.position}-${cur.m.round_no}`,
                 court: courtNo,
-                matchNo: cur.m.match_no,
+                matchNo: Number.isFinite(effNo(cur)) ? effNo(cur) : null,
                 roundText: roundLabel(cur.m.round_no, cur.maxR),
                 gender: gLabel(cur.sub.gender),
                 isRunning: !!cur.sub.started,
@@ -235,32 +239,31 @@ export default function LiveMatchPage() {
 
         entries.sort((a, b) => a.court - b.court);
         return entries;
-    }, [matches, subs, day]);
+    }, [matches, subs, day, lastDoneByCourt, resolved]);
 
 
     return (
-        <div
-            className="min-h-[calc(100vh-64px)] w-full text-white
-      bg-[#161a20] bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(120,119,198,.08),transparent_50%),radial-gradient(1000px_500px_at_100%_10%,rgba(16,185,129,.07),transparent_55%)]"
-        >
-            <header className="px-5 md:px-8 py-4 border-b border-white/10 bg-[#1d2129]/95 backdrop-blur">
+        <div className="min-h-[calc(100vh-64px)] w-full text-white bg-transparent">
+            <header className="px-5 md:px-8 py-6 mb-4">
                 <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <span className="absolute -inset-1 rounded-full bg-red-500/50 blur-sm animate-pulse" />
+                            <span className="relative block h-3 w-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]" />
+                        </div>
                         <h1
-                            className="text-[1.15rem] md:text-xl font-semibold tracking-wide
-              bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent"
+                            className="text-2xl md:text-3xl font-display font-bold tracking-tight
+              bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent drop-shadow-sm"
                         >
                             Canlı Maç Odası
                         </h1>
-                        <span
-                            className="h-2.5 w-2.5 md:h-3 md:w-3 rounded-full bg-red-500 shadow-[0_0_0_3px_rgba(239,68,68,.28)] live-dot"
-                            aria-label="live"
-                        />
                     </div>
-                    <div className="flex items-center gap-3">
-                        <span className="hidden sm:inline text-white/70 text-sm">Gün: {day}</span>
+                    <div className="flex items-center gap-4">
+                        <span className="hidden sm:inline-flex px-3 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300 text-sm font-medium backdrop-blur-sm">
+                            {day}
+                        </span>
                         {refreshingRef.current && (
-                            <svg className="animate-spin h-4 w-4 text-white/70" viewBox="0 0 24 24" fill="none">
+                            <svg className="animate-spin h-5 w-5 text-premium-accent" viewBox="0 0 24 24" fill="none">
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                             </svg>
@@ -269,17 +272,25 @@ export default function LiveMatchPage() {
                 </div>
             </header>
 
-            <main className="px-5 md:px-8 py-6">
+            <main className="px-5 md:px-8 pb-10">
                 {error && (
-                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3">{error}</div>
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-100 px-6 py-4 shadow-lg backdrop-blur-md">{error}</div>
                 )}
 
                 {!error && cards.length === 0 && (
-                    <div className="text-white/75">Bugün için gösterilecek maç bulunamadı.</div>
+                    <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 text-gray-400">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        <p className="text-xl font-light text-gray-300">Şu anda oynanan maç bulunamadı.</p>
+                        <p className="text-sm text-gray-500 mt-2">Daha sonra tekrar kontrol edin.</p>
+                    </div>
                 )}
 
                 {!error && cards.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                         {cards.map((c) => (
                             <CourtCard
                                 key={c.id}
@@ -307,20 +318,20 @@ export default function LiveMatchPage() {
 
 /* -------------------------- Sunum Bileşeni -------------------------- */
 function CourtCard({
-                       court,
-                       matchNo,
-                       roundText,
-                       gender,
-                       isRunning,
-                       title,
-                       allAthletes,
-                       curSubSlug,
-                       athlete1,
-                       athlete2,
-                       nextSubSlug,
-                       nextAthlete1,
-                       nextAthlete2,
-                   }: {
+    court,
+    matchNo,
+    roundText,
+    gender,
+    isRunning,
+    title,
+    allAthletes,
+    curSubSlug,
+    athlete1,
+    athlete2,
+    nextSubSlug,
+    nextAthlete1,
+    nextAthlete2,
+}: {
     court: number;
     matchNo: number | null;
     roundText: string;
@@ -348,110 +359,129 @@ function CourtCard({
     const showNextPlayers = !!(N1 && N2);
 
     return (
-        <section className="relative overflow-hidden rounded-2xl bg-[#232834]/85 backdrop-blur border border-white/10 shadow-[0_8px_30px_rgba(0,0,0,.24)]">
-            {/* Dikey accent bar */}
-            <div className="absolute left-0 top-0 h-full w-1.5 bg-gradient-to-b from-indigo-400 via-sky-300 to-emerald-300 opacity-60" />
+        <section className="group relative overflow-hidden rounded-3xl border border-white/5 bg-premium-card/40 backdrop-blur-xl shadow-glass hover:shadow-elite hover:bg-premium-card/60 transition-all duration-500">
+            {/* Ambient Glow */}
+            <div className="absolute top-0 right-0 -mt-20 -mr-20 w-64 h-64 bg-premium-accent/10 blur-[80px] rounded-full pointer-events-none group-hover:bg-premium-accent/20 transition-colors" />
 
-            {/* Üst şerit */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-[#262b38] to-[#2a3040] border-b border-white/10">
-                <div className="flex items-center gap-3 text-sm md:text-base text-white/90">
-                    <div className="inline-flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-lg bg-white/5 ring-1 ring-white/10">
-                        <svg width="18" height="18" viewBox="0 0 24 24" className="opacity-90">
-                            <rect x="3" y="5" width="18" height="14" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="1.7" />
-                            <path d="M3 12h18M12 5v14" stroke="currentColor" strokeWidth="1.7" />
-                        </svg>
-                        <span className="font-semibold tracking-wide">Court</span>
-                        <span className="px-3.5 py-1.5 rounded-md bg-gradient-to-b from-zinc-200/90 to-zinc-50/90 text-gray-900 text-lg font-bold tabular-nums shadow">
-              {court}
-            </span>
+            {/* Üst şerit - Court Info */}
+            <div className="relative flex items-center justify-between px-6 py-4 border-b border-white/5 bg-gradient-to-r from-white/5 to-transparent">
+                <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-xl shadow-lg shadow-indigo-500/20">
+                        {court}
+                    </span>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Kort No</span>
+                        {title && <span className="text-xs text-indigo-200 truncate max-w-[150px]">{title}</span>}
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    {title ? (
-                        <span className="hidden md:inline-flex items-center px-3.5 py-2 rounded-full text-xs md:text-sm bg-indigo-400/15 text-indigo-100 ring-1 ring-indigo-300/30">
-              {title}
-            </span>
-                    ) : null}
-                    <div className="text-xl md:text-2xl font-extrabold tabular-nums text-emerald-300/90">
-                        {matchNo != null ? matchNo : '—'}
+                <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Maç No</div>
+                    <div className="text-2xl font-display font-black text-transparent bg-clip-text bg-gradient-to-br from-emerald-300 to-emerald-500 drop-shadow-sm tabular-nums">
+                        {matchNo != null ? `#${matchNo}` : '—'}
                     </div>
                 </div>
             </div>
 
             {/* Gövde */}
-            <div className="p-5 space-y-3.5">
-                <Row label="Kategori" value={gender} big />
-                <Row label="Maç No" value={matchNo != null ? `#${matchNo}` : '—'} big />
-                <Row label="Tur" value={roundText} big />
+            <div className="relative p-6 space-y-5">
+                {/* Meta Rows */}
+                <div className="flex items-center justify-between text-sm">
+                    <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300 font-medium text-xs">
+                        {gender}
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-indigo-200 font-medium text-xs">
+                        {roundText}
+                    </span>
+                </div>
 
                 {/* Oyuncular (ana maç) */}
-                {showMainPlayers && (
-                    <div className="mt-3">
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-4 md:gap-5">
-                            <PlayerBox name={A1?.name} club={A1?.club} className="sm:basis-[44%] flex-1 min-w-0" />
-                            <div className="flex-0 sm:flex-1 flex items-center justify-center">
-                <span className="px-3 py-1.5 md:px-4 md:py-1.5 rounded-md font-extrabold tracking-widest text-white/90 text-lg md:text-xl bg-white/10 ring-1 ring-white/20 select-none">
-                  VS
-                </span>
+                {showMainPlayers ? (
+                    <div className="relative mt-2 p-4 rounded-2xl bg-black/20 border border-white/5 shadow-inner">
+                        <div className="flex flex-col gap-4">
+                            <PlayerBox name={A1?.name} club={A1?.club} side="blue" />
+
+                            <div className="relative flex items-center justify-center py-1">
+                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                    <div className="w-full border-t border-white/5"></div>
+                                </div>
+                                <div className="relative flex justify-center">
+                                    <span className="px-3 py-0.5 bg-[#121212] border border-white/10 rounded text-[10px] font-bold text-gray-500 tracking-widest uppercase">
+                                        VS
+                                    </span>
+                                </div>
                             </div>
-                            <PlayerBox name={A2?.name} club={A2?.club} className="sm:basis-[44%] flex-1 min-w-0" />
+
+                            <PlayerBox name={A2?.name} club={A2?.club} side="red" />
                         </div>
+                    </div>
+                ) : (
+                    <div className="h-32 flex items-center justify-center rounded-2xl bg-black/20 border border-dotted border-white/10 text-gray-600 text-sm">
+                        Oyuncular bekleniyor...
                     </div>
                 )}
 
-                {/* Bir sonraki maç (yalnızca iki sporcu varsa) */}
+                {/* Status Indicator */}
+                <div className="pt-2 flex justify-center">
+                    <span
+                        className={[
+                            'relative inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide uppercase border backdrop-blur-md shadow-lg transition-all',
+                            isRunning
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 shadow-emerald-500/10'
+                                : 'bg-amber-500/10 border-amber-500/30 text-amber-300 shadow-amber-500/10'
+                        ].join(' ')}
+                    >
+                        {isRunning && (
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                        )}
+                        <span className={isRunning ? 'pl-3' : ''}>
+                            {isRunning ? 'Şu An Oynanıyor' : 'Sıradaki Maç Bekleniyor'}
+                        </span>
+                    </span>
+                </div>
+
+                {/* Bir sonraki maç (Footer) */}
                 {showNextPlayers && (
-                    <div className="mt-10">
-                        <div className="text-[13px] font-extrabold uppercase tracking-wide text-amber-300 drop-shadow-[0_1px_0_rgba(0,0,0,.35)] mb-2">
-                            Bir sonraki maç
+                    <div className="mt-6 pt-4 border-t border-white/5">
+                        <div className="flex items-center gap-2 mb-3">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400/80">Sıradaki Maç</span>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-between gap-3 opacity-80 hover:opacity-100 transition-opacity">
                             <MiniPlayerBox name={N1?.name} club={N1?.club} />
-                            <span className="px-2.5 py-1 rounded-md text-xs font-extrabold bg-white/10 ring-1 ring-white/20 select-none">
-                vs
-              </span>
+                            <span className="text-[10px] font-bold text-gray-600">vs</span>
                             <MiniPlayerBox name={N2?.name} club={N2?.club} />
                         </div>
                     </div>
                 )}
-
-                <div className="pt-1">
-          <span
-              className={[
-                  'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs md:text-sm font-semibold select-none ring-1',
-                  isRunning
-                      ? 'bg-emerald-500/22 text-emerald-100 ring-emerald-400/45 shadow-[0_0_0_3px_rgba(16,185,129,.12)_inset]'
-                      : 'bg-amber-400/25 text-amber-100 ring-amber-300/45 shadow-[0_0_0_3px_rgba(251,191,36,.12)_inset]',
-              ].join(' ')}
-          >
-            <span className="w-2 h-2 rounded-full bg-current opacity-90" aria-hidden />
-              {isRunning ? 'OYNANIYOR' : 'BEKLEMEDE'}
-          </span>
-                </div>
             </div>
         </section>
     );
 }
 
 /** Oyuncu kartı — ana maç */
-function PlayerBox({ name, club, className = '' }: { name?: string; club?: string; className?: string }) {
+function PlayerBox({ name, club, side }: { name?: string; club?: string; side: 'blue' | 'red' }) {
     const cleanedName =
         String(name || '')
             .replace(/\bexample\b/gi, '')
             .replace(/\s+/g, ' ')
             .trim() || '—';
 
+    const isBlue = side === 'blue';
+    const borderColor = isBlue ? 'border-sky-500/30' : 'border-rose-500/30';
+    const textColor = isBlue ? 'text-sky-100' : 'text-rose-100';
+    const clubColor = isBlue ? 'text-sky-400/70' : 'text-rose-400/70';
+
     return (
-        <div className={`min-w-0 ${className}`}>
-            <div className="w-full bg-[#3a404b] ring-1 ring-white/10 rounded-xl px-3.5 py-2.5 md:px-4 md:py-3 text-center shadow-sm">
-                <div className="font-extrabold uppercase tracking-wide text-white truncate text-[0.95rem] sm:text-[1.05rem] lg:text-[1.1rem] leading-tight">
+        <div className={`relative flex items-center justify-between p-3 rounded-lg bg-white/5 border ${borderColor} transition-colors hover:bg-white/10`}>
+            <div className="min-w-0 flex-1">
+                <div className={`font-display font-bold text-lg leading-none ${textColor} truncate`}>
                     {cleanedName}
                 </div>
-                {club ? (
-                    <div className="mt-1 uppercase font-semibold truncate text-[11px] sm:text-xs text-sky-300/90">{club}</div>
-                ) : (
-                    <div className="mt-1 h-4" />
+                {club && (
+                    <div className={`text-[10px] uppercase font-bold tracking-wider mt-1 ${clubColor} truncate`}>
+                        {club}
+                    </div>
                 )}
             </div>
         </div>
@@ -468,25 +498,14 @@ function MiniPlayerBox({ name, club }: { name?: string; club?: string }) {
 
     return (
         <div className="min-w-0 flex-1">
-            <div
-                className="w-full rounded-xl px-3.5 py-2.5 text-center
-                      bg-[#4b5261] text-white ring-1 ring-white/15
-                      shadow-[0_3px_10px_rgba(0,0,0,.18)]"
-            >
-                <div className="font-black uppercase tracking-wide truncate text-[0.95rem] md:text-[1rem] leading-tight">
-                    {cleanedName}
-                </div>
-                {club ? (
-                    <div
-                        className="mt-0.5 text-[11px] md:text-[12px] font-extrabold uppercase tracking-wide truncate
-                          text-sky-300 drop-shadow-[0_1px_0_rgba(0,0,0,.55)]"
-                    >
-                        {club}
-                    </div>
-                ) : (
-                    <div className="mt-0.5 h-3" />
-                )}
+            <div className="text-sm font-semibold text-gray-300 truncate">
+                {cleanedName}
             </div>
+            {club && (
+                <div className="text-[9px] font-bold uppercase text-gray-500 truncate">
+                    {club}
+                </div>
+            )}
         </div>
     );
 }
@@ -494,10 +513,7 @@ function MiniPlayerBox({ name, club }: { name?: string; club?: string }) {
 function Row({ label, value, big = false }: { label: string; value: string; big?: boolean }) {
     return (
         <div className="flex items-center gap-3 min-w-0">
-            <span className={`shrink-0 text-white/70 ${big ? 'text-[0.95rem]' : 'text-[0.9rem]'} font-medium`}>{label}</span>
-            <span className={`grow text-right text-white/95 ${big ? 'text-[0.95rem]' : 'text-[0.95rem]'} font-semibold truncate`}>
-        {value}
-      </span>
+            {/* Unused legacy helper, keeping just in case or remove if clean-up needed */}
         </div>
     );
 }

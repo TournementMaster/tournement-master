@@ -4,14 +4,19 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useAuth } from '../context/useAuth';
 import { api } from '../lib/api';
 import type { SubTournament } from '../hooks/useSubTournaments';
-type WhoAmI = { id:number; username:string; is_admin:boolean };
+type WhoAmI = { id: number; username: string; is_admin: boolean };
 
-export default function Header() {
+type HeaderProps = {
+    showSave?: boolean;
+};
+
+export default function Header({ showSave }: HeaderProps) {
     const { isAuth, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [userMenuOpen, setUserMenuOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [leaveBracketOpen, setLeaveBracketOpen] = useState(false);
     const [sp] = useSearchParams();
     const userMenuRef = useRef<HTMLDivElement>(null);
     const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -20,6 +25,19 @@ export default function Header() {
     const isDashboard = pathname === '/';
     const isBracket = pathname.startsWith('/bracket');
     const isSubList = pathname.startsWith('/tournements/');
+
+    const requestGoHome = (e?: { preventDefault?: () => void }) => {
+        if (isBracket) {
+            e?.preventDefault?.();
+            setMobileMenuOpen(false);
+            setUserMenuOpen(false);
+            setLeaveBracketOpen(true);
+            return;
+        }
+        setMobileMenuOpen(false);
+        setUserMenuOpen(false);
+        navigate('/');
+    };
 
     // izin bayrakları
     const [canCreateMain, setCanCreateMain] = useState(false);
@@ -30,7 +48,7 @@ export default function Header() {
     const [paletteOnly, setPaletteOnly] = useState(false);
 
     const [shareOpen, setShareOpen] = useState(false);
-    const shareInputRef = useRef<HTMLInputElement>(null);
+    // const shareInputRef = useRef<HTMLInputElement>(null); // Unused ref removed
 
     // dashboard’dayken admin mi?
     useEffect(() => {
@@ -62,7 +80,7 @@ export default function Header() {
 
     // InteractiveBracket'tan gelen "palette-only" sinyalini dinle
     useEffect(() => {
-        const h = (e:any) => setPaletteOnly(Boolean(e?.detail?.value));
+        const h = (e: any) => setPaletteOnly(Boolean(e?.detail?.value));
         window.addEventListener('bracket:palette-only', h);
         return () => window.removeEventListener('bracket:palette-only', h);
     }, []);
@@ -85,12 +103,12 @@ export default function Header() {
                 const weight = wMin || wMax ? `${wMin || '?'}–${wMax || '?'} kg` : '';
                 const title = (data.title || sp.get('title') || '').toString().trim();
                 const titleLc = title.toLocaleLowerCase('tr');
-                const titleHasGender = ['kadın','erkek','karma','women','men','female','male']
+                const titleHasGender = ['kadın', 'erkek', 'karma', 'women', 'men', 'female', 'male']
                     .some(k => titleLc.includes(k));
 
                 setHeaderText([title, !titleHasGender ? genderLabel : '', weight].filter(Boolean).join(' · '));
 
-// Mobil varyant zaten cinsiyet içermiyor
+                // Mobil varyant zaten cinsiyet içermiyor
                 setHeaderTextNoGender([title, weight].filter(Boolean).join(' · '));
             } catch {
                 const t = sp.get('title') || '';
@@ -107,7 +125,7 @@ export default function Header() {
     const onCreate = () => {
         if (!isAuth) { navigate('/login'); return; }
         if (isDashboard && !canCreateMain) { alert('Bu işlem için yetkiniz yok.'); return; }
-        if (isSubList && !canCreateSub)   { alert('Bu turnuvada düzenleme yetkiniz yok.'); return; }
+        if (isSubList && !canCreateSub) { alert('Bu turnuvada düzenleme yetkiniz yok.'); return; }
 
         if (isSubList) {
             const parentId =
@@ -164,155 +182,139 @@ export default function Header() {
 
     return (
         <>
-        <header
-            className="relative z-50 h-16 px-3 sm:px-6 flex items-center"
-            style={{
-                background: 'linear-gradient(90deg, rgba(22,163,74,0.35) 0%, rgba(67,56,202,0.35) 100%)',
-                backdropFilter: 'blur(2px)',
-                WebkitBackdropFilter: 'blur(2px)',
-            }}
-        >
-            {/* SOL: Logo + (desktop) Oluştur */}
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <Link
-                    to="/"
-                    className="hidden md:inline-block text-2xl font-extrabold text-white truncate max-w-[48vw] sm:max-w-none"
-                    title="Turnuvaist Taekwondo"
-                >
-                    Turnuvaist Taekwondo
-                </Link>
-
-                {/* Desktop: Oluştur butonu */}
-                {showCreateBtn && (
-                    <button
-                        onClick={onCreate}
-                        className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-2 text-sm font-semibold shadow"
+            <header
+                className="relative z-50 h-16 px-3 sm:px-6 flex items-center border-b border-premium-border bg-premium-glass backdrop-blur-xl shadow-glass"
+            >
+                {/* SOL: Logo + (desktop) Oluştur */}
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <Link
+                        to="/"
+                        onClick={(e) => requestGoHome(e)}
+                        className="hidden md:inline-block text-2xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-white via-gray-200 to-gray-400 tracking-tight truncate max-w-[48vw] sm:max-w-none hover:scale-105 transition-transform drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                        title="Turnuvaist Taekwondo"
                     >
-                        <span className="text-lg leading-none">＋</span>
-                        {createLabel}
-                    </button>
-                )}
-            </div>
-            {/* MOBİL FALLBACK BAŞLIK: header boşsa mobilde 'Turnuvaist' göster */}
-            {(!isBracket || !headerTextNoGender) && (
-                <div className="absolute inset-x-0 flex md:hidden justify-center pointer-events-none">
-                    <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[80vw]">
-                        Turnuvaist
-                    </div>
-                </div>
-            )}
+                        Turnuvaist Taekwondo
+                    </Link>
 
-            {/* ORTA: Bracket başlığı */}
-            {isBracket && (
-                <>
-                    {/* Mobil: cinsiyet yok */}
-                    {!!headerTextNoGender && (
-                        <div className="absolute inset-x-0 flex md:hidden justify-center pointer-events-none">
-                            <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[80vw]">
-                                {headerTextNoGender}
-                            </div>
-                        </div>
-                    )}
-                    {/* Desktop: tam metin (cinsiyet dahil) */}
-                    {!!headerText && (
-                        <div className="absolute inset-x-0 hidden md:flex justify-center pointer-events-none">
-                            <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[50vw]">
-                                {headerText}
-                            </div>
-                        </div>
-                    )}
-                </>
-            )}
-
-            {/* SAĞ: Aksiyonlar + Avatar */}
-            <div className="ml-auto flex items-center gap-2 sm:gap-3">
-                {/* Mobil: tek menü butonu (⋯) — tüm aksiyonlar burada */}
-                <div className="sm:hidden relative" ref={mobileMenuRef}>
-                    <button
-                        onClick={() => setMobileMenuOpen(v => !v)}
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/10 hover:bg-white/15 text-white"
-                        aria-label="Menü"
-                        title="Menü"
-                    >
-                        ⋯
-                    </button>
-
-                    {mobileMenuOpen && (
-                        <div
-                            className="absolute right-0 mt-2 w-56 bg-[#161a20] border border-white/10 rounded-xl overflow-hidden z-[9999] shadow-2xl"
+                    {/* Desktop: Oluştur butonu */}
+                    {showCreateBtn && (
+                        <button
+                            onClick={onCreate}
+                            className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-premium-accent hover:bg-indigo-600 text-white px-4 py-2 text-sm font-bold shadow-neon transition-all"
                         >
-                            {showCreateBtn && (
-                                <button
-                                    onClick={() => { setMobileMenuOpen(false); onCreate(); }}
-                                    className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white"
-                                    type="button"
-                                >
-                                    ＋ {createLabel}
-                                </button>
-                            )}
-                            {isBracket && (
-                                <>
-                                    <button
-                                        onClick={() => { setMobileMenuOpen(false); setShareOpen(true); }}
-                                        className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white"
-                                        type="button"
-                                    >
-                                        🔗 Paylaş
-                                    </button>
-                                    {isAuth && !paletteOnly && (
-                                        <button onClick={() => { setMobileMenuOpen(false); onSave(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white" type="button">💾 Kaydet</button>
-                                    )}
-                                </>
-                            )}
-                            {!isAuth ? (
-                                <Link
-                                    to="/login"
-                                    onClick={() => setMobileMenuOpen(false)}
-                                    className="block px-4 py-2.5 hover:bg-white/10 text-white"
-                                >
-                                    Giriş Yap
-                                </Link>
-                            ) : (
-                                <>
-                                    <Link to="/" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 hover:bg-white/10 text-white">Ana Sayfa</Link>
-                                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 hover:bg-white/10 text-white">Profilim</Link>
-                                    <button
-                                        onClick={() => { logout(); setMobileMenuOpen(false); navigate('/login', { replace: true }); }}
-                                        className="w-full text-left px-4 py-2.5 hover:bg-white/10 text-white"
-                                        type="button"
-                                    >
-                                        Çıkış Yap
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                            <span className="text-lg leading-none">＋</span>
+                            {createLabel}
+                        </button>
                     )}
                 </div>
-
-                {/* Mobil: bracket sayfasında görünen paylaş butonu */}
-                {isBracket && (
-                    <button
-                        onClick={onShare}
-                        className="sm:hidden inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/10 hover:bg-white/15 text-white"
-                        aria-label="Paylaş"
-                        title="Paylaş"
-                    >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="18" cy="5" r="3" />
-                            <circle cx="6" cy="12" r="3" />
-                            <circle cx="18" cy="19" r="3" />
-                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                        </svg>
-                    </button>
+                {/* MOBİL FALLBACK BAŞLIK: header boşsa mobilde 'Turnuvaist' göster */}
+                {(!isBracket || !headerTextNoGender) && (
+                    <div className="absolute inset-x-0 flex md:hidden justify-center pointer-events-none">
+                        <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[80vw]">
+                            Turnuvaist
+                        </div>
+                    </div>
                 )}
 
-                {/* Desktop: ayrı aksiyon butonları */}
+                {/* ORTA: Bracket başlığı */}
                 {isBracket && (
-                    <div className="hidden sm:flex items-center gap-2">
+                    <>
+                        {/* Mobil: cinsiyet yok */}
+                        {!!headerTextNoGender && (
+                            <div className="absolute inset-x-0 flex md:hidden justify-center pointer-events-none">
+                                <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[80vw]">
+                                    {headerTextNoGender}
+                                </div>
+                            </div>
+                        )}
+                        {/* Desktop: tam metin (cinsiyet dahil) */}
+                        {!!headerText && (
+                            <div className="absolute inset-x-0 hidden md:flex justify-center pointer-events-none">
+                                <div className="px-3 py-1 rounded text-white/90 font-semibold select-none truncate max-w-[50vw]">
+                                    {headerText}
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* SAĞ: Aksiyonlar + Avatar */}
+                <div className="ml-auto flex items-center gap-2 sm:gap-4">
+                    {/* Mobil: tek menü butonu (⋯) — tüm aksiyonlar burada */}
+                    <div className="sm:hidden relative" ref={mobileMenuRef}>
+                        <button
+                            onClick={() => setMobileMenuOpen(v => !v)}
+                            className="inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
+                            aria-label="Menü"
+                            title="Menü"
+                        >
+                            ⋯
+                        </button>
+
+                        {mobileMenuOpen && (
+                            <div
+                                className="absolute right-0 mt-2 w-56 bg-premium-card border border-premium-border rounded-xl overflow-hidden z-[9999] shadow-elite"
+                            >
+                                {showCreateBtn && (
+                                    <button
+                                        onClick={() => { setMobileMenuOpen(false); onCreate(); }}
+                                        className="w-full text-left px-4 py-2.5 hover:bg-white/5 text-white"
+                                        type="button"
+                                    >
+                                        ＋ {createLabel}
+                                    </button>
+                                )}
+                                {isBracket && (
+                                    <>
+                                        <button
+                                            onClick={() => { setMobileMenuOpen(false); setShareOpen(true); }}
+                                            className="w-full text-left px-4 py-2.5 hover:bg-white/5 text-white"
+                                            type="button"
+                                        >
+                                            🔗 Paylaş
+                                        </button>
+                                        {isAuth && !paletteOnly && (
+                                            <button onClick={() => { setMobileMenuOpen(false); onSave(); }} className="w-full text-left px-4 py-2.5 hover:bg-white/5 text-white" type="button">💾 Kaydet</button>
+                                        )}
+                                    </>
+                                )}
+                                {!isAuth ? (
+                                    <Link
+                                        to="/login"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="block px-4 py-2.5 hover:bg-white/5 text-white"
+                                    >
+                                        Giriş Yap
+                                    </Link>
+                                ) : (
+                                    <>
+                                        <Link
+                                            to="/"
+                                            onClick={(e) => { e.preventDefault(); requestGoHome(); }}
+                                            className="block px-4 py-2.5 hover:bg-white/5 text-white"
+                                        >
+                                            Ana Sayfa
+                                        </Link>
+                                        <Link to="/profile" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 hover:bg-white/5 text-white">Profilim</Link>
+                                        <button
+                                            onClick={() => { logout(); setMobileMenuOpen(false); navigate('/login', { replace: true }); }}
+                                            className="w-full text-left px-4 py-2.5 hover:bg-white/5 text-white"
+                                            type="button"
+                                        >
+                                            Çıkış Yap
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Mobil: bracket sayfasında görünen paylaş butonu */}
+                    {isBracket && (
                         <button
                             onClick={onShare}
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 hover:bg-white/15 text-white px-3 py-2 text-sm shadow"
+                            className="sm:hidden inline-flex items-center justify-center w-10 h-10 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors"
+                            aria-label="Paylaş"
                             title="Paylaş"
                         >
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -322,86 +324,146 @@ export default function Header() {
                                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
                                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                             </svg>
-                            Paylaş
                         </button>
+                    )}
 
-                        <button
-                            onClick={onPrint}
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 hover:bg-white/15 text-white px-3 py-2 text-sm shadow"
-                            title="Yazdır"
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="6 9 6 2 18 2 18 9" />
-                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                                <rect x="6" y="14" width="12" height="8" />
-                            </svg>
-                            Yazdır
-                        </button>
-
-                        {isAuth && !paletteOnly && (
+                    {/* Desktop: ayrı aksiyon butonları */}
+                    {isBracket && (
+                        <div className="hidden sm:flex items-center gap-2">
                             <button
-                                onClick={onSave}
-                                className="relative inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl shadow
-                       bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 hover:from-emerald-500 hover:to-green-400
-                       border border-white/10"
-                                title="Kaydet"
+                                onClick={onShare}
+                                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white px-3 py-2 text-sm shadow transition-colors"
+                                title="Paylaş"
                             >
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                                    <polyline points="17 21 17 13 7 13 7 21" />
-                                    <polyline points="7 3 7 8 15 8" />
+                                    <circle cx="18" cy="5" r="3" />
+                                    <circle cx="6" cy="12" r="3" />
+                                    <circle cx="18" cy="19" r="3" />
+                                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                                 </svg>
-                                Kaydet
+                                Paylaş
                             </button>
-                        )}
-                    </div>
-                )}
 
-                {/* Avatar / Login */}
-                {!isAuth ? (
-                    <Link
-                        to="/login"
-                        className="hidden sm:inline-flex px-4 py-2 rounded-lg bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-semibold"
-                    >
-                        Giriş Yap
-                    </Link>
-                ) : (
-                    <div className="relative hidden sm:block" ref={userMenuRef}>
-                        <img
-                            src="https://placehold.co/40x40"
-                            alt="avatar"
-                            className="w-10 h-10 rounded-full border-2 border-white cursor-pointer"
-                            onClick={() => setUserMenuOpen(m => !m)}
-                        />
-                        {userMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[9999]">
-                                <Link to="/" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">Ana Sayfa</Link>
-                                <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2 hover:bg-gray-100 text-gray-800">Profilim</Link>
+                            <button
+                                onClick={onPrint}
+                                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white px-3 py-2 text-sm shadow transition-colors"
+                                title="Yazdır"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="6 9 6 2 18 2 18 9" />
+                                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                                    <rect x="6" y="14" width="12" height="8" />
+                                </svg>
+                                Yazdır
+                            </button>
+
+                            {isAuth && !paletteOnly && (
                                 <button
-                                    onClick={() => { logout(); setUserMenuOpen(false); navigate('/login', { replace: true }); }}
-                                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-800"
-                                    type="button"
+                                    onClick={onSave}
+                                    className="relative inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl shadow
+                       bg-gradient-to-r from-emerald-600 via-emerald-500 to-green-500 hover:from-emerald-500 hover:to-green-400
+                       border border-white/10"
+                                    title="Kaydet"
                                 >
-                                    Çıkış Yap
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                        <polyline points="17 21 17 13 7 13 7 21" />
+                                        <polyline points="7 3 7 8 15 8" />
+                                    </svg>
+                                    Kaydet
                                 </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+                            )}
+                        </div>
+                    )}
 
-            {/* Oluştur: mobil’de menüde olduğu için burada gizli.
+                    {/* Avatar / Login */}
+                    {!isAuth ? (
+                        <Link
+                            to="/login"
+                            className="hidden sm:inline-flex px-5 py-2 rounded-full bg-premium-accent hover:bg-indigo-600 text-white font-semibold text-sm shadow-neon transition-all"
+                        >
+                            Giriş Yap
+                        </Link>
+                    ) : (
+                        <div className="hidden sm:flex items-center gap-2">
+                            <Link
+                                to="/"
+                                onClick={(e) => requestGoHome(e)}
+                                className="flex items-center justify-center w-9 h-9 rounded-full border border-white/5 bg-white/5 hover:bg-white/10 hover:border-premium-gold/30 transition-all text-gray-400 hover:text-premium-gold"
+                                title="Ana Sayfa"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                                    <polyline points="9 22 9 12 15 12 15 22" />
+                                </svg>
+                            </Link>
+                            <div className="relative" ref={userMenuRef}>
+                            <div
+                                className="group flex items-center gap-3 cursor-pointer p-1.5 pr-4 rounded-full border border-white/5 bg-white/5 hover:bg-white/10 hover:border-premium-gold/30 transition-all"
+                                onClick={() => setUserMenuOpen(m => !m)}
+                            >
+                                {/* Elite Avatar Ring */}
+                                <div className="relative">
+                                    <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-premium-gold to-yellow-600 opacity-70 blur-[1px] group-hover:opacity-100 transition-opacity" />
+                                    <div className="relative w-9 h-9 rounded-full bg-premium-card flex items-center justify-center overflow-hidden border border-black">
+                                        {/* Placeholder avatar or Initials */}
+                                        <span className="font-bold text-xs text-premium-gold tracking-widest">TR</span>
+                                    </div>
+                                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-[#121212] rounded-full"></div>
+                                </div>
+
+                                <span className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">
+                                    Hesabım
+                                </span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-gray-400 group-hover:text-premium-gold transition-colors">
+                                    <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
+
+                            {userMenuOpen && (
+                                <div className="absolute right-0 mt-3 w-56 bg-premium-card border border-premium-border rounded-xl shadow-elite overflow-hidden z-[9999] animate-in fade-in slide-in-from-top-2">
+                                    <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
+                                        <p className="text-xs text-premium-gold font-bold uppercase tracking-wider">Kullanıcı</p>
+                                        <p className="text-sm text-gray-300 truncate">Hoş geldin</p>
+                                    </div>
+                                    <Link
+                                        to="/"
+                                        onClick={(e) => { e.preventDefault(); requestGoHome(); }}
+                                        className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                                    >
+                                        Ana Sayfa
+                                    </Link>
+                                    <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors">Profilim</Link>
+
+                                    <div className="h-px bg-white/5 my-1" />
+
+                                    <button
+                                        onClick={() => { logout(); setUserMenuOpen(false); navigate('/login', { replace: true }); }}
+                                        className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                                        type="button"
+                                    >
+                                        Çıkış Yap
+                                    </button>
+                                </div>
+                            )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Oluştur: mobil’de menüde olduğu için burada gizli.
           İsterseniz mini ikon olarak göstermek için aşağıyı açabilirsiniz:
           {showCreateBtn && <button className="sm:hidden ...">＋</button>} */}
 
-            {flash && (
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded">
-                    {flash}
-                </div>
-            )}
-        </header>
+                {flash && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded">
+                        {flash}
+                    </div>
+                )}
+            </header>
 
-        {/* ☝️ header dışına taşındı; artık tüm ekranı kaplar */}
+            {/* ☝️ header dışına taşındı; artık tüm ekranı kaplar */}
             <ShareModal
                 open={shareOpen}
                 onClose={() => setShareOpen(false)}
@@ -409,18 +471,55 @@ export default function Header() {
                 onCopied={() => showFlash('Bağlantı kopyalandı.')}
                 fileBase={(headerTextNoGender || headerText || 'bracket')}
             />
+
+            {/* Bracket'ten Ana Sayfa'ya çıkış onayı */}
+            {leaveBracketOpen && (
+                <div
+                    className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={() => setLeaveBracketOpen(false)}
+                >
+                    <div className="absolute inset-0 bg-black/70" />
+                    <div
+                        className="relative z-10 w-[min(92vw,28rem)] rounded-2xl bg-premium-card border border-premium-border shadow-elite p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="text-lg font-semibold text-white mb-2">Ana sayfaya dön</div>
+                        <p className="text-sm text-gray-300">
+                            Bracket sayfasından çıkmak üzeresiniz.
+                        </p>
+                        <div className="mt-5 flex gap-2 justify-end">
+                            <button
+                                onClick={() => setLeaveBracketOpen(false)}
+                                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/90"
+                                type="button"
+                            >
+                                İptal
+                            </button>
+                            <button
+                                onClick={() => { setLeaveBracketOpen(false); navigate('/'); }}
+                                className="px-4 py-2 rounded-lg bg-premium-accent hover:bg-indigo-600 text-white font-semibold shadow-neon"
+                                type="button"
+                            >
+                                Ana sayfaya dön
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
 
 
 function ShareModal({
-                        open,
-                        onClose,
-                        url,
-                        onCopied,
-                        fileBase,
-                    }: {
+    open,
+    onClose,
+    url,
+    onCopied,
+    fileBase,
+}: {
     open: boolean;
     onClose: () => void;
     url: string;
@@ -469,7 +568,7 @@ function ShareModal({
     const JPEG_QUALITY = 0.82;           // 0..1
     const PNG_BG = '#0b0f16';
 
-// Asimetrik bleed: altta daha cömert pay
+    // Asimetrik bleed: altta daha cömert pay
     const BLEED_L = 120;
     const BLEED_T = 50;
     const BLEED_R = 500;
@@ -489,7 +588,7 @@ function ShareModal({
                 minY = Math.min(minY, b.y);
                 maxX = Math.max(maxX, b.x + b.width);
                 maxY = Math.max(maxY, b.y + b.height);
-            } catch {}
+            } catch { }
         });
         if (!isFinite(minX) || !isFinite(minY)) {
             // fallback: width/height
@@ -558,7 +657,7 @@ function ShareModal({
     }
 
 
-// ✔ Tek sayfa (braket boyutunda) — gerekirse otomatik poster
+    // ✔ Tek sayfa (braket boyutunda) — gerekirse otomatik poster
     const downloadBracketPdfFullPage = async () => {
         try {
             setPdfErr(null);

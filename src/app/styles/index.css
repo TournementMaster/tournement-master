@@ -1,23 +1,79 @@
 @import "tailwindcss";
 @import "./custom.css";
 
+@layer utilities {
+  .glass-panel {
+    @apply bg-[#181b21]/80 backdrop-blur-md border border-white/5 shadow-glass;
+  }
+
+  .text-glow {
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+  }
+
+  .text-elite-gradient {
+    @apply bg-gradient-to-r from-cyan-300 via-teal-200 to-emerald-300 bg-clip-text text-transparent;
+    text-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+  }
+
+  .card-elite {
+    @apply rounded-2xl border border-white/10 backdrop-blur-xl shadow-elite;
+    background: linear-gradient(135deg, rgba(26, 11, 46, 0.4) 0%, rgba(18, 18, 18, 0.6) 40%, rgba(15, 23, 42, 0.5) 100%);
+  }
+
+  .icon-glow {
+    filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.6)) drop-shadow(0 0 4px rgba(127, 255, 212, 0.4));
+  }
+
+  .shadow-elite-lg {
+    box-shadow: 0 0 30px rgba(0, 217, 255, 0.15), 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .bg-elite-gradient {
+    background: linear-gradient(135deg, rgba(26, 11, 46, 0.4) 0%, rgba(18, 18, 18, 0.6) 40%, rgba(15, 23, 42, 0.5) 100%);
+  }
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
 /* -------------------------------
    TEMA: Yazı tipi ve boyutlar
 -------------------------------- */
 @theme {
-  --font-sans: "Source Sans Pro", ui-sans-serif, system-ui, -apple-system,
-  "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji",
-  "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Outfit", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
 
-  --text-base: 1.0625rem;  /* 17px */
-  --leading-normal: 1.65;
+  --text-base: 1rem;
+  --leading-normal: 1.6;
+
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --shadow-neon: 0 0 10px rgba(99, 102, 241, 0.5), 0 0 20px rgba(99, 102, 241, 0.3);
+  --shadow-gold-glow: 0 0 15px rgba(255, 215, 0, 0.3);
+  --shadow-elite: 0 10px 40px -10px rgba(0, 0, 0, 0.7);
+
+  --color-premium-dark: #050505;
+  --color-premium-card: #121212;
+  --color-premium-glass: rgba(20, 20, 20, 0.7);
+  --color-premium-border: rgba(255, 255, 255, 0.08);
+  --color-premium-accent: #6366f1;
+  --color-premium-gold: #FFD700;
+  --color-premium-silver: #C0C0C0;
+  /* Elit metin tonları (grimsi yerine daha net) */
+  --color-elite-muted: rgba(226, 232, 240, 0.85);
+  --color-elite-subtle: rgba(203, 213, 225, 0.75);
+  --color-elite-caption: rgba(148, 163, 184, 0.9);
 }
 
 /* -------------------------------
    BASE: Tüm sayfaya uygula
 -------------------------------- */
 @layer base {
-  html, body { @apply bg-[#1e1f23] text-gray-100; }
+
+  html,
+  body {
+    @apply bg-premium-dark;
+    color: var(--color-elite-muted);
+    scroll-behavior: smooth;
+  }
 
   html {
     @apply font-sans antialiased text-base leading-normal;
@@ -26,19 +82,49 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  h1, h2, h3 { @apply font-semibold tracking-tight; }
-  h1 { @apply text-2xl; }
-  h2 { @apply text-xl; }
-  h3 { @apply text-lg; }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(circle at 15% 50%, rgba(76, 29, 149, 0.12), transparent 40%),
+      radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.08), transparent 40%),
+      linear-gradient(to bottom, #050505 0%, #121212 100%);
+    pointer-events: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display font-bold tracking-tight text-white drop-shadow-md;
+  }
+
+  h1 {
+    @apply text-3xl md:text-4xl;
+  }
+
+  h2 {
+    @apply text-2xl md:text-3xl;
+  }
+
+  h3 {
+    @apply text-xl md:text-2xl;
+  }
 }
 
 /* İsteğe bağlı: küçük metinler */
-@utility text-slightly-bigger { font-size: 0.95rem; }
+@utility text-slightly-bigger {
+  font-size: 0.95rem;
+}
 
 /* Takım adı tipografisi */
 .team-text {
   font-family: "Source Sans Pro", ui-sans-serif, system-ui, -apple-system,
-  "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    "Segoe UI", Roboto, "Helvetica Neue", Arial;
   font-weight: 600;
 }
 
@@ -49,6 +135,7 @@
 .header-surface {
   position: relative;
 }
+
 .header-surface::after {
   content: "";
   position: absolute;
@@ -56,16 +143,39 @@
   pointer-events: none;
   /* İki katmanlı yumuşak doku */
   background-image:
-          radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
-          radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+    radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
   background-size: 26px 26px, 18px 18px;
   background-position: 0 0, 8px 10px;
 }
+
+/* Shimmer animation for premium effects */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
 /* Sidebar tamamen kapat/aç */
-.sidebar-collapsed .sidebar { display: none; }
+.sidebar-collapsed .sidebar {
+  display: none;
+}
 
 /* Mobilde sidebar açık/kapalı görünürlüğü */
 @media (max-width: 1024px) {
-  .sidebar-open  .bracket-stage { display: none !important; }
-  .sidebar-collapsed .bracket-stage { display: block !important; }
+  .sidebar-open .bracket-stage {
+    display: none !important;
+  }
+
+  .sidebar-collapsed .bracket-stage {
+    display: block !important;
+  }
 }

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { EliteSelect } from '../../../components/EliteSelect';
 
 export type SubFilters = {
     status: 'all' | 'pending' | 'in_progress' | 'completed';
@@ -16,21 +17,21 @@ const DEFAULTS: SubFilters = {
 };
 
 const CAT_OPTIONS = [
-    ['all',      'Tümü'],
+    ['all', 'Tümü'],
     ['kucukler', 'Küçükler'],
     ['minikler', 'Minikler'],
-    ['yildizlar','Yıldızlar'],
-    ['gencler',  'Gençler'],
-    ['umitler',  'Ümitler'],
+    ['yildizlar', 'Yıldızlar'],
+    ['gencler', 'Gençler'],
+    ['umitler', 'Ümitler'],
     ['buyukler', 'Büyükler'],
 ] as const;
 
 
 export default function SubFilterSidebar({
-                                             filters,
-                                             setFilters,
-                                             slug,
-                                         }: {
+    filters,
+    setFilters,
+    slug,
+}: {
     filters: SubFilters;
     setFilters: (f: SubFilters) => void;
     slug?: string;
@@ -40,11 +41,11 @@ export default function SubFilterSidebar({
 
     return (
         // mobil: tam genişlik, büyük ekran: 16rem; sticky sadece lg+
-        <div className="w-full lg:w-64 bg-[#2d3038] rounded-lg p-4 h-fit lg:sticky lg:top-6 text-[15px]">
+        <div className="w-full lg:w-64 bg-[#1a1d24]/90 backdrop-blur-md border border-white/10 rounded-xl p-5 h-fit lg:sticky lg:top-6">
             <nav className="space-y-6">
                 {/* DURUM */}
                 <div>
-                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">DURUM</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Durum</h3>
                     {([
                         ['all', 'Tümü'],
                         ['pending', 'Başlamayan'],
@@ -53,7 +54,10 @@ export default function SubFilterSidebar({
                     ] as const).map(([k, lbl]) => (
                         <button
                             key={k}
-                            className={`w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 ${filters.status === k ? 'bg-gray-700' : ''}`}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${filters.status === k
+                                    ? 'bg-white/10 border-l-2 border-l-premium-accent text-white'
+                                    : 'hover:bg-white/5 text-slate-300'
+                                }`}
                             onClick={() => set({ status: k })}
                         >
                             {lbl}
@@ -63,7 +67,7 @@ export default function SubFilterSidebar({
 
                 {/* CİNSİYET */}
                 <div>
-                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">CİNSİYET</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Cinsiyet</h3>
                     {([
                         ['all', 'Tümü'],
                         ['M', 'Erkek'],
@@ -71,7 +75,10 @@ export default function SubFilterSidebar({
                     ] as const).map(([k, lbl]) => (
                         <button
                             key={k}
-                            className={`w-full text-left px-3 py-1.5 rounded hover:bg-gray-700 ${filters.gender === k ? 'bg-gray-700' : ''}`}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${filters.gender === k
+                                    ? 'bg-white/10 border-l-2 border-l-premium-accent text-white'
+                                    : 'hover:bg-white/5 text-slate-300'
+                                }`}
                             onClick={() => set({ gender: k as SubFilters['gender'] })}
                         >
                             {lbl}
@@ -81,36 +88,36 @@ export default function SubFilterSidebar({
 
                 {/* YAŞ KATEGORİSİ */}
                 <div>
-                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">YAŞ KATEGORİSİ</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Yaş kategorisi</h3>
                     <div className="grid grid-cols-1 gap-2">
-                        <select
+                        <EliteSelect
                             value={filters.ageCategory}
-                            onChange={(e)=> set({ ageCategory: e.target.value as SubFilters['ageCategory'] })}
-                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
-                        >
-                            {CAT_OPTIONS.map(([k, lbl]) => <option key={k} value={k}>{lbl}</option>)}
-                        </select>
+                            onChange={(v) => set({ ageCategory: v as SubFilters['ageCategory'] })}
+                            ariaLabel="Yaş kategorisi"
+                            options={CAT_OPTIONS.map(([k, lbl]) => ({ value: k, label: lbl }))}
+                            className="w-full"
+                        />
                     </div>
                 </div>
 
 
                 {/* KİLO */}
                 <div>
-                    <h3 className="font-semibold text-gray-200 mb-2 text-[0.95rem]">KİLO ARALIĞI (kg)</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Kilo aralığı (kg)</h3>
                     <div className="grid grid-cols-2 gap-2">
                         <input
                             value={filters.weightMin}
                             onChange={(e) => set({ weightMin: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.').slice(0, 5) })}
                             placeholder="Min"
                             inputMode="decimal"
-                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
+                            className="bg-[#0b0f16]/70 border border-white/10 px-3 py-2 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:border-premium-accent/50 focus:outline-none transition-colors"
                         />
                         <input
                             value={filters.weightMax}
                             onChange={(e) => set({ weightMax: e.target.value.replace(/[^\d.,]/g, '').replace(',', '.').slice(0, 5) })}
                             placeholder="Max"
                             inputMode="decimal"
-                            className="bg-gray-700 px-2 py-2 rounded text-[0.95rem]"
+                            className="bg-[#0b0f16]/70 border border-white/10 px-3 py-2 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:border-premium-accent/50 focus:outline-none transition-colors"
                         />
                     </div>
                 </div>
@@ -119,7 +126,7 @@ export default function SubFilterSidebar({
                 <div className="pt-2">
                     <button
                         onClick={clear}
-                        className="w-full px-3 py-2 rounded bg-gray-600 hover:bg-gray-700 text-[0.95rem] font-medium"
+                        className="w-full px-3 py-2 rounded-lg bg-[#0b0f16]/70 hover:bg-[#0b0f16] border border-white/10 text-sm font-medium text-slate-100 transition-colors"
                     >
                         Filtreyi Temizle
                     </button>

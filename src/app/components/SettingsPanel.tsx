@@ -11,9 +11,9 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean
             onClick={() => onChange(!checked)}
             className={[
                 'relative inline-flex items-center h-8 w-14 rounded-full transition-colors duration-200',
-                checked ? 'bg-emerald-500' : 'bg-gray-500/70',
-                'border', checked ? 'border-emerald-600' : 'border-gray-600',
-                'shadow-inner focus:outline-none focus:ring-2 focus:ring-emerald-300/60',
+                checked ? 'bg-emerald-500/90' : 'bg-white/10',
+                'border', checked ? 'border-emerald-400/60' : 'border-white/15',
+                'shadow-inner focus:outline-none focus:ring-2 focus:ring-premium-accent/40',
             ].join(' ')}
         >
       <span
@@ -252,14 +252,14 @@ export default function SettingsPanel() {
 
     return (
         <div className="space-y-6">
-            <h3 className="font-semibold mb-2">Ayarlar</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-3">Ayarlar</h3>
 
             {/* ✅ Maç Numaraları */}
-            <section className="rounded-lg bg-[#111318] border border-white/10 p-4 space-y-4">
+            <section className="rounded-3xl bg-white/[0.03] border border-white/10 p-5 space-y-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <div className="font-semibold">Maç numaralarını göster</div>
-                        <div className="text-xs text-gray-400">
+                        <div className="font-semibold text-white/90">Maç numaralarını göster</div>
+                        <div className="text-xs text-white/55">
                             Kutuların solunda / yanında maç no rozeti
                         </div>
                     </div>
@@ -273,35 +273,33 @@ export default function SettingsPanel() {
             <div className="h-2" />
 
             {!started && (
-                <section className="rounded-lg bg-[#111318] border border-white/10 p-4 space-y-3">
+                <section className="rounded-3xl bg-white/[0.03] border border-white/10 p-5 space-y-3">
                     <button
                         onClick={() => window.dispatchEvent(new CustomEvent('bracket:request-start'))}
-                        className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow"
+                        className="w-full py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow transition-colors"
                     >
                         Maçı Başlat
                     </button>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-white/55">
                         Başladıktan sonra sporcu listesi kilitlenir.
                     </p>
                 </section>
             )}
 
-            <section className="rounded-lg bg-[#111318] border border-white/10 p-4 space-y-5">
+            <section className="rounded-3xl bg-white/[0.03] border border-white/10 p-5 space-y-4">
                 <button
                    onClick={() => {
                      window.dispatchEvent(new CustomEvent('bracket:request-shuffle'));
                    }}
-                    className="w-full py-2 rounded border border-sky-500/70 text-sky-200 hover:bg-sky-900/20 font-semibold"
+                    className="w-full py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 hover:border-white/20 hover:bg-black/25 font-semibold transition-colors"
                     title="Seed sabit kalır; braket üzerindeki yerler rastgelelenir (aynı kulüp çakışmaları minimize edilir)"
                 >
                     Şablonu Karıştır
                 </button>
 
-                <div className="h-3" />
-
                 <button
                     onClick={() => setConfirmOpen(true)}
-                    className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold shadow"
+                    className="w-full py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-semibold shadow transition-colors"
                 >
                     Şablonu Sıfırla
                 </button>

@@ -56,12 +56,14 @@ export default function ParticipantsPanel() {
 
     return (
         <div className="flex flex-col h-full">
-            <h3 className="font-semibold mb-2">Katılımcılar</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-3">
+                Katılımcılar
+            </h3>
 
             {/* Ekleme formu */}
             <form onSubmit={onAdd} className="flex flex-col gap-2">
                 <input
-                    className="w-full bg-[#111318] rounded px-3 py-2"
+                    className="w-full rounded-2xl px-4 py-2.5 bg-black/20 border border-white/10 text-white/90 placeholder:text-white/35 focus:outline-none focus:border-premium-accent/55 transition-colors"
                     value={inputName}
                     onChange={(e) => setInputName(e.target.value)}
                     readOnly={readOnly}
@@ -71,7 +73,7 @@ export default function ParticipantsPanel() {
 
                 {readOnly ? (
                     <input
-                        className="w-full bg-[#111318] rounded px-3 py-2 text-white/80"
+                        className="w-full rounded-2xl px-4 py-2.5 bg-black/20 border border-white/10 text-white/70 placeholder:text-white/30"
                         value={club}
                         readOnly
                         disabled
@@ -82,36 +84,47 @@ export default function ParticipantsPanel() {
                 )}
 
                 {!readOnly && (
-                    <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white">
+                    <button
+                        type="submit"
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow transition-colors"
+                    >
                         Ekle
                     </button>
                 )}
 
                 {readOnly && (
-                    <div className="text-xs text-white/50">
-                        {locked ? 'Turnuva başladı: katılımcı listesi kilitli.' : 'View modunda düzenleme yapılamaz.'}
+                    <div className="rounded-2xl px-4 py-3 bg-white/[0.03] border border-white/10 text-xs text-white/60">
+                        {locked
+                            ? 'Turnuva başladı: katılımcı listesi kilitli.'
+                            : 'View modunda düzenleme yapılamaz.'}
                     </div>
                 )}
             </form>
 
             {/* LİSTE */}
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 mt-3 max-h-[calc(8*2.5rem+7*0.25rem)]">
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 mt-4">
                 {shown.map((p, i) => (
                     <div
                         key={`${p.name}-${p.seed}`}
-                        className="flex h-10 items-center justify-between bg-[#14161c] px-3 rounded"
+                        className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 hover:border-white/20 transition-colors"
                     >
                         <div className="flex-1 min-w-0 pr-2">
-        <span className="block truncate" title={`#${p.seed} — ${p.name}${p.club ? ' · ' + p.club : ''}`}>
-          #{p.seed} — {p.name}
-            {p.club ? <em className="text-gray-400"> · {p.club}</em> : null}
-        </span>
+                            <span
+                                className="block truncate text-sm text-white/90"
+                                title={`#${p.seed} — ${p.name}${p.club ? ' · ' + p.club : ''}`}
+                            >
+                                <span className="font-mono text-white/60">#{p.seed}</span>
+                                <span className="mx-2 text-white/25">—</span>
+                                {p.name}
+                                {p.club ? <em className="text-white/45"> · {p.club}</em> : null}
+                            </span>
                         </div>
                         {!readOnly && (
                             <button
                                 onClick={() => removeAt(i)}
-                                className="text-red-400 hover:text-red-200"
+                                className="w-9 h-9 rounded-xl bg-white/[0.03] border border-white/10 hover:border-red-400/40 hover:text-red-200 text-red-300 transition-colors"
                                 aria-label={`${p.name} sil`}
+                                type="button"
                             >
                                 ✕
                             </button>
@@ -125,7 +138,7 @@ export default function ParticipantsPanel() {
             {/* ARAMA */}
             <div className="pt-3 mt-3 border-t border-white/10">
                 <input
-                    className="w-full bg-[#111318] rounded px-3 py-2"
+                    className="w-full rounded-2xl px-4 py-2.5 bg-black/20 border border-white/10 text-white/90 placeholder:text-white/35 focus:outline-none focus:border-premium-accent/55 transition-colors"
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                     placeholder="(Sporcu ara...)"

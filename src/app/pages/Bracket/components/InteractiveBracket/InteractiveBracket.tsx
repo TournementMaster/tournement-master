@@ -24,69 +24,17 @@ import {
     resolveThemeKey,
     BackendBracketLoader,
     type Matrix,
-    type Match,
     type Player,
 } from './bracketData.ts';
+import { BOX_W, BOX_H, GAP, BASE, CORNER, type Pos } from './bracketLayout';
+import WinnerModal from './WinnerModal';
+import StartConfirmModal from './StartConfirmModal';
+import ShuffleCountdownModal from './ShuffleCountdownModal';
+import MatchNoConflictModal, { type MatchNoConflictItem } from './MatchNoConflictModal';
 
-/* ----------------------------- Layout constants -------------------------- */
-const BOX_W = 340;
-const BOX_H = 78;
-const GAP   = 120;
-const BASE  = BOX_H;
-const CORNER = 10;
+/* ----------------------------- (Modals moved to separate files) ------------------------------ */
 
-type Pos = { mid:number; y1:number; y2:number };
-
-// --- Lightbox etiket formatı (BracketCanvas ile tutarlı) ---
-const fixTurkishIDot = (s: string) =>
-    (s || '').normalize('NFKC')
-        .replace(/\u0049\u0307/g, 'İ')
-        .replace(/\u0069\u0307/g, 'i');
-
-const abbreviateGivenNames = (fullName?: string) => {
-    const s = fixTurkishIDot((fullName || '').trim().replace(/\s+/g, ' '));
-    if (!s) return s;
-    const parts = s.split(' ');
-    if (parts.length === 1) return s;
-    const last = parts[parts.length - 1];
-    const given = parts.slice(0, -1).map(w => {
-        const lw = w.toLocaleLowerCase('tr');
-        return w;
-    });
-    return [...given, last].join(' ');
-};
-
-const abbreviateClub = (club?: string) => {
-    const c = fixTurkishIDot((club || '').trim());
-    if (!c) return '';
-    return c
-        .replace(/\bSpor Kul(ü|u)b(ü|u)\b/gi, 'SK')
-        .replace(/\bSpor\b/gi, 'S.')
-        .replace(/\bKul(ü|u)b(ü|u)\b/gi, 'Klb.');
-};
-
-const formatLabel = (name?: string, club?: string) => {
-    const n = abbreviateGivenNames(name);
-    const k = abbreviateClub(club);
-    return k ? `${n}\u2002(${k})` : (n || '—');
-};
-
-/* ----------------------------- Winner Modal ------------------------------ */
-function BigTick({ checked, onClick, title }: { checked: boolean; onClick: () => void; title?: string }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            title={title}
-            className={`w-10 h-10 rounded-xl border flex items-center justify-center text-xl
-        ${checked ? 'bg-emerald-500/30 border-emerald-400' : 'bg-[#1f2229] border-white/10 hover:border-emerald-300'}`}
-        >
-            {checked ? '✓' : ''}
-        </button>
-    );
-}
-
-function WinnerModal({
+function _RemovedWinnerModal({
                          open, match, onPick, onReset, onVoid, onClose,
                          tournamentSlug,
                          day,
@@ -284,46 +232,18 @@ function WinnerModal({
                             onClick={() => setMnoOpen(v => !v)}
                             className="w-full flex items-center justify-between text-left"
                         >
-                            <div className="text-sm font-semibold text-white/90">Maç numarası taşı</div>
+                            <div className="text-sm font-semibold text-white/90">Maç numarası</div>
 
-                            <div className="flex items-center gap-2">
-                                {/* küçük durum rozeti (opsiyonel ama faydalı) */}
-                                {(() => {
-                                    const v = (match?.meta as any)?.movedMatchNo;
-                                    if (!v) return null;
-                                    return (
-                                        <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-600/15 text-emerald-200">
-            Taşındı: {String(v)}
-          </span>
-                                    );
-                                })()}
-
-                                <span className="text-white/60 text-lg leading-none">
-        {mnoOpen ? '▾' : '▸'}
-      </span>
-                            </div>
+                            <span className="text-white/60 text-lg leading-none">
+                                {mnoOpen ? '▾' : '▸'}
+                            </span>
                         </button>
 
                         {/* içerik */}
                         {mnoOpen && (
                             <div className="space-y-2 mt-2">
-                                <div className="text-xs text-white/60">
-                                    Asıl numara değişmez. Buraya yazdığınız numara sadece görünürde “taşınmış” olarak gösterilir.
-                                </div>
-
                                 <div className="flex items-center gap-2">
-                                    <div className="text-xs text-white/60 min-w-[90px]">Asıl</div>
-                                    <div className="px-3 py-2 rounded-md bg-[#1f2229] border border-white/10 text-white/90 font-mono">
-                                        {(() => {
-                                            const base = (match?.meta as any)?.matchNo;
-                                            return (typeof base === 'number' || typeof base === 'string') ? String(base) : '—';
-                                        })()}
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                    <div className="text-xs text-white/60 min-w-[90px]">Taşınan</div>
-
+                                    <div className="text-xs text-white/60 min-w-[90px]">Maç No</div>
                                     <input
                                         value={movedInput}
                                         onChange={(e) => {
@@ -372,7 +292,7 @@ function WinnerModal({
                                                 if (!norm || norm === '__INVALID__') return;
                                                 onSetMovedMatchNo(norm, true);
                                                 setCheckState('ok');
-                                                setCheckMsg('Çakışma kabul edildi ve taşınan numara kaydedildi.');
+                                                setCheckMsg('Çakışma kabul edildi ve maç numarası kaydedildi.');
                                             }}
                                             className="px-3 h-10 rounded-md bg-amber-600/80 hover:bg-amber-600 text-white font-semibold"
                                             title="Çakışmayı kabul et ve yine de kullan"
@@ -424,120 +344,6 @@ function WinnerModal({
     );
 }
 
-/* -------------------------- Start Confirm Modal -------------------------- */
-function StartConfirmModal({
-                               open,
-                               onConfirm,
-                               onCancel,
-                           }: {
-    open: boolean;
-    onConfirm: () => void;
-    onCancel: () => void;
-}) {
-    if (!open) return null;
-    return (
-        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center">
-            <div className="bg-[#0f1217] text-white rounded-xl p-5 w-[min(92vw,520px)] shadow-2xl border border-white/10">
-                <div className="text-lg font-semibold mb-2">Maçı Başlat</div>
-                <div className="text-sm text-white/80 mb-4">
-                    Maçı başlatmak istediğinize emin misiniz? <b>Bundan sonra sporcu ekleme/çıkarma yapamazsınız.</b>
-                </div>
-                <div className="flex justify-end gap-2">
-                    <button
-                        onClick={onCancel}
-                        className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15"
-                    >
-                        Vazgeç
-                    </button>
-                    <button
-                        onClick={onConfirm}
-                        className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500"
-                    >
-                        Maçı Başlat
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-/* -------------------------- Shuffle Countdown Modal -------------------------- */
-function ShuffleCountdownModal({
-                                   open, count
-                               }: { open: boolean; count: number }) {
-    if (!open) return null;
-
-    const done = count <= 0;
-
-    return (
-        <div className="fixed inset-0 z-[75] bg-black/60 flex items-center justify-center">
-            <div className="rounded-2xl bg-[#0f1217] border border-white/10 shadow-2xl px-8 py-10 text-center w-[min(92vw,520px)]">
-                {!done ? (
-                    <>
-                        <div className="text-white/80 text-sm mb-2">Şablon karıştırılıyor…</div>
-                        <div className="text-white font-extrabold tracking-wider text-[64px] leading-none">
-                            {count}
-                        </div>
-                    </>
-                ) : (
-                    <div className="text-emerald-300 font-semibold text-xl">Şablon karıştırıldı ✓</div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-type MatchNoConflict = {
-    no: string;
-    reason: string;
-};
-
-function MatchNoConflictModal({
-                                  open, items, onCancel, onProceed,
-                              }: {
-    open: boolean;
-    items: MatchNoConflict[];
-    onCancel: () => void;
-    onProceed: () => void;
-}) {
-    if (!open) return null;
-    return (
-        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center">
-            <div className="bg-[#0f1217] text-white rounded-xl p-5 w-[min(92vw,620px)] shadow-2xl border border-white/10">
-                <div className="text-lg font-semibold mb-2">Maç numarası çakışması</div>
-                <div className="text-sm text-white/80 mb-4">
-                    Bazı taşınan maç numaraları aynı gün içinde başka bir maçla çakışıyor olabilir.
-                    Yine de kaydetmek istiyor musunuz?
-                </div>
-
-                <div className="max-h-[240px] overflow-auto rounded-lg border border-white/10 bg-white/5 p-3 text-sm space-y-2">
-                    {items.map((x, i) => (
-                        <div key={i} className="flex gap-3">
-                            <div className="font-mono text-amber-200 min-w-[90px]">{x.no}</div>
-                            <div className="text-white/80">{x.reason}</div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="flex justify-end gap-2 mt-4">
-                    <button
-                        onClick={onCancel}
-                        className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/15"
-                    >
-                        Vazgeç
-                    </button>
-                    <button
-                        onClick={onProceed}
-                        className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500"
-                    >
-                        Yine de kaydet
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-
 /* -------------------------------- Component ------------------------------- */
 export default memo(function InteractiveBracket() {
     const { players, setPlayers } = usePlayers();
@@ -577,10 +383,10 @@ export default memo(function InteractiveBracket() {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
     const [mnoConflictOpen, setMnoConflictOpen] = useState(false);
-    const [mnoConflicts, setMnoConflicts] = useState<MatchNoConflict[]>([]);
+    const [mnoConflicts, setMnoConflicts] = useState<MatchNoConflictItem[]>([]);
     const mnoResolveRef = useRef<((ok: boolean) => void) | null>(null);
 
-    const confirmProceedDespiteConflicts = useCallback((items: MatchNoConflict[]) => {
+    const confirmProceedDespiteConflicts = useCallback((items: MatchNoConflictItem[]) => {
         return new Promise<boolean>((resolve) => {
             mnoResolveRef.current = resolve;
             setMnoConflicts(items);
@@ -1354,7 +1160,7 @@ export default memo(function InteractiveBracket() {
 
             // Çakışma kontrolü: sadece yeni/changed ve null olmayanlar
             const wanted = movedChanges.filter(x => x.no != null).map(x => x.no!) as string[];
-            const conflicts: MatchNoConflict[] = [];
+            const conflicts: MatchNoConflictItem[] = [];
 
             // 1) local duplicate
             const cnt = new Map<string, number>();
@@ -1822,7 +1628,7 @@ export default memo(function InteractiveBracket() {
                 a: string;
                 b: string;
                 winner?: 0 | 1 | undefined;
-                matchNo?: number;
+                matchNo?: string | number;
                 round: number; // 1-based
             };
 
@@ -1872,7 +1678,7 @@ export default memo(function InteractiveBracket() {
                         a,
                         b,
                         winner: win,
-                        matchNo: m.meta?.matchNo,
+                        matchNo: (m.meta as any)?.movedMatchNo ?? m.meta?.matchNo,
                         round: r1,
                     });
                 }

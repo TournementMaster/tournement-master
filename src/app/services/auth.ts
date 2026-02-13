@@ -1,23 +1,24 @@
 // src/app/services/auth.ts
-import { api, setAuth } from "../lib/api.tsx";
+import { api, setAuth, injectAuthLogic } from "../lib/api.tsx";
 
 interface LoginPayload { username: string; password: string }
 interface RegisterPayload { username: string; password: string; email?: string }
-interface Tokens        { access: string; refresh: string }
+interface Tokens { access: string; refresh: string }
 
-const ACCESS_KEY  = 'access';
+const ACCESS_KEY = 'access';
 const REFRESH_KEY = 'refresh';
 
 /* ---------------- public api ---------------- */
 
 export async function login(payload: LoginPayload): Promise<void> {
+    setAuth(null); // Temiz bir giriş isteği için varolan token'ı temizle
     const { data } = await api.post<Tokens>('auth/jwt/create/', payload);
     storeTokens(data);
     try { localStorage.setItem('username', payload.username); } catch { /* empty */ }
 }
 
 // Backend hata gövdesinden mesajları toplayıp tek metne çevirir
-function extractApiMessage(err: any): string | null {
+export function extractApiMessage(err: any): string | null {
     const data = err?.response?.data;
     if (!data) return null;
     const msgs: string[] = [];
@@ -65,7 +66,7 @@ export async function sendResetEmail(email: string): Promise<void> {
 export function logout(): void {
     localStorage.removeItem(ACCESS_KEY);
     localStorage.removeItem(REFRESH_KEY);
-    try { localStorage.removeItem('username'); } catch {}
+    try { localStorage.removeItem('username'); } catch { }
     setAuth(null);
 }
 
@@ -94,7 +95,10 @@ export async function refreshToken(): Promise<boolean> {
 /* ---------------- helpers ---------------- */
 
 function storeTokens(t: Tokens) {
-    localStorage.setItem(ACCESS_KEY,  t.access);
+    localStorage.setItem(ACCESS_KEY, t.access);
     localStorage.setItem(REFRESH_KEY, t.refresh);
     setAuth(t.access);
 }
+
+// Interceptor için gerekli fonksiyonları api katmanına enjekte ediyoruz
+injectAuthLogic({ logout, refreshToken });

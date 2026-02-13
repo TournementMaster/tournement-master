@@ -1,9 +1,11 @@
 // src/app/pages/Tournements/TournamentSubListPage.tsx
-import {useMemo, useState, useEffect} from 'react';
-import {useParams, useSearchParams, Link, useNavigate} from 'react-router-dom';
-import {useSubTournaments, type SubTournament} from '../../hooks/useSubTournaments';
-import SubFilterSidebar, {type SubFilters} from './components/SubFilterSidebar';
-import {api} from '../../lib/api';
+import { useMemo, useState, useEffect } from 'react';
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useSubTournaments, type SubTournament } from '../../hooks/useSubTournaments';
+import SubFilterSidebar, { type SubFilters } from './components/SubFilterSidebar';
+import { api } from '../../lib/api';
+import { TurnuvaEmblem } from '../../components/TurnuvaEmblem';
+import { EliteSelect } from '../../components/EliteSelect';
 
 /* ──────────────────────────────────────────────────────────────────────────
    Helpers
@@ -12,12 +14,12 @@ type SortKey = 'alpha' | 'created' | 'age' | 'weight';
 type Phase = 'pending' | 'in_progress' | 'completed';
 type AgeCatKey = 'kucukler' | 'minikler' | 'yildizlar' | 'gencler' | 'umitler' | 'buyukler';
 const AGE_CATEGORIES: Record<AgeCatKey, { min: number; max: number | null }> = {
-    kucukler: {min: 0, max: 10},
-    minikler: {min: 10, max: 13},
-    yildizlar: {min: 13, max: 15},
-    gencler: {min: 15, max: 18},
-    umitler: {min: 18, max: 20},
-    buyukler: {min: 18, max: null},
+    kucukler: { min: 0, max: 10 },
+    minikler: { min: 10, max: 13 },
+    yildizlar: { min: 13, max: 15 },
+    gencler: { min: 15, max: 18 },
+    umitler: { min: 18, max: 20 },
+    buyukler: { min: 18, max: null },
 };
 type GenderKey = 'M' | 'F';
 
@@ -172,9 +174,9 @@ function safeUUID(): string {
 }
 
 const PHASE_BADGE = {
-    pending: {text: 'Bekleyen', chip: 'bg-amber-500/20 text-amber-200'},
-    in_progress: {text: 'Başlayan', chip: 'bg-emerald-600/20 text-emerald-300'},
-    completed: {text: 'Biten', chip: 'bg-red-600/20 text-red-200'},
+    pending: { text: 'Bekleyen', chip: 'bg-amber-500/20 text-amber-200' },
+    in_progress: { text: 'Başlayan', chip: 'bg-emerald-600/20 text-emerald-300' },
+    completed: { text: 'Biten', chip: 'bg-red-600/20 text-red-200' },
 } as const;
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -198,10 +200,10 @@ type ImportConfig = {
     busyRef: boolean;
 };
 function ImportModal({
-                         onClose,
-                         onImported,
-                         publicSlug,
-                     }: {
+    onClose,
+    onImported,
+    publicSlug,
+}: {
     onClose: () => void;
     onImported: () => void;
     publicSlug: string;
@@ -211,6 +213,18 @@ function ImportModal({
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
         return `${d.getFullYear()}-${mm}-${dd}`;
+    };
+
+    const parseCourts = (raw: string) => {
+        const parts = String(raw || '')
+            .split(/[,; ]+/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+        const nums = parts
+            .map((x) => parseInt(x, 10))
+            .filter((n) => Number.isFinite(n) && n > 0);
+        // uniq + sort
+        return [...new Set(nums)].sort((a, b) => a - b);
     };
 
     const [file, setFile] = useState<File | null>(null);
@@ -269,13 +283,10 @@ function ImportModal({
         weight: string,
         selfKey: string,
     ) => {
-        return configs.some(
-            (c) =>
-                c.key !== selfKey &&
-                c.ageKey === ageKey &&
-                c.gender === gender &&
-                c.selectedWeights.includes(weight),
-        );
+        // Aynı sikletin birden fazla korta bölünmesine izin veriyoruz.
+        // (Kort alanına: "1,2,3" yazarak dağıtabilirsiniz.)
+        void ageKey; void gender; void weight; void selfKey;
+        return false;
     };
 
     const toggleWeight = (idx: number, weight: string) => {
@@ -356,7 +367,9 @@ function ImportModal({
             return;
         }
 
-        const categories: any[] = [];
+        // Aynı yaş+kilo+cinsiyet (ve gün) birden fazla satırda seçilirse:
+        // duplicate alt turnuva yerine preferred_courts birleşsin.
+        const categoriesByKey = new Map<string, any>();
 
         for (const cfg of configs) {
             const cat = AGE_CATEGORIES[cfg.ageKey];
@@ -368,9 +381,9 @@ function ImportModal({
                 setMsg('Tüm satırlar için maç günü seçmelisiniz.');
                 return;
             }
-            const courtNo = Number((cfg.court || '').trim());
-            if (!Number.isFinite(courtNo) || courtNo <= 0) {
-                setMsg('Kort numaraları pozitif bir sayı olmalıdır.');
+            const courts = parseCourts(cfg.court);
+            if (!courts.length) {
+                setMsg('Kort alanına en az bir pozitif numara girin. Örn: 1 veya 1,2,3');
                 return;
             }
             if (!cfg.selectedWeights.length) {
@@ -387,8 +400,8 @@ function ImportModal({
                     age_min: cat.min,
                     age_max: cat.max ?? 200,
                     weight: w,
-                    court_no: courtNo,
-                    preferred_courts: [courtNo],
+                    court_no: courts[0],
+                    preferred_courts: courts,
                     gender: cfg.gender,
                     day: cfg.day,
                     ...(!cfg.isPublic ? { public: false } : {}),
@@ -396,10 +409,30 @@ function ImportModal({
 
                 if (refIds.length) payload.referees = refIds; // opsiyonel
 
-                categories.push(payload);
+                const refKey = refIds.slice().sort((a, b) => a - b).join(',');
+                const key = [
+                    cfg.day,
+                    cfg.ageKey,
+                    cfg.gender,
+                    String(w),
+                    cfg.isPublic ? 'public' : 'private',
+                    refKey,
+                ].join('|');
+
+                const existing = categoriesByKey.get(key);
+                if (existing) {
+                    const merged = [...new Set([...(existing.preferred_courts || []), ...courts])]
+                        .filter((n) => Number.isFinite(n) && n > 0)
+                        .sort((a, b) => a - b);
+                    existing.preferred_courts = merged;
+                    existing.court_no = merged[0] ?? existing.court_no;
+                } else {
+                    categoriesByKey.set(key, payload);
+                }
             }
         }
 
+        const categories = [...categoriesByKey.values()];
         if (!categories.length) {
             setMsg('En az bir siklet seçmelisiniz.');
             return;
@@ -419,6 +452,34 @@ function ImportModal({
             );
             setResult(data);
             setMsg(null);
+
+            // Import sonrası maç numaralarını otomatik üret (tek tek kaydetme ihtiyacını kaldırır)
+            try {
+                const byDay = new Map<string, Set<number>>();
+                for (const cfg of configs) {
+                    const d = (cfg.day || '').trim();
+                    if (!d) continue;
+                    const set = byDay.get(d) || new Set<number>();
+                    parseCourts(cfg.court).forEach((c) => set.add(c));
+                    byDay.set(d, set);
+                }
+                for (const [d, set] of byDay.entries()) {
+                    const courts = [...set].sort((a, b) => a - b);
+                    const params =
+                        courts.length > 1
+                            ? { courts: courts.join(','), day: d }
+                            : courts.length === 1
+                                ? { court: courts[0], day: d }
+                                : { day: d };
+                    await api.post(
+                        `tournaments/${encodeURIComponent(publicSlug)}/generate-match-numbers/`,
+                        {},
+                        { params },
+                    );
+                }
+            } catch {
+                // numara üretimi başarısız olsa da import başarılı olmalı
+            }
         } catch (e: any) {
             const d = e?.response?.data?.detail;
             setMsg(typeof d === 'string' ? d : 'İçe aktarma başarısız oldu.');
@@ -440,7 +501,7 @@ function ImportModal({
     return (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" aria-modal="true" role="dialog">
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            <div className="relative z-10 w-[min(92vw,920px)] max-h-[90vh] overflow-hidden rounded-2xl bg-[#20242c] border border-white/10 shadow-2xl flex flex-col">
+            <div className="relative z-10 w-[min(92vw,920px)] max-h-[90vh] overflow-hidden rounded-2xl bg-premium-card border border-premium-border shadow-elite flex flex-col">
                 {submitting && (
                     <div className="absolute left-0 top-0 h-0.5 w-full overflow-hidden">
                         <div className="h-full w-1/3 bg-emerald-400/80 animate-[progress_1.2s_ease-in-out_infinite]" />
@@ -448,7 +509,7 @@ function ImportModal({
                 )}
 
                 {/* HEADER */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
                     <div className="text-lg font-semibold text-white">Excel’den Alt Turnuva İçe Aktar</div>
                     <button onClick={onClose} className="text-gray-300 hover:text-white" aria-label="Kapat">
                         ✕
@@ -460,7 +521,7 @@ function ImportModal({
                     {/* 1) Excel dosyası */}
                     <div>
                         <div className="text-sm text-gray-300 mb-2">Excel Dosyası (XLSX)</div>
-                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#2a2f37] border border-white/10 cursor-pointer hover:bg-[#303644]">
+                        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
                             <input
                                 type="file"
                                 accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -481,8 +542,8 @@ function ImportModal({
                         </div>
                         <div className="text-xs text-gray-400 mb-3">
                             Her satırda önce <b>maç günü</b> ve <b>kortu</b> seçin, ardından <b>yaş kategorisi</b> ve{' '}
-                            <b>cinsiyete</b> göre uygun sikletleri işaretleyin. Aynı yaş+kilo+cinsiyet kombinasyonu yalnızca bir{' '}
-                            <b>gün+kort</b> altında seçilebilir.
+                            <b>cinsiyete</b> göre uygun sikletleri işaretleyin. Aynı sikleti birden fazla korta dağıtmak için{' '}
+                            <b> Kort</b> alanına virgülle yazabilirsiniz (örn: <b>1,2,3</b>).
                         </div>
 
                         <div className="space-y-4">
@@ -493,7 +554,7 @@ function ImportModal({
                                 return (
                                     <div
                                         key={cfg.key}
-                                        className="rounded-xl border border-white/10 bg-[#1b1f24] p-4 space-y-3"
+                                        className="rounded-xl border border-premium-border/50 bg-white/[0.02] p-4 space-y-3"
                                     >
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="text-sm text-gray-200 font-semibold">
@@ -519,56 +580,57 @@ function ImportModal({
                                                     onChange={(e) =>
                                                         updateConfig(idx, { day: e.target.value })
                                                     }
-                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                                    className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white text-sm focus:border-premium-gold/50 focus:outline-none transition-colors"
                                                 />
                                             </div>
                                             <div>
                                                 <div className="text-xs text-gray-300 mb-1">Kort</div>
                                                 <input
-                                                    placeholder="1"
+                                                    placeholder="1 veya 1,2,3"
                                                     value={cfg.court}
                                                     onChange={(e) =>
                                                         updateConfig(idx, {
-                                                            court: e.target.value.replace(/\D/g, ''),
+                                                            court: e.target.value.replace(/[^\d,; ]/g, ''),
                                                         })
                                                     }
-                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
+                                                    className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white text-sm focus:border-premium-gold/50 focus:outline-none transition-colors"
                                                 />
                                             </div>
                                             <div>
                                                 <div className="text-xs text-gray-300 mb-1">Yaş Kategorisi</div>
-                                                <select
+                                                <EliteSelect
                                                     value={cfg.ageKey}
-                                                    onChange={(e) =>
+                                                    onChange={(v) =>
                                                         updateConfig(idx, {
-                                                            ageKey: e.target.value as AgeCatKey,
+                                                            ageKey: v as AgeCatKey,
                                                             selectedWeights: [],
                                                         })
                                                     }
-                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                                                >
-                                                    {Object.entries(AGE_CATEGORIES).map(([k, v]) => (
-                                                        <option key={k} value={k}>
-                                                            {renderAgeLabel(k as AgeCatKey, v)}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                    ariaLabel="Yaş kategorisi"
+                                                    options={Object.entries(AGE_CATEGORIES).map(([k, v]) => ({
+                                                        value: k,
+                                                        label: renderAgeLabel(k as AgeCatKey, v),
+                                                    }))}
+                                                    className="w-full"
+                                                />
                                             </div>
                                             <div>
                                                 <div className="text-xs text-gray-300 mb-1">Cinsiyet</div>
-                                                <select
+                                                <EliteSelect
                                                     value={cfg.gender}
-                                                    onChange={(e) =>
+                                                    onChange={(v) =>
                                                         updateConfig(idx, {
-                                                            gender: e.target.value as GenderKey,
+                                                            gender: v as GenderKey,
                                                             selectedWeights: [],
                                                         })
                                                     }
-                                                    className="w-full px-3 py-2 rounded bg-[#1b1f24] border border-white/10 text-white text-sm"
-                                                >
-                                                    <option value="M">Erkek</option>
-                                                    <option value="F">Kadın</option>
-                                                </select>
+                                                    ariaLabel="Cinsiyet"
+                                                    options={[
+                                                        { value: 'M', label: 'Erkek' },
+                                                        { value: 'F', label: 'Kadın' },
+                                                    ]}
+                                                    className="w-full"
+                                                />
                                             </div>
                                         </div>
 
@@ -587,9 +649,9 @@ function ImportModal({
                                                 aria-pressed={cfg.isPublic}
                                                 title={cfg.isPublic ? "Herkese Açık" : "Özel"}
                                             >
-      <span className="font-medium">
-        {cfg.isPublic ? "Herkese Açık" : "Özel"}
-      </span>
+                                                <span className="font-medium">
+                                                    {cfg.isPublic ? "Herkese Açık" : "Özel"}
+                                                </span>
 
                                                 {/* küçük switch görseli */}
                                                 <span
@@ -598,13 +660,13 @@ function ImportModal({
                                                         cfg.isPublic ? "bg-emerald-500/60" : "bg-red-500/60",
                                                     ].join(" ")}
                                                 >
-        <span
-            className={[
-                "inline-block h-4 w-4 transform rounded-full bg-white transition",
-                cfg.isPublic ? "translate-x-5" : "translate-x-1",
-            ].join(" ")}
-        />
-      </span>
+                                                    <span
+                                                        className={[
+                                                            "inline-block h-4 w-4 transform rounded-full bg-white transition",
+                                                            cfg.isPublic ? "translate-x-5" : "translate-x-1",
+                                                        ].join(" ")}
+                                                    />
+                                                </span>
                                             </button>
                                             <div className="text-[11px] text-gray-400 mt-1">
                                                 Özel seçilirse alt turnuva gizli oluşturulur.
@@ -612,7 +674,7 @@ function ImportModal({
                                         </div>
 
                                         {/* Hakemler (opsiyonel) */}
-                                        <div className="rounded-xl border border-white/10 bg-[#151a21] p-4">
+                                        <div className="rounded-xl border border-white/5 bg-black/20 p-4">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
                                                     <div className="text-xs text-gray-300 font-semibold">Hakemler (opsiyonel)</div>
@@ -641,7 +703,7 @@ function ImportModal({
                                                             }
                                                         }}
                                                         placeholder="Kullanıcı adı yaz (örn: hakem_ali)"
-                                                        className="w-full px-3 py-2 rounded bg-[#0f141a] border border-white/10 text-white text-sm
+                                                        className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 text-white text-sm focus:border-premium-gold/50 focus:outline-none transition-all
                            placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                                     />
                                                 </div>
@@ -676,17 +738,17 @@ function ImportModal({
                                bg-white/5 border border-white/10 text-gray-100 text-xs"
                                                             title={`ID: ${r.id}`}
                                                         >
-                    <span className="text-emerald-200">@{r.username}</span>
-                    <button
-                        type="button"
-                        onClick={() => removeRefereeFromRow(cfg.key, r.id)}
-                        className="text-gray-300 hover:text-white"
-                        aria-label="Hakemi kaldır"
-                        title="Kaldır"
-                    >
-                        ✕
-                    </button>
-                </span>
+                                                            <span className="text-emerald-200">@{r.username}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeRefereeFromRow(cfg.key, r.id)}
+                                                                className="text-gray-300 hover:text-white"
+                                                                aria-label="Hakemi kaldır"
+                                                                title="Kaldır"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </span>
                                                     ))}
                                                 </div>
                                             )}
@@ -703,41 +765,26 @@ function ImportModal({
                                                 <div className="flex flex-wrap gap-2">
                                                     {weightsForCfg.map((w) => {
                                                         const selected = cfg.selectedWeights.includes(w);
-                                                        const locked = weightUsedSomewhereElse(
-                                                            cfg.ageKey,
-                                                            cfg.gender,
-                                                            w,
-                                                            cfg.key,
-                                                        );
                                                         return (
                                                             <button
                                                                 key={w}
                                                                 type="button"
-                                                                disabled={locked && !selected}
                                                                 onClick={() => toggleWeight(idx, w)}
                                                                 className={[
                                                                     'px-3 py-1.5 rounded-full text-xs border transition',
                                                                     selected
                                                                         ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-50'
-                                                                        : locked
-                                                                            ? 'bg-gray-600/40 border-gray-500 text-gray-200 cursor-not-allowed'
-                                                                            : 'bg-[#111822] border-white/15 text-gray-100 hover:bg-[#172131]',
+                                                                        : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:border-premium-gold/30',
                                                                 ].join(' ')}
                                                             >
                                                                 {w} kg
-                                                                {locked && !selected && (
-                                                                    <span className="ml-1 text-[10px] opacity-70">
-                                                                        (başka satırda)
-                                                                    </span>
-                                                                )}
                                                             </button>
                                                         );
                                                     })}
                                                 </div>
                                             )}
                                             <div className="text-[11px] text-gray-400 mt-1">
-                                                Bir siklet aynı yaş+kilo+cinsiyet kombinasyonu için sadece bir gün ve kort
-                                                altında seçilebilir.
+                                                Aynı sikleti birden fazla korta bölmek için kort alanını <b>1,2,3</b> şeklinde girin.
                                             </div>
                                         </div>
                                     </div>
@@ -748,7 +795,7 @@ function ImportModal({
                                 <button
                                     type="button"
                                     onClick={addConfig}
-                                    className="px-3 py-2 rounded bg-[#2a2f37] hover:bg-[#303644] border border-white/10 text-sm"
+                                    className="px-3 py-2 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-sm transition-colors"
                                 >
                                     + Gün / Kort / Kategori Satırı Ekle
                                 </button>
@@ -764,7 +811,7 @@ function ImportModal({
                 </div>
 
                 {/* FOOTER */}
-                <div className="px-6 py-4 border-t border-white/10 bg-[#1b2027] flex items-center justify-between">
+                <div className="px-6 py-4 border-t border-white/10 bg-white/[0.02] flex items-center justify-between">
                     <span className="text-xs text-gray-400">
                         Her satır için, seçtiğiniz cinsiyet ve işaretlediğiniz sikletler için alt turnuvalar
                         <b> KATEGORİ-KİLO-CİNSİYET</b> formatında oluşturulur.
@@ -780,7 +827,7 @@ function ImportModal({
                         <button
                             onClick={onSubmit}
                             disabled={submitting}
-                            className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-60 inline-flex items-center gap-2"
+                            className="px-4 py-2 rounded bg-premium-accent hover:bg-indigo-600 text-white font-bold shadow-neon disabled:opacity-60 inline-flex items-center gap-2 transition-all"
                             type="button"
                         >
                             {submitting && (
@@ -795,7 +842,7 @@ function ImportModal({
                 {result && (
                     <div className="fixed inset-0 z-[95] flex items-center justify-center">
                         <div className="absolute inset-0 bg-black/60" onClick={() => setResult(null)} />
-                        <div className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-[#2a2f37] border border-white/10 p-6">
+                        <div className="relative z-10 w-[min(92vw,520px)] rounded-2xl bg-premium-card border border-premium-border shadow-elite p-6">
                             <div className="text-lg font-semibold mb-3">İçe Aktarma Sonucu</div>
                             <ul className="space-y-1 text-sm text-gray-200">
                                 <li>
@@ -874,13 +921,13 @@ function ImportModal({
    Single Row + çoklu seçim
    ────────────────────────────────────────────────────────────────────────── */
 function Row({
-                 item,
-                 onChanged,
-                 canManage,
-                 selected,
-                 onToggleSelect,
-                 highlightMatchNo,
-             }: {
+    item,
+    onChanged,
+    canManage,
+    selected,
+    onToggleSelect,
+    highlightMatchNo,
+}: {
     item: SubTournament;
     onChanged: () => void;
     canManage: boolean;
@@ -950,14 +997,25 @@ function Row({
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') goView();
                 }}
-                className={`group relative p-4 rounded-lg bg-[#2d3038] border cursor-pointer transition
-                   focus:outline-none flex items-center justify-between gap-3
-                   ${
-                    selected
-                        ? 'border-emerald-400/80 shadow-[0_0_0_2px_rgba(16,185,129,.55),0_0_22px_6px_rgba(168,85,247,.35),0_0_16px_4px_rgba(16,185,129,.35)] bg-emerald-500/5'
-                        : 'border-white/10 hover:border-emerald-400/50 hover:shadow-[0_0_0_2px_rgba(16,185,129,.45),0_0_22px_6px_rgba(168,85,247,.28),0_0_16px_4px_rgba(16,185,129,.28)]'
-                }`}
+                className={`group relative p-5 rounded-2xl border cursor-pointer transition-all duration-300 backdrop-blur-xl overflow-hidden
+                   focus:outline-none flex items-start justify-between gap-3
+                   ${selected
+                        ? 'border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.2),0_8px_32px_rgba(0,0,0,0.4)] bg-gradient-to-br from-emerald-500/10 via-premium-card/60 to-teal-500/10'
+                        : 'border-white/10 hover:border-cyan-400/30 bg-gradient-to-br from-premium-card/50 via-premium-card/40 to-premium-card/50 hover:shadow-[0_0_30px_rgba(0,217,255,0.15),0_8px_32px_rgba(0,0,0,0.4)]'
+                    }`}
+                style={{
+                    background: selected
+                        ? 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(18,18,18,0.7) 50%, rgba(20,184,166,0.08) 100%)'
+                        : 'linear-gradient(135deg, rgba(26,11,46,0.4) 0%, rgba(18,18,18,0.6) 40%, rgba(15,23,42,0.5) 100%)'
+                }}
             >
+                {/* Ambient glow overlay */}
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none ${selected ? 'bg-gradient-to-br from-emerald-400/5 via-transparent to-teal-400/5' : 'bg-gradient-to-br from-cyan-400/5 via-transparent to-purple-400/5'
+                    }`} />
+
+                {/* Subtle animated gradient on hover */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none bg-gradient-to-r from-transparent via-white/[0.02] to-transparent animate-shimmer" />
+
                 {/* SOL: seçim + içerik */}
                 <div className="pr-3 flex items-start gap-4 flex-1 min-w-0">
                     <div
@@ -966,21 +1024,25 @@ function Row({
                             e.stopPropagation();
                             onToggleSelect(item.public_slug);
                         }}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-xl select-none transition
-                        ${
-                            canManage
+                        className={`w-14 h-14 rounded-xl flex items-center justify-center select-none transition-all duration-300 relative overflow-hidden
+                        ${canManage
                                 ? selected
-                                    ? 'bg-emerald-500/40 text-emerald-50 ring-2 ring-emerald-300 shadow-lg'
-                                    : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                                : 'bg-emerald-500/15 text-emerald-300'
-                        }`}
+                                    ? 'bg-gradient-to-br from-emerald-500/50 via-emerald-400/40 to-teal-500/50 ring-2 ring-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
+                                    : 'bg-gradient-to-br from-cyan-500/20 via-teal-400/15 to-emerald-500/20 hover:from-cyan-500/30 hover:via-teal-400/25 hover:to-emerald-500/30'
+                                : 'bg-gradient-to-br from-cyan-500/20 via-teal-400/15 to-emerald-500/20'
+                            }`}
                         title={
                             canManage
                                 ? (selected ? 'Seçimi kaldır' : 'Alt turnuvayı seç')
                                 : undefined
                         }
                     >
-                        {canManage ? '🏆' : '🏆'}
+                        {/* Ambient glow effect */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/10 via-transparent to-emerald-400/10 blur-xl" />
+
+                        <div className="relative z-10">
+                            <TurnuvaEmblem variant="sub" size={32} />
+                        </div>
                     </div>
                     <div className="min-w-0">
                         <div className="font-semibold text-slate-100 truncate">{item.title}</div>
@@ -990,8 +1052,8 @@ function Row({
                             </span>
                             {matchHit && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-sky-500/15 text-sky-200 border border-sky-400/30">
-      Maç #{highlightMatchNo}
-    </span>
+                                    Maç #{highlightMatchNo}
+                                </span>
                             )}
                             {selected && canManage && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
@@ -1004,7 +1066,7 @@ function Row({
 
 
                 {/* SAĞ: chip + menü */}
-                <div className="relative flex items-center gap-2 sm:gap-3 shrink-0">
+                <div className="relative flex items-start gap-2 sm:gap-3 shrink-0 pt-0.5">
                     <span
                         className={`px-2 py-1 rounded text-xs border border-white/10 ${badge.chip}`}>{badge.text}</span>
 
@@ -1020,28 +1082,34 @@ function Row({
                                 aria-haspopup="menu" aria-expanded={open} title="İşlemler" type="button"
                             >
                                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                                    <circle cx="6" cy="12" r="1.7" fill="currentColor"/>
-                                    <circle cx="12" cy="12" r="1.7" fill="currentColor"/>
-                                    <circle cx="18" cy="12" r="1.7" fill="currentColor"/>
+                                    <circle cx="6" cy="12" r="1.7" fill="currentColor" />
+                                    <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+                                    <circle cx="18" cy="12" r="1.7" fill="currentColor" />
                                 </svg>
                             </button>
                             {open && (
                                 <div role="menu"
-                                     className="absolute right-0 mt-2 w-44 rounded-lg bg-[#1f232a] border border-white/10 shadow-xl z-20"
-                                     onMouseLeave={() => setOpen(false)} onClick={(e) => e.stopPropagation()}>
+                                    className="absolute right-0 mt-2 w-44 rounded-lg bg-[#1f232a] border border-white/10 shadow-xl z-20"
+                                    onMouseLeave={() => setOpen(false)} onClick={(e) => e.stopPropagation()}>
                                     <button onClick={() => {
                                         setOpen(false);
                                         goEdit();
                                     }}
-                                            className="w-full text-left px-3 py-2 hover:bg-white/10 text-emerald-300"
-                                            role="menuitem" type="button">✏️ Düzenle
+                                        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 hover:text-white transition-colors"
+                                        role="menuitem" type="button"
+                                    >
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        Düzenle
                                     </button>
                                     <button onClick={() => {
                                         setOpen(false);
                                         setConfirmOpen(true);
                                     }}
-                                            className="w-full text-left px-3 py-2 hover:bg-white/10 text-red-300"
-                                            role="menuitem" type="button">🗑️ Sil
+                                        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/10 transition-colors"
+                                        role="menuitem" type="button"
+                                    >
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        Sil
                                     </button>
                                 </div>
                             )}
@@ -1052,8 +1120,8 @@ function Row({
 
             {confirmOpen && (
                 <div className="fixed inset-0 z-[80] flex items-center justify-center"
-                     onClick={() => setConfirmOpen(false)} role="dialog" aria-modal="true">
-                    <div className="absolute inset-0 bg-black/60"/>
+                    onClick={() => setConfirmOpen(false)} role="dialog" aria-modal="true">
+                    <div className="absolute inset-0 bg-black/60" />
                     <div
                         className="relative z-10 w-[min(92vw,540px)] rounded-2xl bg-[#2a2d34] border border:white/10 shadow-2xl"
                         onClick={(e) => e.stopPropagation()}>
@@ -1064,12 +1132,12 @@ function Row({
                                 silinecek.</p>
                             <div className="flex justify-end gap-2">
                                 <button onClick={() => setConfirmOpen(false)}
-                                        className="px-4 py-2 rounded bg-[#3b4252] hover:bg-[#454d62] text-white/90"
-                                        type="button">Vazgeç
+                                    className="px-4 py-2 rounded bg-[#3b4252] hover:bg-[#454d62] text-white/90"
+                                    type="button">Vazgeç
                                 </button>
                                 <button onClick={confirmDelete} disabled={deleting}
-                                        className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-60"
-                                        type="button">
+                                    className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-60"
+                                    type="button">
                                     {deleting ? 'Siliniyor…' : 'Evet, sil'}
                                 </button>
                             </div>
@@ -1085,12 +1153,12 @@ function Row({
    Ana Sayfa
    ────────────────────────────────────────────────────────────────────────── */
 export default function TournamentSubListPage() {
-    const {public_slug} = useParams<{ public_slug: string }>();
+    const { public_slug } = useParams<{ public_slug: string }>();
     const [sp] = useSearchParams();
     const parentIdFromQuery = Number(sp.get('parent') || '');
     const parentId = Number.isFinite(parentIdFromQuery) ? parentIdFromQuery : undefined;
 
-    const {data, isLoading, isError, error, refetch} = useSubTournaments(public_slug);
+    const { data, isLoading, isError, error, refetch } = useSubTournaments(public_slug);
 
     const [filters, setFilters] = useState<SubFilters>({
         status: 'all',
@@ -1131,7 +1199,7 @@ export default function TournamentSubListPage() {
                 return;
             }
             try {
-                const {data} = await api.get(`tournaments/${encodeURIComponent(public_slug)}/`);
+                const { data } = await api.get(`tournaments/${encodeURIComponent(public_slug)}/`);
                 if (!cancelled) setCanManage(Boolean((data as any)?.can_edit));
             } catch {
                 if (!cancelled) setCanManage(false);
@@ -1208,7 +1276,7 @@ export default function TournamentSubListPage() {
         Promise.all(
             pick.map(async (s) => {
                 try {
-                    const {data: detail} = await api.get(`subtournaments/${encodeURIComponent(s.public_slug)}/`);
+                    const { data: detail } = await api.get(`subtournaments/${encodeURIComponent(s.public_slug)}/`);
                     return [s.public_slug, inferPhaseFromDetail(detail)] as const;
                 } catch {
                     return [s.public_slug, 'pending'] as const;
@@ -1216,7 +1284,7 @@ export default function TournamentSubListPage() {
             })
         ).then((entries) => {
             setStatusMap((prev) => {
-                const next = {...prev};
+                const next = { ...prev };
                 for (const [slug, phase] of entries) next[slug] = phase;
                 return next;
             });
@@ -1291,7 +1359,7 @@ export default function TournamentSubListPage() {
                 {/* SOL SİDEBAR */}
                 <aside className="hidden lg:block w-[280px] shrink-0">
                     <div className="lg:sticky lg:top-20">
-                        <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug}/>
+                        <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug} />
                     </div>
                 </aside>
 
@@ -1321,28 +1389,30 @@ export default function TournamentSubListPage() {
                                     value={q}
                                     onChange={(e) => setQ(e.target.value)}
                                     placeholder="Hızlı ara (başlık veya maç no)…"
-                                    className="w-full bg-gray-700/70 px-3 py-2 rounded text-sm placeholder:text-gray-300"
+                                    className="w-full bg-[#0b0f16]/70 border border-white/10 px-3 py-2 rounded-lg text-sm text-slate-100 placeholder:text-slate-500 focus:border-premium-gold/50 focus:outline-none transition-colors"
                                     aria-label="Alt turnuva ara"
                                 />
                                 {q && (
                                     <button onClick={() => setQ('')}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-200"
-                                            type="button">✕</button>
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-200"
+                                        type="button">✕</button>
                                 )}
                             </div>
 
                             <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-400">SIRALA:</span>
-                                <select
+                                <span className="text-sm text-white/90 font-semibold tracking-wide" style={{ textShadow: '0 0 10px rgba(255,255,255,0.15)' }}>SIRALA:</span>
+                                <EliteSelect
                                     value={sort}
-                                    onChange={(e) => setSort(e.target.value as SortKey)}
-                                    className="bg-gray-700 px-2 py-2 rounded text-sm"
-                                >
-                                    <option value="alpha">Alfabetik (A–Z)</option>
-                                    <option value="created">Oluşturma Tarihi (Yeni → Eski)</option>
-                                    <option value="age">Yaşa göre (Min yaş ↑)</option>
-                                    <option value="weight">Kiloya göre (Ortalama ↑)</option>
-                                </select>
+                                    onChange={(v) => setSort(v as SortKey)}
+                                    ariaLabel="Sıralama"
+                                    options={[
+                                        { value: 'alpha', label: 'Alfabetik (A–Z)' },
+                                        { value: 'created', label: 'Oluşturma Tarihi (Yeni → Eski)' },
+                                        { value: 'age', label: 'Yaşa göre (Min yaş ↑)' },
+                                        { value: 'weight', label: 'Kiloya göre (Ortalama ↑)' },
+                                    ]}
+                                    className="min-w-[250px]"
+                                />
                             </div>
 
                             {canManage && public_slug && (
@@ -1357,7 +1427,7 @@ export default function TournamentSubListPage() {
                                     </button>
                                     <button
                                         onClick={() => setShowImport(true)}
-                                        className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm shadow"
+                                        className="px-3 py-2 rounded-lg bg-premium-accent hover:bg-indigo-600 text-white text-sm font-bold shadow-neon transition-all"
                                     >
                                         Excel’den Aktar
                                     </button>
@@ -1375,28 +1445,29 @@ export default function TournamentSubListPage() {
                             <div className="flex flex-wrap items-center gap-2">
                                 <button
                                     onClick={handleBulkDelete}
-                                    className="px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-700 text-white text-xs sm:text-sm"
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-700 text-white text-xs sm:text-sm shadow-md transition-all"
                                     type="button"
                                 >
-                                    🗑️ Sil
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    Sil
                                 </button>
                                 <button
                                     onClick={handleBulkStart}
-                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm"
+                                    className="px-3 py-1.5 rounded-lg bg-premium-accent hover:bg-indigo-500 text-white text-xs sm:text-sm shadow-neon transition-all"
                                     type="button"
                                 >
                                     🚀 Turnuvayı Başlat
                                 </button>
                                 <button
                                     onClick={handleBulkClone}
-                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm"
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm shadow-md transition-all"
                                     type="button"
                                 >
                                     🎯 Alt Turnuvayı Klonla
                                 </button>
                                 <button
                                     onClick={clearSelection}
-                                    className="px-3 py-1.5 rounded-lg bg-[#313844] hover:bg-[#394253] text-white/90 text-xs sm:text-sm"
+                                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/90 text-xs sm:text-sm transition-colors"
                                     type="button"
                                 >
                                     Seçimi Temizle
@@ -1406,7 +1477,7 @@ export default function TournamentSubListPage() {
                     )}
 
                     {/* content states */}
-                    {isLoading && <SkeletonList/>}
+                    {isLoading && <SkeletonList />}
                     {isError && (() => {
                         const code = errorStatus;
                         if (code === 401) {
@@ -1420,7 +1491,7 @@ export default function TournamentSubListPage() {
                                         ya da organizatörden yetki isteyin.</p>
                                     <div className="flex items-center justify-center gap-3">
                                         <Link to="/"
-                                              className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">←
+                                            className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">←
                                             Dashboard</Link>
                                         <Link
                                             to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
@@ -1441,7 +1512,7 @@ export default function TournamentSubListPage() {
                                         görüntüleme yetkiniz bulunmuyor.</p>
                                     <div className="flex items-center justify-center gap-3">
                                         <Link to="/"
-                                              className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">←
+                                            className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">←
                                             Dashboard</Link>
                                     </div>
                                 </div>
@@ -1458,7 +1529,7 @@ export default function TournamentSubListPage() {
                                         yok.</p>
                                     <div className="flex items-center justify-center gap-3">
                                         <Link to="/"
-                                              className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">←
+                                            className="px-3 py-2 rounded bg-[#2b2f38] hover:bg-[#333845] border border-white/10 text-sm">←
                                             Dashboard</Link>
                                         <Link
                                             to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
@@ -1469,13 +1540,13 @@ export default function TournamentSubListPage() {
                             );
                         }
                         return (
-                            <div className="mt-2 rounded-lg bg-[#2a2d34] border border-red-500/30 p-6 space-y-2">
+                            <div className="mt-2 rounded-lg bg-white/[0.02] border border-red-500/30 p-6 space-y-2 backdrop-blur-sm">
                                 <p className="text-red-300 font-semibold">Veri alınamadı.</p>
                                 <p className="text-sm text-gray-300">{error instanceof Error ? error.message : 'Bilinmeyen hata.'}</p>
                                 <div className="flex items-center gap-3">
                                     <button onClick={() => refetch()}
-                                            className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-sm"
-                                            type="button">Tekrar Dene
+                                        className="px-3 py-2 rounded bg-premium-accent hover:bg-indigo-600 text-sm transition-colors"
+                                        type="button">Tekrar Dene
                                     </button>
                                 </div>
                             </div>
@@ -1485,17 +1556,32 @@ export default function TournamentSubListPage() {
                     {!isLoading && !isError && (
                         <>
                             {!list.length ? (
-                                <div className="rounded-lg border border-white/10 bg-[#2a2d34] p-8 text-center">
-                                    <div className="text-lg font-semibold mb-2">Henüz alt turnuvalanız yok</div>
-                                    <p className="text-sm text-gray-300 mb-5">Oluşturmak ister misiniz?</p>
+                                <div className="mt-16 flex flex-col items-center justify-center text-center max-w-md mx-auto">
+                                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-premium-accent/20 to-purple-500/20 border border-premium-accent/30 flex items-center justify-center mb-6">
+                                        <span className="text-4xl">🏆</span>
+                                    </div>
+                                    <h3 className="text-xl font-semibold mb-3 bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent">
+                                        Henüz alt turnuva yok
+                                    </h3>
+                                    <p className="text-sm text-gray-400 mb-6">
+                                        Bir alt turnuva oluşturmak ister misiniz?
+                                    </p>
                                     {canManage && (parentId ? (
-                                        <Link to={`/create?mode=sub&parent=${parentId}`}
-                                              className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700">Alt
-                                            Turnuva Oluştur</Link>
+                                        <Link
+                                            to={`/create?mode=sub&parent=${parentId}`}
+                                            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-premium-accent to-indigo-600 hover:from-indigo-600 hover:to-premium-accent text-white font-semibold shadow-neon transition-all duration-300 hover:scale-105"
+                                        >
+                                            <span>✨</span>
+                                            Alt Turnuva Oluştur
+                                        </Link>
                                     ) : (
-                                        <Link to="/create?mode=sub"
-                                              className="inline-flex items-center px-4 py-2 rounded bg-blue-600 hover:bg-blue-700">Alt
-                                            Turnuva Oluştur</Link>
+                                        <Link
+                                            to="/create?mode=sub"
+                                            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-premium-accent to-indigo-600 hover:from-indigo-600 hover:to-premium-accent text-white font-semibold shadow-neon transition-all duration-300 hover:scale-105"
+                                        >
+                                            <span>✨</span>
+                                            Alt Turnuva Oluştur
+                                        </Link>
                                     ))}
                                 </div>
                             ) : (
@@ -1539,22 +1625,25 @@ export default function TournamentSubListPage() {
                                                             {/* Gün başlığı */}
                                                             <div className="flex items-center gap-2 mb-4">
                                                                 <span className="
-                inline-flex items-center gap-2 px-3 py-1.5 rounded-full
-                border border-white/10
-                bg-gradient-to-r from-violet-600/25 via-violet-500/15 to-violet-400/10
-                text-violet-200/95
-                shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(139,92,246,.35)]
-                backdrop-blur-[2px]
+                inline-flex items-center gap-2 px-4 py-2 rounded-full
+                border border-violet-400/30
+                bg-gradient-to-r from-violet-600/30 via-violet-500/20 to-violet-400/15
+                text-violet-100
+                shadow-[0_0_0_1px_rgba(255,255,255,.08),0_8px_24px_-8px_rgba(139,92,246,.45)]
+                backdrop-blur-sm
+                hover:shadow-[0_0_0_1px_rgba(255,255,255,.12),0_10px_30px_-8px_rgba(139,92,246,.6)]
+                transition-all duration-300
+                group/day
               ">
-                                                                    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-                                                                        <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" fill="none"/>
-                                                                        <path d="M8 3v4M16 3v4M3.5 10.5h17" stroke="currentColor" strokeWidth="1.6"/>
+                                                                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden className="opacity-90 group-hover/day:opacity-100 transition-opacity">
+                                                                        <rect x="3.5" y="5" width="17" height="15" rx="2.5" stroke="currentColor" strokeWidth="2" fill="none" />
+                                                                        <path d="M8 3v4M16 3v4M3.5 10.5h17" stroke="currentColor" strokeWidth="2" />
                                                                     </svg>
-                                                                    <span className="text-[13px] font-semibold tracking-wide uppercase">
+                                                                    <span className="text-sm font-bold tracking-wider uppercase">
                                                                         {dayLabel}
                                                                     </span>
                                                                 </span>
-                                                                <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-violet-400/40 via-white/10 to-transparent"/>
+                                                                <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-violet-400/50 via-violet-300/20 to-transparent" />
                                                             </div>
 
                                                             {/* Gün içi kort grupları */}
@@ -1562,23 +1651,26 @@ export default function TournamentSubListPage() {
                                                                 {orderedCourts.map(([courtKey, arr]) => (
                                                                     <div key={String(courtKey)}>
                                                                         <div className="flex items-center gap-2 mb-3">
-                                                                        <span className="
-                      inline-flex items-center gap-2 px-3 py-1.5 rounded-full
-                      border border-white/10
-                      bg-gradient-to-r from-emerald-600/25 via-emerald-500/15 to-emerald-400/10
-                      text-emerald-200/95
-                      shadow-[0_0_0_1px_rgba(255,255,255,.06),0_6px_18px_-6px_rgba(16,185,129,.35)]
-                      backdrop-blur-[2px]
+                                                                            <span className="
+                      inline-flex items-center gap-2 px-4 py-2 rounded-full
+                      border border-emerald-400/30
+                      bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-400/15
+                      text-emerald-100
+                      shadow-[0_0_0_1px_rgba(255,255,255,.08),0_8px_24px_-8px_rgba(16,185,129,.45)]
+                      backdrop-blur-sm
+                      hover:shadow-[0_0_0_1px_rgba(255,255,255,.12),0_10px_30px_-8px_rgba(16,185,129,.6)]
+                      transition-all duration-300
+                      group/court
                     ">
-                                                                          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden className="opacity-90">
-                                                                              <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="1.6" fill="none"/>
-                                                                              <path d="M12 6v12M3 12h18" stroke="currentColor" strokeWidth="1.6"/>
-                                                                          </svg>
-                                                                          <span className="text-[13px] font-semibold tracking-wide uppercase">
-                        {courtKey === 'none' ? 'KORT ATANMAMIŞ' : `KORT-${courtKey}`}
-                      </span>
-                                                                        </span>
-                                                                            <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-emerald-400/40 via-white/10 to-transparent"/>
+                                                                                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden className="opacity-90 group-hover/court:opacity-100 transition-opacity">
+                                                                                    <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="none" />
+                                                                                    <path d="M12 6v12M3 12h18" stroke="currentColor" strokeWidth="2" />
+                                                                                </svg>
+                                                                                <span className="text-sm font-bold tracking-wider uppercase">
+                                                                                    {courtKey === 'none' ? 'KORT ATANMAMIŞ' : `KORT-${courtKey}`}
+                                                                                </span>
+                                                                            </span>
+                                                                            <span className="h-[1px] flex-1 rounded-full bg-gradient-to-r from-emerald-400/50 via-emerald-300/20 to-transparent" />
                                                                         </div>
 
                                                                         <div className="space-y-4">
@@ -1613,16 +1705,16 @@ export default function TournamentSubListPage() {
             {/* Mobil filtre çekmecesi */}
             {drawerOpen && (
                 <div className="fixed inset-0 z-[85] lg:hidden">
-                    <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)}/>
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setDrawerOpen(false)} />
                     <div
                         className="absolute left-0 top-0 bottom-0 w-[min(86vw,360px)] bg-[#1c2027] border-r border-white/10 p-4 overflow-y-auto">
                         <div className="flex items-center justify-between mb-2">
                             <div className="font-semibold">Filtreler</div>
                             <button onClick={() => setDrawerOpen(false)} className="text-gray-300 hover:text-white"
-                                    type="button">✕
+                                type="button">✕
                             </button>
                         </div>
-                        <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug}/>
+                        <SubFilterSidebar filters={filters} setFilters={setFilters} slug={public_slug} />
                     </div>
                 </div>
             )}
@@ -1669,10 +1761,10 @@ export default function TournamentSubListPage() {
 function SkeletonList() {
     return (
         <div className="space-y-4">
-            {Array.from({length: 4}).map((_, i) => (
+            {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-20 rounded-lg bg-[#2a2d34] border border-white/5 relative overflow-hidden">
                     <div
-                        className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/10 to-transparent"/>
+                        className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
             ))}
         </div>
@@ -1683,11 +1775,11 @@ function SkeletonList() {
    ShuffleDay Modal
    ────────────────────────────────────────────────────────────────────────── */
 function ShuffleDayModal({
-                             open,
-                             slug,
-                             onClose,
-                             onDone,
-                         }: {
+    open,
+    slug,
+    onClose,
+    onDone,
+}: {
     open: boolean;
     slug: string;
     onClose: () => void;
@@ -1865,12 +1957,12 @@ type TournamentOption = {
 };
 
 function BulkCloneModal({
-                            open,
-                            selectedCount,
-                            selectedSlugs,
-                            onClose,
-                            onDone,
-                        }: {
+    open,
+    selectedCount,
+    selectedSlugs,
+    onClose,
+    onDone,
+}: {
     open: boolean;
     selectedCount: number;
     selectedSlugs: string[];
@@ -1979,17 +2071,16 @@ function BulkCloneModal({
                     ) : (
                         <div>
                             <label className="block text-sm text-gray-200 mb-2">Hedef Ana Turnuva</label>
-                            <select
+                            <EliteSelect
                                 value={targetSlug}
-                                onChange={(e) => setTargetSlug(e.target.value)}
-                                className="w-full bg-[#0f141a] border border-white/10 rounded px-3 py-2 text-sm text-white"
-                            >
-                                {options.map((t) => (
-                                    <option key={t.public_slug} value={t.public_slug}>
-                                        {t.title || t.name || t.public_slug}
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={(v) => setTargetSlug(v)}
+                                ariaLabel="Hedef ana turnuva"
+                                options={options.map((t) => ({
+                                    value: t.public_slug,
+                                    label: (t.title || (t as any).name || t.public_slug) as string,
+                                }))}
+                                className="w-full"
+                            />
                         </div>
                     )}
 

@@ -160,11 +160,19 @@ export default function SubTournamentSettingsPanel() {
         <div className="space-y-4">
             {/* Panel başlığı */}
             <div className="flex items-center justify-between">
-                <h3 className="font-semibold mb-1">Alt Turnuva Ayarları</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-3">Alt turnuva ayarları</h3>
             </div>
 
-            {err && <div className="text-sm text-red-300">{err}</div>}
-            {!slug && <div className="text-sm text-amber-300">Slug okunamadı.</div>}
+            {err && (
+                <div className="rounded-2xl bg-red-500/10 border border-red-400/20 px-4 py-3 text-sm text-red-200">
+                    {err}
+                </div>
+            )}
+            {!slug && (
+                <div className="rounded-2xl bg-amber-500/10 border border-amber-400/20 px-4 py-3 text-sm text-amber-200">
+                    Slug okunamadı.
+                </div>
+            )}
 
             {/* İçerik – her zaman açık (Aç/Kapat kaldırıldı) */}
             <>
@@ -172,7 +180,7 @@ export default function SubTournamentSettingsPanel() {
                     <input
                         value={title}
                         onChange={e => setTitle(e.target.value)}
-                        className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 placeholder:text-white/35 focus:outline-none focus:border-premium-accent/55 transition-colors"
                         readOnly={viewOnly}
                         disabled={viewOnly}
                         placeholder={viewOnly ? 'View modunda düzenlenemez' : ''}
@@ -183,7 +191,7 @@ export default function SubTournamentSettingsPanel() {
                     <textarea
                         value={desc}
                         onChange={e => setDesc(e.target.value)}
-                        className="w-full h-24 px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full h-24 px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 placeholder:text-white/35 focus:outline-none focus:border-premium-accent/55 transition-colors"
                         readOnly={viewOnly}
                         disabled={viewOnly}
                         placeholder={viewOnly ? 'View modunda düzenlenemez' : ''}
@@ -196,7 +204,7 @@ export default function SubTournamentSettingsPanel() {
                             value={ageMin}
                             onChange={e => setAgeMin(e.target.value.replace(/\D/g, '').slice(0, 2))}
                             inputMode="numeric"
-                            className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                            className="w-full px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 focus:outline-none focus:border-premium-accent/55 transition-colors"
                             readOnly={viewOnly}
                             disabled={viewOnly}
                         />
@@ -206,7 +214,7 @@ export default function SubTournamentSettingsPanel() {
                             value={ageMax}
                             onChange={e => setAgeMax(e.target.value.replace(/\D/g, '').slice(0, 2))}
                             inputMode="numeric"
-                            className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                            className="w-full px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 focus:outline-none focus:border-premium-accent/55 transition-colors"
                             readOnly={viewOnly}
                             disabled={viewOnly}
                         />
@@ -219,7 +227,7 @@ export default function SubTournamentSettingsPanel() {
                             value={wMin}
                             onChange={e => setWMin(e.target.value.replace(/[^\d.,-]/g, '').slice(0, 6))}
                             inputMode="decimal"
-                            className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                            className="w-full px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 focus:outline-none focus:border-premium-accent/55 transition-colors"
                             readOnly={viewOnly}
                             disabled={viewOnly}
                         />
@@ -229,7 +237,7 @@ export default function SubTournamentSettingsPanel() {
                             value={wMax}
                             onChange={e => setWMax(e.target.value.replace(/[^\d.,-]/g, '').slice(0, 6))}
                             inputMode="decimal"
-                            className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                            className="w-full px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 focus:outline-none focus:border-premium-accent/55 transition-colors"
                             readOnly={viewOnly}
                             disabled={viewOnly}
                         />
@@ -240,7 +248,7 @@ export default function SubTournamentSettingsPanel() {
                     <select
                         value={gender}
                         onChange={e => setGender(e.target.value as 'M' | 'F' | 'O')}
-                        className="w-full px-3 py-2 rounded bg-[#1f2229]"
+                        className="w-full px-4 py-2.5 rounded-2xl bg-black/20 border border-white/10 text-white/90 focus:outline-none focus:border-premium-accent/55 transition-colors"
                         disabled={viewOnly}
                     >
                         <option value="M">Erkek</option>
@@ -257,7 +265,7 @@ export default function SubTournamentSettingsPanel() {
                     <button
                         onClick={save}
                         disabled={busy || !title.trim() || viewOnly}
-                        className="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold transition"
+                        className="w-full py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold transition-colors"
                     >
                         {busy ? 'Kaydediliyor…' : 'Kaydet'}
                     </button>
@@ -273,7 +281,9 @@ export default function SubTournamentSettingsPanel() {
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <label className="block mb-1 text-sm">{label}</label>
+            <label className="block mb-1 text-xs font-semibold tracking-wide text-white/60">
+                {label}
+            </label>
             {children}
         </div>
     )

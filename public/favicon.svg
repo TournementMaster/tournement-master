@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+  </defs>
+  <!-- Kupa: gövde + kulplar + taban -->
+  <path d="M8 4h16l1 6a8 8 0 0 1-6 7.5V22h4v4H10v-4h4v-4.5A8 8 0 0 1 7 10l1-6z" fill="url(#g)"/>
+  <path d="M6 8a1 1 0 0 1 1.2-.8 6 6 0 0 0 4.5 0 1 1 0 0 1 1.2.8l.5 2a1 1 0 0 1-1.2 1.2 4 4 0 0 1-3 0 1 1 0 0 1-1.2-1.2l.5-2z" fill="url(#g)" opacity="0.9"/>
+  <path d="M26 8a1 1 0 0 0-1.2-.8 6 6 0 0 1-4.5 0 1 1 0 0 0-1.2.8l-.5 2a1 1 0 0 0 1.2 1.2 4 4 0 0 0 3 0 1 1 0 0 0 1.2-1.2l-.5-2z" fill="url(#g)" opacity="0.9"/>
+  <rect x="12" y="24" width="8" height="2" rx="1" fill="url(#g)"/>
+</svg>

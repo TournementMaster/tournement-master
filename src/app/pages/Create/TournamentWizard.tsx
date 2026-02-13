@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
+import { EliteSelect } from '../../components/EliteSelect'
 
 export type Mode = 'main' | 'sub'
 export type Editor = { id: number; username: string }
@@ -10,12 +11,12 @@ export type Referee = { id: number; username: string };
 // ── YAŞ KATEGORİLERİ ────────────────────────────────────────────────────────
 type AgeCatKey = 'kucukler' | 'minikler' | 'yildizlar' | 'gencler' | 'umitler' | 'buyukler';
 const AGE_CATEGORIES: Record<AgeCatKey, { label: string; min: number; max: number | null }> = {
-    kucukler: { label: 'Küçükler',  min: 0,  max: 10 },
+    kucukler: { label: 'Küçükler', min: 0, max: 10 },
     minikler: { label: 'Minikler', min: 10, max: 13 },
-    yildizlar:{ label: 'Yıldızlar',min: 13, max: 15 },
-    gencler:  { label: 'Gençler',  min: 15, max: 18 },
-    umitler:  { label: 'Ümitler',  min: 18, max: 20 },
-    buyukler: { label: 'Büyükler',   min: 18, max: null }, // null = üst sınır yok
+    yildizlar: { label: 'Yıldızlar', min: 13, max: 15 },
+    gencler: { label: 'Gençler', min: 15, max: 18 },
+    umitler: { label: 'Ümitler', min: 18, max: 20 },
+    buyukler: { label: 'Büyükler', min: 18, max: null }, // null = üst sınır yok
 };
 
 // Her yaş kategorisi + cinsiyet için ön tanımlı sikletler
@@ -49,8 +50,8 @@ const WEIGHT_PRESETS: Record<AgeCatKey, { M: string[]; F: string[] }> = {
 const categoryFromRange = (lo?: number | null, hi?: number | null): AgeCatKey | '' => {
     const l = Number.isFinite(lo as number) ? Number(lo) : undefined;
     const h = Number.isFinite(hi as number) ? Number(hi) : null;
-    const entry = (Object.entries(AGE_CATEGORIES) as [AgeCatKey, {min:number;max:number|null}][])
-        .find(([,v]) => v.min === (l ?? NaN) && v.max === (h ?? null));
+    const entry = (Object.entries(AGE_CATEGORIES) as [AgeCatKey, { min: number; max: number | null }][])
+        .find(([, v]) => v.min === (l ?? NaN) && v.max === (h ?? null));
     return entry ? entry[0] : '';
 };
 
@@ -101,9 +102,9 @@ function inferPresetFromRange(
 
 
 export default function TournamentWizard({
-                                             mode: initialMode,
-                                             defaultParentId,
-                                         }: {
+    mode: initialMode,
+    defaultParentId,
+}: {
     mode: Mode
     defaultParentId?: number
 }) {
@@ -118,7 +119,7 @@ export default function TournamentWizard({
         if (userCache.has(id)) return userCache.get(id)!;
         try {
             // ✅ Doğru rota: Djoser → /api/auth/users/<id>/
-            const { data } = await api.get<{ id:number; username:string }>(`auth/users/${id}/`);
+            const { data } = await api.get<{ id: number; username: string }>(`auth/users/${id}/`);
             const uname = (data as any)?.username ?? null;
             if (uname) userCache.set(id, uname);
             return uname;
@@ -292,54 +293,54 @@ export default function TournamentWizard({
     // SUB: Düzenleme modunda alanları doldur
     useEffect(() => {
         if (mode !== 'sub' || !editSlug) return
-            ;(async () => {
-            try {
-                const { data } = await api.get(`subtournaments/${encodeURIComponent(editSlug)}/`)
-                setSubTitle(data.title ?? '')
-                setSubDesc(data.description ?? '')
-                const lo = Number.isFinite(data.age_min as never) ? Number(data.age_min) : undefined;
-                const hi = Number.isFinite(data.age_max as never) ? Number(data.age_max) : null;
-                setAgeCat(categoryFromRange(lo, hi));
-                setWeightMin((data.weight_min ?? '').toString())
-                setWeightMax((data.weight_max ?? '').toString())
-                setGender((data.gender as never) || 'M')
-                const wMinStr = (data.weight_min ?? '').toString();
-                const wMaxStr = (data.weight_max ?? '').toString();
-                const g = ((data.gender as never) || 'M') as 'M'|'F'|'O';
-                const cat = categoryFromRange(lo, hi);
+            ; (async () => {
+                try {
+                    const { data } = await api.get(`subtournaments/${encodeURIComponent(editSlug)}/`)
+                    setSubTitle(data.title ?? '')
+                    setSubDesc(data.description ?? '')
+                    const lo = Number.isFinite(data.age_min as never) ? Number(data.age_min) : undefined;
+                    const hi = Number.isFinite(data.age_max as never) ? Number(data.age_max) : null;
+                    setAgeCat(categoryFromRange(lo, hi));
+                    setWeightMin((data.weight_min ?? '').toString())
+                    setWeightMax((data.weight_max ?? '').toString())
+                    setGender((data.gender as never) || 'M')
+                    const wMinStr = (data.weight_min ?? '').toString();
+                    const wMaxStr = (data.weight_max ?? '').toString();
+                    const g = ((data.gender as never) || 'M') as 'M' | 'F' | 'O';
+                    const cat = categoryFromRange(lo, hi);
 
-                const inferred = inferPresetFromRange(cat, g, wMinStr, wMaxStr);
-                if (inferred) {
-                    setWeightMode('preset');
-                    setPresetWeight(inferred);
-                } else {
-                    setWeightMode('manual');
-                    setPresetWeight('');
-                }
+                    const inferred = inferPresetFromRange(cat, g, wMinStr, wMaxStr);
+                    if (inferred) {
+                        setWeightMode('preset');
+                        setPresetWeight(inferred);
+                    } else {
+                        setWeightMode('manual');
+                        setPresetWeight('');
+                    }
 
-                setSubPublic(!!data.public)
-                setDefaultCourt(String(data.court_no ?? ''))
-                setSubDay((data.day as string) ?? '') // ← YENİ: API’den oku
-                if (Array.isArray((data as any).referees)) {
-                    const ids = Array.from(new Set<number>(data.referees as number[]));
-                    const resolvedRefs = await Promise.all(
-                        ids.map(async (id) => {
-                            const uname = await usernameById(id);
-                            return { id, username: uname ?? String(id) };
-                        })
-                    );
-                    setReferees(resolvedRefs);
-                }
+                    setSubPublic(!!data.public)
+                    setDefaultCourt(String(data.court_no ?? ''))
+                    setSubDay((data.day as string) ?? '') // ← YENİ: API’den oku
+                    if (Array.isArray((data as any).referees)) {
+                        const ids = Array.from(new Set<number>(data.referees as number[]));
+                        const resolvedRefs = await Promise.all(
+                            ids.map(async (id) => {
+                                const uname = await usernameById(id);
+                                return { id, username: uname ?? String(id) };
+                            })
+                        );
+                        setReferees(resolvedRefs);
+                    }
 
-                // Backend'den gelen preferred_courts → UI string'ine yaz
-                const pc = Array.isArray((data as any)?.preferred_courts)
-                    ? ((data as any).preferred_courts as any[])
-                        .map(n => parseInt(String(n), 10))
-                        .filter(n => Number.isFinite(n) && n > 0)
-                    : [];
-                setSplitCourts(pc.join(','));
-            } catch { /* empty */ }
-        })()
+                    // Backend'den gelen preferred_courts → UI string'ine yaz
+                    const pc = Array.isArray((data as any)?.preferred_courts)
+                        ? ((data as any).preferred_courts as any[])
+                            .map(n => parseInt(String(n), 10))
+                            .filter(n => Number.isFinite(n) && n > 0)
+                        : [];
+                    setSplitCourts(pc.join(','));
+                } catch { /* empty */ }
+            })()
     }, [mode, editSlug])
 
     useEffect(() => {
@@ -447,8 +448,8 @@ export default function TournamentWizard({
                             tournament: tid ?? 0,
                             date: weighDate,
                             start_time: weighStart,  // "HH:MM"
-                            end_time:   weighEnd,    // "HH:MM"
-                            is_open:    weighOpen,
+                            end_time: weighEnd,    // "HH:MM"
+                            is_open: weighOpen,
                         };
 
                         if (weighInSlug) {
@@ -495,10 +496,10 @@ export default function TournamentWizard({
                 await api.patch(`subtournaments/${encodeURIComponent(editSlug)}/`, {
                     title: subTitle,
                     description: subDesc,
-                    ...( (() => {
+                    ...((() => {
                         const c = ageCat ? AGE_CATEGORIES[ageCat] : null;
                         return c ? { age_min: c.min, age_max: (c.max ?? 999) } : {};
-                    })() ),
+                    })()),
                     weight_min: resolvedWeight.min,
                     weight_max: resolvedWeight.max,
                     gender,
@@ -528,10 +529,10 @@ export default function TournamentWizard({
                 tournament: subParentId,
                 title: subTitle,
                 description: subDesc,
-                ...( (() => {
+                ...((() => {
                     const c = ageCat ? AGE_CATEGORIES[ageCat] : null;
                     return c ? { age_min: c.min, age_max: (c.max ?? 999) } : {};
-                })() ),
+                })()),
                 weight_min: resolvedWeight.min,
                 weight_max: resolvedWeight.max,
                 gender,
@@ -575,7 +576,7 @@ export default function TournamentWizard({
                             <button
                                 key={s}
                                 onClick={() => setStep(i)}
-                                className={`px-3 py-1.5 rounded-full text-xs ${i === step ? 'bg-sky-600 text-white' : 'bg-[#3a3f49] hover:bg-[#444956] text-gray-200'}`}
+                                className={`px-3 py-1.5 rounded-full text-xs transition-all border ${i === step ? 'bg-premium-accent text-white shadow-neon border-transparent' : 'bg-white/5 text-gray-400 border-white/10 hover:border-premium-gold/30 hover:bg-white/10'}`}
                             >
                                 {s}
                             </button>
@@ -677,7 +678,7 @@ export default function TournamentWizard({
                             <LabeledSelect
                                 label="Yaş Kategorisi"
                                 value={ageCat}
-                                set={(v)=> setAgeCat(v as AgeCatKey | '')}
+                                set={(v) => setAgeCat(v as AgeCatKey | '')}
                                 options={Object.fromEntries(Object.entries(AGE_CATEGORIES).map(([k, v]) => [k, v.label]))}
                                 placeholder="Seçiniz"
                             />
@@ -899,13 +900,13 @@ export default function TournamentWizard({
 
                     {/* Navigasyon */}
                     <div className="flex justify-between pt-4">
-                        <button onClick={onBack} className="rounded bg-[#3a3f49] px-3 py-2">Geri</button>
+                        <button onClick={onBack} className="rounded bg-white/5 hover:bg-white/10 px-4 py-2 text-sm transition-colors border border-white/10">Geri</button>
                         {step < steps.length - 1 ? (
-                            <button onClick={() => setStep(s => s + 1)} disabled={!canNext} className="rounded bg-sky-600 px-3 py-2 disabled:opacity-40">
+                            <button onClick={() => setStep(s => s + 1)} disabled={!canNext} className="rounded bg-premium-accent hover:bg-indigo-500 px-4 py-2 shadow-neon disabled:opacity-40 disabled:shadow-none transition-all font-medium">
                                 İleri
                             </button>
                         ) : (
-                            <button onClick={save} className="rounded bg-emerald-600 px-3 py-2">Kaydet</button>
+                            <button onClick={save} className="rounded bg-gradient-to-r from-premium-gold to-yellow-600 text-black font-bold px-6 py-2 shadow-gold-glow hover:scale-105 transition-all">Kaydet</button>
                         )}
                     </div>
                 </div>
@@ -917,8 +918,10 @@ export default function TournamentWizard({
 /** Yardımcı bileşenler **/
 function GradientFrame({ children, className = '' }: { children: ReactNode; className?: string }) {
     return (
-        <div className={`wizard-frame ${className}`}>
-            <div className="inner">{children}</div>
+        <div className={`rounded-xl border border-premium-border bg-premium-glass backdrop-blur-xl shadow-glass overflow-hidden ${className}`}>
+            {/* Decorative top gradient line */}
+            <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-premium-gold/50 to-transparent opacity-50" />
+            <div className="">{children}</div>
         </div>
     )
 }
@@ -937,7 +940,7 @@ function Labeled({ label, value, set, type = 'text', placeholder = '' }: {
                 value={value}
                 placeholder={placeholder}
                 onChange={e => set(e.target.value)}
-                className="rounded bg-[#1f2229] px-3 py-2"
+                className="rounded bg-white/5 border border-white/10 px-3 py-2 focus:border-premium-gold/50 focus:outline-none transition-all placeholder:text-gray-500"
             />
         </div>
     )
@@ -949,15 +952,25 @@ function LabeledSelect<T extends string>({ label, value, set, options, placehold
     options: Record<string, string>
     placeholder?: string
 }) {
+    const placeholderValue = '__placeholder__'
+    const activeValue = (placeholder && (value as any) === '') ? (placeholderValue as any as T) : value
+
     return (
         <div className="flex flex-col">
             <label className="mb-1">{label}</label>
-            <select value={value} onChange={e => set(e.target.value as T)} className="rounded bg-[#1f2229] px-3 py-2">
-                {placeholder && <option value="" disabled> {placeholder} </option>}
-                {Object.entries(options).map(([k, v]) => (
-                    <option key={k} value={k}>{v}</option>
-                ))}
-            </select>
+            <EliteSelect
+                value={activeValue as any as string}
+                onChange={(v) => {
+                    if (v === placeholderValue) return
+                    set(v as T)
+                }}
+                ariaLabel={label}
+                options={[
+                    ...(placeholder ? [{ value: placeholderValue, label: placeholder }] : []),
+                    ...Object.entries(options).map(([k, v]) => ({ value: k, label: v })),
+                ]}
+                className="w-full"
+            />
         </div>
     )
 }
@@ -965,7 +978,7 @@ function TextArea({ label, value, set }: { label: string; value: string; set: (v
     return (
         <div>
             <label className="mb-1 block">{label}</label>
-            <textarea value={value} onChange={e => set(e.target.value)} className="h-28 w-full rounded bg-[#1f2229] px-3 py-2" />
+            <textarea value={value} onChange={e => set(e.target.value)} className="h-28 w-full rounded bg-white/5 border border-white/10 px-3 py-2 focus:border-premium-gold/50 focus:outline-none transition-all" />
         </div>
     )
 }
@@ -973,24 +986,24 @@ function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (
     return (
         <label className="inline-flex items-center gap-3 cursor-pointer select-none">
             <span>{children}</span>
-            <span onClick={() => onChange(!checked)} className={`inline-block h-8 w-14 rounded-full p-1 transition ${checked ? 'bg-emerald-500' : 'bg-gray-600'}`}>
-        <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
-      </span>
+            <span onClick={() => onChange(!checked)} className={`inline-block h-8 w-14 rounded-full p-1 transition ${checked ? 'bg-premium-accent shadow-neon' : 'bg-white/10'}`}>
+                <span className={`block h-6 w-6 rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
+            </span>
         </label>
     )
 }
 function SummaryCard({
-                         mode,
-                         propsMain,
-                         propsSub,
-                     }: {
+    mode,
+    propsMain,
+    propsSub,
+}: {
     mode: Mode
     propsMain: {
         title: string; seasonYear: string; city: string; venue: string;
         startDate: string; endDate: string; isPublic: boolean; editors: Editor[]
     }
     propsSub: {
-        subTitle: string; gender: 'M'|'F'|'O'; ageLabel: string;
+        subTitle: string; gender: 'M' | 'F' | 'O'; ageLabel: string;
         weightMin: string; weightMax: string; subPublic: boolean; day: string;
         prefCourts?: string;
     }
@@ -1008,7 +1021,7 @@ function SummaryCard({
                     <div><b>Başlangıç:</b> {startDate}</div>
                     <div><b>Bitiş:</b> {endDate}</div>
                     <div><b>Herkes:</b> {isPublic ? 'Evet' : 'Hayır'}</div>
-                    <div><b>Editörler:</b> {editors.length ? editors.map(e=>e.username).join(', ') : '—'}</div>
+                    <div><b>Editörler:</b> {editors.length ? editors.map(e => e.username).join(', ') : '—'}</div>
                 </div>
             ) : (
                 <div className="grid gap-4 md:grid-cols-2">

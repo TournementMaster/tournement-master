@@ -31,5 +31,6 @@ export function useSubTournaments(publicSlug: string | undefined) {
         staleTime: 0,
         refetchOnMount: 'always',
         refetchOnWindowFocus: false,
+        retry: false, // 500 hatalarında direkt boş state göster, retry yapma
     });
 }
