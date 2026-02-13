@@ -141,6 +141,7 @@ export default function TournamentWizard({
     const [endDate, setEndDate] = useState('')
     const [description, setDescription] = useState('')
     const [isPublic, setIsPublic] = useState(true)
+    const [showOnHomepage, setShowOnHomepage] = useState(false)
 
     // Tartı günü (yeni sekme)
     const [weighEnabled, setWeighEnabled] = useState(false)
@@ -199,6 +200,7 @@ export default function TournamentWizard({
                 setEndDate(data.end_date ?? '');
                 setDescription(data.description ?? '');
                 setIsPublic(!!data.public);
+                setShowOnHomepage(!!data.public && !!data.show_on_homepage);
                 setEditingTournamentId(typeof data.id === 'number' ? data.id : null);
 
                 if (Array.isArray(data.editors)) {
@@ -235,6 +237,12 @@ export default function TournamentWizard({
             }
         })();
     }, [mode, editSlug]);
+
+    useEffect(() => {
+        if (!isPublic && showOnHomepage) {
+            setShowOnHomepage(false);
+        }
+    }, [isPublic, showOnHomepage]);
 
     // Editör ekleme
     const [editorInput, setEditorInput] = useState('')
@@ -430,6 +438,7 @@ export default function TournamentWizard({
                 end_date: endDate || null,
                 description: description.trim(),
                 public: isPublic,
+                show_on_homepage: isPublic ? showOnHomepage : false,
                 editors: editors.map(e => e.id),
             };
 
@@ -605,6 +614,22 @@ export default function TournamentWizard({
                             </div>
                             <TextArea label="Açıklama" value={description} set={setDescription} />
                             <Toggle checked={isPublic} onChange={setIsPublic}>Herkes</Toggle>
+                            <div className={!isPublic ? 'opacity-60' : ''}>
+                                <Toggle
+                                    checked={showOnHomepage}
+                                    onChange={(v) => {
+                                        if (!isPublic) return;
+                                        setShowOnHomepage(v);
+                                    }}
+                                >
+                                    Ana Sayfada Yayınla
+                                </Toggle>
+                                {!isPublic && (
+                                    <p className="mt-2 text-xs text-gray-400">
+                                        Private turnuvalar homepage'de gösterilemez.
+                                    </p>
+                                )}
+                            </div>
                         </>
                     )}
 
@@ -887,7 +912,7 @@ export default function TournamentWizard({
                     {steps[step] === 'Özet' && (
                         <SummaryCard
                             mode={mode}
-                            propsMain={{ title, seasonYear, city, venue, startDate, endDate, isPublic, editors }}
+                            propsMain={{ title, seasonYear, city, venue, startDate, endDate, isPublic, showOnHomepage, editors }}
                             propsSub={{
                                 subTitle, gender,
                                 ageLabel: ageCat ? AGE_CATEGORIES[ageCat].label : '—',
@@ -1000,7 +1025,7 @@ function SummaryCard({
     mode: Mode
     propsMain: {
         title: string; seasonYear: string; city: string; venue: string;
-        startDate: string; endDate: string; isPublic: boolean; editors: Editor[]
+        startDate: string; endDate: string; isPublic: boolean; showOnHomepage: boolean; editors: Editor[]
     }
     propsSub: {
         subTitle: string; gender: 'M' | 'F' | 'O'; ageLabel: string;
@@ -1008,7 +1033,7 @@ function SummaryCard({
         prefCourts?: string;
     }
 }) {
-    const { title, seasonYear, city, venue, startDate, endDate, isPublic, editors } = propsMain
+    const { title, seasonYear, city, venue, startDate, endDate, isPublic, showOnHomepage, editors } = propsMain
     const { subTitle, gender, ageLabel, weightMin, weightMax, subPublic, day } = propsSub
     return (
         <div className="space-y-4 text-sm">
@@ -1021,6 +1046,7 @@ function SummaryCard({
                     <div><b>Başlangıç:</b> {startDate}</div>
                     <div><b>Bitiş:</b> {endDate}</div>
                     <div><b>Herkes:</b> {isPublic ? 'Evet' : 'Hayır'}</div>
+                    <div><b>Homepage'de Göster:</b> {showOnHomepage ? 'Evet' : 'Hayır'}</div>
                     <div><b>Editörler:</b> {editors.length ? editors.map(e => e.username).join(', ') : '—'}</div>
                 </div>
             ) : (

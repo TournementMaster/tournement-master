@@ -63,7 +63,6 @@ export default function LiveMatchPage() {
     const refreshingRef = useRef(false);
     const [athletesBySub, setAthletesBySub] =
         useState<Record<string, Record<number, AthleteLite>>>({});
-    const [lastDoneByCourt, setLastDoneByCourt] = useState<Record<number, number>>({});
 
     // Tek seferde hepsini alan akış (+ polling)
     useEffect(() => {
@@ -83,15 +82,6 @@ export default function LiveMatchPage() {
                 setMatches(data.matches || {});
                 if (!isPoll) setAthletesBySub(data.athletes || {});
                 if (data.day) setDay(data.day);
-                // backend string/number dönebilir → number'a çevir
-                const raw = data.last_finished_by_court || {};
-                const mapped: Record<number, number> = {};
-                for (const [k, v] of Object.entries(raw as any)) {
-                    const ck = Number(k);
-                    const n = v == null ? NaN : Number(String(v).replace(',', '.'));
-                    if (Number.isFinite(ck) && Number.isFinite(n)) mapped[ck] = n;
-                }
-                setLastDoneByCourt(mapped);
             } catch {
                 if (!stop && !isPoll) setError('Veri yüklenemedi.');
             } finally {
@@ -120,7 +110,6 @@ export default function LiveMatchPage() {
             sub: SubTournament;
             m: Match;
             maxR: number;
-            playable: boolean;
         };
 
         type Card = {
@@ -148,9 +137,8 @@ export default function LiveMatchPage() {
                 .map((s) => s.public_slug)
         );
 
-        // 1) Tüm maçları (bitmiş + pending) ve sadece pending maçları court'a göre grupla
-        const allByCourt = new Map<number, Candidate[]>();
-        const pendingByCourt = new Map<number, Candidate[]>();
+        // 1) Bugün oynanan alt turnuvalardaki maçları kort bazında grupla
+        const byCourt = new Map<number, Candidate[]>();
 
         for (const subSlug of Object.keys(matches)) {
             if (!todaysSubs.has(subSlug)) continue;
@@ -163,28 +151,17 @@ export default function LiveMatchPage() {
                 const c = m.court_no ?? 0;
                 if (c <= 0) continue;
 
-                const playable = !!(m.athlete1 && m.athlete2);
-                const cand: Candidate = { subSlug, sub, m, maxR, playable };
-
-                // tüm maçlar (winner null olsa da olmasa da)
-                if (!allByCourt.has(c)) allByCourt.set(c, []);
-                allByCourt.get(c)!.push(cand);
-
-                // sadece pending
-                if (m.winner == null) {
-                    if (!pendingByCourt.has(c)) pendingByCourt.set(c, []);
-                    pendingByCourt.get(c)!.push(cand);
-                }
+                const cand: Candidate = { subSlug, sub, m, maxR };
+                if (!byCourt.has(c)) byCourt.set(c, []);
+                byCourt.get(c)!.push(cand);
             }
         }
 
-        // 2) Her kort için: "son biten maç no"dan sonra gelen ilk oynanabilir pending maçı seç
+        // 2) Her kort için en küçük maç numaralı maçı seç
         const entries: Card[] = [];
-        [...allByCourt.keys()].forEach((courtNo) => {
-            const all = allByCourt.get(courtNo) || [];
-            const pend = (pendingByCourt.get(courtNo) || []).filter((x) => x.playable);
-
-            if (!pend.length) return; // oynanabilir pending yoksa kart göstermeyelim
+        [...byCourt.keys()].forEach((courtNo) => {
+            const all = byCourt.get(courtNo) || [];
+            if (!all.length) return;
 
             // moved_match_no varsa onu, yoksa match_no kullan (decimal destekli)
             const effNo = (c: Candidate) => {
@@ -193,17 +170,7 @@ export default function LiveMatchPage() {
                 return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
             };
 
-            // a) backend'ten geldiyse onu kullan
-            const externalLast = lastDoneByCourt[courtNo];
-            const lastDoneNo = Number.isFinite(externalLast) ? (externalLast as number) : -Infinity;
-
-            // Öncelik: lastDoneNo'dan büyük ilk oynanabilir pending
-            const higher = pend
-                .filter((x) => effNo(x) > lastDoneNo)
-                .sort((a, b) => effNo(a) - effNo(b));
-
-            // Yoksa klasik mantık: en küçük "effective" numaralı oynanabilir pending
-            const legacySorted = [...pend].sort((a, b) => {
+            const sorted = [...all].sort((a, b) => {
                 const aN = effNo(a);
                 const bN = effNo(b);
                 if (aN !== bN) return aN - bN;
@@ -211,14 +178,11 @@ export default function LiveMatchPage() {
                 return a.m.position - b.m.position;
             });
 
-            const cur = higher[0] ?? legacySorted[0];
+            const cur = sorted[0];
             if (!cur) return;
 
-            // "Bir sonraki maç": seçilen maçtan büyük numaralı ilk oynanabilir pending
-            let next: Candidate | undefined;
-            next = pend
-                .filter((x) => effNo(x) > effNo(cur))
-                .sort((a, b) => effNo(a) - effNo(b))[0];
+            // "Bir sonraki maç": aynı korttaki ikinci en küçük maç no
+            const next = sorted.find((x) => x !== cur);
 
             entries.push({
                 id: `${cur.subSlug}-${courtNo}-${cur.m.match_no ?? cur.m.position}-${cur.m.round_no}`,
@@ -226,7 +190,7 @@ export default function LiveMatchPage() {
                 matchNo: Number.isFinite(effNo(cur)) ? effNo(cur) : null,
                 roundText: roundLabel(cur.m.round_no, cur.maxR),
                 gender: gLabel(cur.sub.gender),
-                isRunning: !!cur.sub.started,
+                isRunning: cur.m.winner == null,
                 title: cur.sub.title,
                 subSlug: cur.subSlug,
                 athlete1: cur.m.athlete1 ?? null,
@@ -239,7 +203,7 @@ export default function LiveMatchPage() {
 
         entries.sort((a, b) => a.court - b.court);
         return entries;
-    }, [matches, subs, day, lastDoneByCourt, resolved]);
+    }, [matches, subs, day, resolved]);
 
 
     return (

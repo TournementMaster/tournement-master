@@ -179,6 +179,12 @@ export default memo(function BracketCanvas({
       stroke-width: 1.8;
       vector-effect: non-scaling-stroke;
     }
+    .mno-bg--moved {
+      fill: rgba(245,158,11,.20);
+      stroke: #f59e0b;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
     .mno-txt{
       font-weight: 800;
       font-size: ${MNO_FONT}px;
@@ -190,7 +196,17 @@ export default memo(function BracketCanvas({
       text-rendering: geometricPrecision;
       fill:#eafff3;
     }
-    /* movedMatchNo artık "asıl maç no" gibi davranır: özel işaret/renk yok */
+    .mno-txt--moved{
+      fill:#fff7d6;
+    }
+    .moved-ring{
+      fill:none;
+      stroke:#f59e0b;
+      stroke-width:2;
+      stroke-dasharray:6 5;
+      opacity:.92;
+      vector-effect: non-scaling-stroke;
+    }
 
     .ptag-shadow { filter:url(#tagShadow); }
     .ptag-ring   { fill:none; stroke:rgba(255,255,255,.75); stroke-width:.9; }
@@ -263,6 +279,7 @@ export default memo(function BracketCanvas({
 
                     const movedNo = (m as any)?.meta?.movedMatchNo as string | null | undefined;
                     const baseNo  = (m as any)?.meta?.matchNo as number | undefined;
+                    const isMoved = Boolean(movedNo != null && String(movedNo).trim());
 
                     const displayNo = (movedNo != null && String(movedNo).trim())
                         ? String(movedNo).trim()
@@ -277,18 +294,20 @@ export default memo(function BracketCanvas({
                             {showMatchNo && displayNo && dims && (
                                 <g transform={`translate(${x0 - 34}, ${mid}) rotate(-90)`}>
                                     <rect
-                                        className="mno-bg"
+                                        className={isMoved ? 'mno-bg mno-bg--moved' : 'mno-bg'}
                                         x={-dims.w/2} y={-dims.h/2} width={dims.w} height={dims.h} rx={dims.rx}
                                     />
                                     <text
-                                        className="mno-txt"
+                                        className={isMoved ? 'mno-txt mno-txt--moved' : 'mno-txt'}
                                         x={0} y={0} textAnchor="middle"
                                     >
                                         {displayNo}
                                     </text>
 
                                     <title>
-                                        {`Maç ${displayNo}`}
+                                        {isMoved && baseNo != null
+                                            ? `Tasindi: ${baseNo} -> ${displayNo}`
+                                            : `Mac ${displayNo}`}
                                     </title>
                                 </g>
                             )}
@@ -296,6 +315,16 @@ export default memo(function BracketCanvas({
 
                             {/* Kutu ve yan şeritler */}
                             <rect className="rect" x={x0} y={mid - BOX_H_EFF/2} width={BOX_W_EFF} height={BOX_H_EFF} rx={CORNER}/>
+                            {isMoved && (
+                                <rect
+                                    className="moved-ring"
+                                    x={x0 - 2}
+                                    y={mid - BOX_H_EFF/2 - 2}
+                                    width={BOX_W_EFF + 4}
+                                    height={BOX_H_EFF + 4}
+                                    rx={CORNER + 2}
+                                />
+                            )}
                             <rect className="bar"  x={x0 - 8} y={mid - BOX_H_EFF/2} width={8} height={BOX_H_EFF} rx={CORNER}/>
                             {m.players.some(p => p.winner) && (
                                 <rect className="win" x={x0 + BOX_W_EFF} y={mid - BOX_H_EFF/2} width={8} height={BOX_H_EFF} rx={CORNER}/>

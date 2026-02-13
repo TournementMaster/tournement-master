@@ -450,8 +450,14 @@ export function BackendBracketLoader({
             if (document.hidden) return;
             inflightRef.current = true;
             Promise.all([
-                api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`, { signal: abortCtrl.signal }),
-                api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`,  { signal: abortCtrl.signal }),
+                api.get<ApiAthlete[]>(`subtournaments/${slug}/athletes/`, {
+                    signal: abortCtrl.signal,
+                    params: { _ts: Date.now() },
+                }),
+                api.get<ApiMatch[]>(`subtournaments/${slug}/matches/`, {
+                    signal: abortCtrl.signal,
+                    params: { _ts: Date.now() },
+                }),
             ])
                 .then(([athRes, matchRes]) => {
                     if (!mounted) return;

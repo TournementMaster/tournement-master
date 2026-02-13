@@ -21,10 +21,17 @@ export default function Dashboard() {
     const { isAuth } = useAuth();
     const token = typeof window !== 'undefined' ? localStorage.getItem('access') : null;
     const showPublicView = !token;
+    const liveDay = useMemo(() => {
+        const d = new Date();
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }, []);
 
     const { data, isLoading, isError, error, refetch } = useTournaments({ enabled: !!token });
     const { data: publicData, isLoading: publicLoading, refetch: refetchPublic } = usePublicTournaments();
-    const { data: liveIndex } = useLiveIndex();
+    const { data: liveIndex } = useLiveIndex(liveDay);
 
     const dataSource = showPublicView ? publicData : data;
     const isLoadingSource = showPublicView ? publicLoading : isLoading;
@@ -233,9 +240,6 @@ function PublicLanding({
     setQ: (s: string) => void;
     total: number;
 }) {
-    const loc = useLocation();
-    const base = loc.pathname === '/' ? '' : '?';
-
     const ACCENTS = [
         {
             name: 'indigo',
@@ -336,20 +340,6 @@ function PublicLanding({
                                     </span>
                                 </div>
 
-                                <div className="mt-6 flex flex-wrap gap-2">
-                                    <Link
-                                        to={`/login${base}`}
-                                        className="inline-flex items-center justify-center px-5 py-3 rounded-2xl bg-gradient-to-r from-premium-accent to-indigo-600 hover:from-indigo-600 hover:to-premium-accent text-white font-semibold shadow-neon transition-all"
-                                    >
-                                        Giriş Yap
-                                    </Link>
-                                    <Link
-                                        to={`/register${base}`}
-                                        className="inline-flex items-center justify-center px-5 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold transition-colors"
-                                    >
-                                        Kayıt Ol
-                                    </Link>
-                                </div>
                             </div>
 
                             {/* LIVE SPOTLIGHT */}

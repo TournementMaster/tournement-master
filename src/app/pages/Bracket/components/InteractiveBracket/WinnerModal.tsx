@@ -65,7 +65,7 @@ export default function WinnerModal({
         if (v === undefined || v === null) return null;
         const s = String(v).trim().replace(',', '.');
         if (!s) return null;
-        if (!/^\d+(\.\d{1,2})?$/.test(s)) return '__INVALID__';
+        if (!/^\d+(\.\d{1})?$/.test(s)) return '__INVALID__';
         return s;
     };
 
@@ -169,6 +169,9 @@ export default function WinnerModal({
 
     const { players, meta } = match;
     const isVoid = (match.meta as { void?: boolean } | undefined)?.void === true;
+    const baseNo = (match.meta as { matchNo?: number } | undefined)?.matchNo;
+    const movedNo = (match.meta as { movedMatchNo?: string | null } | undefined)?.movedMatchNo;
+    const hasMoved = Boolean(movedNo && String(movedNo).trim());
     const winnerIdx =
         typeof meta?.manual === 'number'
             ? meta.manual
@@ -238,9 +241,14 @@ export default function WinnerModal({
                             className="w-full flex items-center justify-between text-left"
                         >
                             <div className="text-sm font-semibold text-white/90">
-                                Maç numarası
+                                Maç numarası taşı
                             </div>
                             <div className="flex items-center gap-2">
+                                {hasMoved && (
+                                    <span className="inline-flex items-center rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                                        Taşındı{baseNo != null ? `: ${baseNo} → ${String(movedNo).trim()}` : ''}
+                                    </span>
+                                )}
                                 <span className="text-white/60 text-lg leading-none">
                                     {mnoOpen ? '▾' : '▸'}
                                 </span>
@@ -249,6 +257,23 @@ export default function WinnerModal({
 
                         {mnoOpen && (
                             <div className="space-y-2 mt-2">
+                                <div className="flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setMovedInput('');
+                                            setCheckState('ok');
+                                            setCheckMsg('Taşınan maç numarası geri alındı.');
+                                            lastCheckedRef.current = '';
+                                            onSetMovedMatchNo(null, false);
+                                        }}
+                                        disabled={!hasMoved && !movedInput.trim()}
+                                        className="px-3 h-8 rounded-md bg-red-500/15 border border-red-400/40 text-red-200 text-xs font-semibold hover:bg-red-500/25 disabled:opacity-45 disabled:cursor-not-allowed"
+                                        title="Taşınan maç numarasını geri al"
+                                    >
+                                        Taşınan maç numarasını geri al
+                                    </button>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <div className="text-xs text-white/60 min-w-[90px]">
                                         Maç No

@@ -1,13 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#22d3ee"/>
-      <stop offset="100%" stop-color="#0d9488"/>
-    </linearGradient>
-  </defs>
-  <!-- Kupa: gövde + kulplar + taban -->
-  <path d="M8 4h16l1 6a8 8 0 0 1-6 7.5V22h4v4H10v-4h4v-4.5A8 8 0 0 1 7 10l1-6z" fill="url(#g)"/>
-  <path d="M6 8a1 1 0 0 1 1.2-.8 6 6 0 0 0 4.5 0 1 1 0 0 1 1.2.8l.5 2a1 1 0 0 1-1.2 1.2 4 4 0 0 1-3 0 1 1 0 0 1-1.2-1.2l.5-2z" fill="url(#g)" opacity="0.9"/>
-  <path d="M26 8a1 1 0 0 0-1.2-.8 6 6 0 0 1-4.5 0 1 1 0 0 0-1.2.8l-.5 2a1 1 0 0 0 1.2 1.2 4 4 0 0 0 3 0 1 1 0 0 0 1.2-1.2l-.5-2z" fill="url(#g)" opacity="0.9"/>
-  <rect x="12" y="24" width="8" height="2" rx="1" fill="url(#g)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <path id="topArc" d="M 50 50 m -41 0 a 41 41 0 1 1 82 0" />
+  <path id="bottomArc" d="M 50 50 m 41 0 a 41 41 0 1 1 -82 0" />
+
+  <circle cx="50" cy="50" r="48" fill="#ffffff" />
+  <circle cx="50" cy="50" r="46" fill="#1f63ad" />
+  <circle cx="50" cy="50" r="34" fill="#ffffff" />
+  <circle cx="50" cy="50" r="46" fill="none" stroke="#ffffff" stroke-width="1.8" opacity="0.95" />
+  <circle cx="50" cy="50" r="34" fill="none" stroke="#ffffff" stroke-width="1.8" opacity="0.95" />
+
+  <text
+    fill="#ffffff"
+    font-size="7.2"
+    font-weight="800"
+    letter-spacing="0.12em"
+    font-family="system-ui, sans-serif"
+  >
+    <textPath href="#topArc" startOffset="50%" text-anchor="middle" dy="-1">
+      TURNUVAIST
+    </textPath>
+  </text>
+  <text
+    fill="#ffffff"
+    font-size="7.2"
+    font-weight="800"
+    letter-spacing="0.12em"
+    font-family="system-ui, sans-serif"
+  >
+    <textPath href="#bottomArc" startOffset="50%" text-anchor="middle" dy="2">
+      TAEKWONDO
+    </textPath>
+  </text>
+
+  <g fill="#0b0f16" transform="translate(50,50) scale(0.82)">
+    <ellipse cx="0" cy="-14" rx="5" ry="6" />
+    <path d="M-4 -8 l0 10 l-3 2 l0 14 l6 0 l0-14 l-3-2 z" />
+    <path d="M4 -6 l2 4 l6 14 l-4 0 l-4 -10 z" />
+    <path d="M-6 8 l-2 2 l0 16 l4 0 l0-14 z" />
+    <path d="M2 10 l4 0 l2 4 l2 14 l-4 0 l-2-10 z" />
+  </g>
 </svg>

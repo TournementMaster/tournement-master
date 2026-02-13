@@ -12,6 +12,7 @@ export interface Tournament {
     description: string;
     public_slug: string;
     public: boolean;
+    show_on_homepage?: boolean;
     created_at: string;   // ISO
     updated_at: string;   // ISO
     owner: number;

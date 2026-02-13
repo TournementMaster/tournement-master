@@ -61,12 +61,12 @@ function _RemovedWinnerModal({
         setMnoOpen(hasMoved);
     }, [open, match]);
 
-// "405.1" / "405,1" / "405" kabul, max 2 decimal
+// "405.1" / "405,1" / "405" kabul, max 1 decimal
     const normalizeMovedNo = (v: any): string | null => {
         if (v === undefined || v === null) return null;
         const s = String(v).trim().replace(',', '.');
         if (!s) return null;
-        if (!/^\d+(\.\d{1,2})?$/.test(s)) return '__INVALID__';
+        if (!/^\d+(\.\d{1})?$/.test(s)) return '__INVALID__';
         return s;
     };
 
@@ -668,7 +668,9 @@ export default memo(function InteractiveBracket() {
         if (!slug) return;
         (async () => {
             try {
-                const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`);
+                const { data } = await api.get<SubTournamentDetail>(`subtournaments/${slug}/`, {
+                    params: { _ts: Date.now() },
+                });
                 if (data?.id) setSubId(data.id);
                 setSubDetail(data);
                 // court_no
@@ -940,7 +942,7 @@ export default memo(function InteractiveBracket() {
     const fetchAndMergeMatchNumbers = async (subIdParam: number) => {
         try {
             const { data } = await api.get<any>('matches/', {
-                params: { sub_tournament: subIdParam, page_size: 1000 },
+                params: { sub_tournament: subIdParam, page_size: 1000, _ts: Date.now() },
             });
             const items: any[] = Array.isArray(data?.results)
                 ? data.results
@@ -993,8 +995,8 @@ export default memo(function InteractiveBracket() {
             if (v === undefined || v === null) return null;
             const s = String(v).trim().replace(',', '.');
             if (!s) return null;
-            // 12, 405.1, 405.12 (max 2 decimal)
-            if (!/^\d+(\.\d{1,2})?$/.test(s)) throw new Error(`Geçersiz maç numarası: "${s}"`);
+            // 12 veya 405.1 (max 1 decimal)
+            if (!/^\d+(\.\d{1})?$/.test(s)) throw new Error(`Geçersiz maç numarası: "${s}"`);
             return s;
         };
 
@@ -1125,8 +1127,9 @@ export default memo(function InteractiveBracket() {
 
             const dayParam = (subDetail as any)?.day || '2025-01-01';
 
-            // backend baseline moved map
+            // backend baseline moved/winner map
             const baselineMovedByKey = new Map<string, string | null>();
+            const baselineWinnerByKey = new Map<string, -1 | 0 | 1 | undefined>();
             const baseMat: Matrix = backendMatrixRef.current || [];
             for (let r = 0; r < baseMat.length; r++) {
                 for (let i = 0; i < (baseMat[r] || []).length; i++) {
@@ -1134,6 +1137,12 @@ export default memo(function InteractiveBracket() {
                     const raw = (bm?.meta as any)?.movedMatchNo;
                     const s = raw != null ? String(raw).trim() : '';
                     baselineMovedByKey.set(`${r + 1}:${i + 1}`, s ? s : null);
+
+                    const bmeta: any = bm?.meta ?? {};
+                    let baselineWinner: -1 | 0 | 1 | undefined = undefined;
+                    if (bmeta.void === true || bmeta.manual === -1) baselineWinner = -1;
+                    else if (bmeta.manual === 0 || bmeta.manual === 1) baselineWinner = bmeta.manual;
+                    baselineWinnerByKey.set(`${r + 1}:${i + 1}`, baselineWinner);
                 }
             }
 
@@ -1224,7 +1233,7 @@ export default memo(function InteractiveBracket() {
                     const a2 = getAthleteIdFor(m.players[1]);
 
                     const currentChoice = choiceOf(m);
-                    const baselineChoice = baselineMovedByKey.get(keyOf(rIdx, iIdx));
+                    const baselineChoice = baselineWinnerByKey.get(keyOf(rIdx, iIdx));
                     const winnerChanged = currentChoice !== baselineChoice;
 
                     const metaCourt = (() => {

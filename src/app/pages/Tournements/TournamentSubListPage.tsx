@@ -997,7 +997,7 @@ function Row({
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') goView();
                 }}
-                className={`group relative p-5 rounded-2xl border cursor-pointer transition-all duration-300 backdrop-blur-xl overflow-hidden
+                className={`group relative p-5 rounded-2xl border cursor-pointer transition-all duration-300 backdrop-blur-xl overflow-visible
                    focus:outline-none flex items-start justify-between gap-3
                    ${selected
                         ? 'border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.2),0_8px_32px_rgba(0,0,0,0.4)] bg-gradient-to-br from-emerald-500/10 via-premium-card/60 to-teal-500/10'
@@ -1089,7 +1089,7 @@ function Row({
                             </button>
                             {open && (
                                 <div role="menu"
-                                    className="absolute right-0 mt-2 w-44 rounded-lg bg-[#1f232a] border border-white/10 shadow-xl z-20"
+                                    className="absolute right-0 mt-2 w-44 rounded-lg bg-[#1f232a] border border-white/10 shadow-xl z-[120]"
                                     onMouseLeave={() => setOpen(false)} onClick={(e) => e.stopPropagation()}>
                                     <button onClick={() => {
                                         setOpen(false);
