@@ -34,6 +34,33 @@ type LiveBundle = {
     matches: Record<string, Match[]>;
     athletes: Record<string, Record<number, AthleteLite>>;
     last_finished_by_court?: Record<number, string | number | null>; // ✨ moved destekli (opsiyonel)
+    court_live?: Record<
+        string,
+        {
+            current?: {
+                match_id: number;
+                sub_slug: string;
+                title?: string;
+                gender?: 'M' | 'F' | string;
+                round_no: number;
+                position: number;
+                match_no?: string | number | null;
+                athlete1?: number | null;
+                athlete2?: number | null;
+            } | null;
+            next?: {
+                match_id: number;
+                sub_slug: string;
+                title?: string;
+                gender?: 'M' | 'F' | string;
+                round_no: number;
+                position: number;
+                match_no?: string | number | null;
+                athlete1?: number | null;
+                athlete2?: number | null;
+            } | null;
+        }
+    >;
 };
 
 
@@ -63,6 +90,7 @@ export default function LiveMatchPage() {
     const refreshingRef = useRef(false);
     const [athletesBySub, setAthletesBySub] =
         useState<Record<string, Record<number, AthleteLite>>>({});
+    const [courtLive, setCourtLive] = useState<LiveBundle['court_live']>({});
 
     // Tek seferde hepsini alan akış (+ polling)
     useEffect(() => {
@@ -81,6 +109,7 @@ export default function LiveMatchPage() {
                 if (!isPoll) setSubs(data.subs || {});
                 setMatches(data.matches || {});
                 if (!isPoll) setAthletesBySub(data.athletes || {});
+                setCourtLive(data.court_live || {});
                 if (data.day) setDay(data.day);
             } catch {
                 if (!stop && !isPoll) setError('Veri yüklenemedi.');
@@ -103,8 +132,50 @@ export default function LiveMatchPage() {
         };
     }, [slug, day]);
 
-    /** Kart verileri — BUGÜN ve COURT bazında tek kart + sıradaki maç */
+    /** Kart verileri — backend court_live öncelikli */
     const cards = useMemo(() => {
+        const parseNo = (v: unknown): number | null => {
+            if (v == null) return null;
+            const n = Number(String(v).replace(',', '.'));
+            return Number.isFinite(n) ? n : null;
+        };
+
+        if (courtLive && Object.keys(courtLive).length) {
+            const out = Object.entries(courtLive)
+                .map(([courtKey, info]) => {
+                    const courtNo = Number(courtKey);
+                    const cur = info?.current;
+                    if (!Number.isFinite(courtNo) || !cur) return null;
+
+                    const sub = subs[cur.sub_slug];
+                    const maxR = Math.max(
+                        1,
+                        ...(matches[cur.sub_slug] || []).map((m) => m.round_no)
+                    );
+                    const next = info?.next || undefined;
+
+                    return {
+                        id: `${cur.sub_slug}-${courtNo}-${cur.match_id}`,
+                        court: courtNo,
+                        matchNo: parseNo(cur.match_no),
+                        roundText: roundLabel(cur.round_no, maxR),
+                        gender: gLabel((cur.gender as string) || sub?.gender),
+                        isRunning: true,
+                        title: cur.title || sub?.title,
+                        subSlug: cur.sub_slug,
+                        athlete1: cur.athlete1 ?? null,
+                        athlete2: cur.athlete2 ?? null,
+                        nextSubSlug: next?.sub_slug,
+                        nextAthlete1: next?.athlete1 ?? null,
+                        nextAthlete2: next?.athlete2 ?? null,
+                    };
+                })
+                .filter((x): x is NonNullable<typeof x> => Boolean(x))
+                .sort((a, b) => a.court - b.court);
+
+            return out;
+        }
+
         type Candidate = {
             subSlug: string;
             sub: SubTournament;
@@ -203,7 +274,7 @@ export default function LiveMatchPage() {
 
         entries.sort((a, b) => a.court - b.court);
         return entries;
-    }, [matches, subs, day, resolved]);
+    }, [courtLive, matches, subs, day, resolved]);
 
 
     return (
