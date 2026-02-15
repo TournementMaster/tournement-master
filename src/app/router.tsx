@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, createHashRouter } from 'react-router-dom';
 import RootLayout from './layouts/RootLayout.tsx';
 import BracketPage from './pages/Bracket/BracketPage.tsx';
 import LoginPage from './pages/LoginPage.tsx';
@@ -18,8 +18,11 @@ import MyAppointmentsPage from './pages/Weigh/MyAppointmentsPage';
 import LiveMatchPage from "./pages/Tournements/Livematchpage.tsx";
 import AppErrorPage from "./pages/AppErrorPage.tsx";
 
+// file:// (Electron paket uygulama) ile pathname Windows yolu olur; Hash Router kullan.
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+const createRouter = isFileProtocol ? createHashRouter : createBrowserRouter;
 
-export const router = createBrowserRouter([
+export const router = createRouter([
     {
         element: <RootLayout />,
         errorElement: <AppErrorPage />,
