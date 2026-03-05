@@ -553,10 +553,25 @@ function ShareModal({
             const el = inputRef.current;
             if (el) {
                 el.focus(); el.select();
-                // @ts-ignore
+                // @ts-expect-error execCommand is legacy but used as clipboard fallback
                 document.execCommand?.('copy');
                 onCopied();
             }
+        }
+    };
+
+    // Yalnızca paylaş popup'ındaki PDF indirme akışı
+    const downloadPdf = async () => {
+        try {
+            setPdfErr(null);
+            setBusyPdf(true);
+            const { downloadBracketPdf } = await import('../lib/bracketPdf');
+            await downloadBracketPdf(fileBase || document.title || 'bracket');
+        } catch (err: any) {
+            console.error(err);
+            setPdfErr(`PDF oluşturulamadı: ${err?.message || String(err)}`);
+        } finally {
+            setBusyPdf(false);
         }
     };
 
@@ -588,7 +603,9 @@ function ShareModal({
                 minY = Math.min(minY, b.y);
                 maxX = Math.max(maxX, b.x + b.width);
                 maxY = Math.max(maxY, b.y + b.height);
-            } catch { }
+            } catch {
+                // ignore getBBox failures on non-geometry nodes
+            }
         });
         if (!isFinite(minX) || !isFinite(minY)) {
             // fallback: width/height
@@ -777,7 +794,7 @@ function ShareModal({
                     </button>
                     {/* ✨ Yeni: PDF indir (vektör) */}
                     <button
-                        onClick={downloadBracketPdfFullPage}
+                        onClick={downloadPdf}
                         disabled={busyPdf}
                         className={`px-4 py-2 rounded text-white font-medium ${busyPdf ? 'bg-indigo-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-500'}`}
                         type="button"
