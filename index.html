@@ -3,11 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="google" content="notranslate" />
+  <!-- Base URL: Web'de her sayfada (tournements, live, vb.) yenileyince asset'lerin doğru yüklenmesi için. file:// (Electron/Capacitor) için ./ -->
+  <script>
+    (function(){
+      if (typeof document === 'undefined' || !document.head) return;
+      var b = document.createElement('base');
+      if (typeof location !== 'undefined' && location.protocol === 'file:') b.href = '.';
+      else b.href = '/';
+      document.head.insertBefore(b, document.head.firstChild);
+    })();
+  </script>
 
   <!-- ---------- ICON ---------- -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <link rel="manifest" href="./site.webmanifest" />
 
   <!-- ---------- FONTS ---------- -->
   <!-- Inter – net, yüksek okunurluk -->
