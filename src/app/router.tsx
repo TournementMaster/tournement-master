@@ -8,6 +8,7 @@ import CreatePage from './pages/Create/CreatePage.tsx';
 import ProtectedRoute from './context/ProtectedRoute.tsx';
 import TournamentSubListPage from './pages/Tournements/TournamentSubListPage.tsx';
 import ForgotPasswordPage from './pages/ForgotPasswordPage.tsx';
+import DesktopAuthPage from './pages/DesktopAuthPage.tsx';
 
 // ── YENİ SAYFALAR ──
 import WeighDetailPage from './pages/Weigh/WeighDetailPage.tsx';
@@ -49,6 +50,7 @@ export const router = createRouter([
             { path: 'login', element: <LoginPage /> },
             { path: 'register', element: <RegisterPage /> },
             { path: 'forgot', element: <ForgotPasswordPage /> },
+            { path: 'desktop-auth', element: <DesktopAuthPage /> },
 
             /* ------- Protected ------- */
             {

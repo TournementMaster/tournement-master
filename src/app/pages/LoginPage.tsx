@@ -1,10 +1,16 @@
-import { type FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { type FormEvent, useState, useMemo } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth.ts';
 
 export default function LoginPage() {
     const navigate = useNavigate();
     const { login } = useAuth();
+    const [searchParams] = useSearchParams();
+
+    const desktopRedirect = useMemo(
+        () => searchParams.get('desktop_redirect'),
+        [searchParams],
+    );
 
     const [username, setU] = useState('');
     const [password, setP] = useState('');
@@ -16,11 +22,20 @@ export default function LoginPage() {
             await login(username, password);
             localStorage.setItem('username', username);
             sessionStorage.setItem('last_password', password);
+
+            if (desktopRedirect) {
+                const access = localStorage.getItem('access') ?? '';
+                const refresh = localStorage.getItem('refresh') ?? '';
+                const url = new URL(desktopRedirect);
+                url.searchParams.set('access', access);
+                url.searchParams.set('refresh', refresh);
+                window.location.href = url.toString();
+                return;
+            }
+
             navigate('/', { replace: true });
         } catch (err: any) {
             console.error("Login hatasi:", err);
-            // auth service içinden export ettiğimiz fonksiyonu kullanabiliriz,
-            // ama burada circular import olmasın diye basitçe err.response.data kontrolü:
             let msg = 'Geçersiz kullanıcı adı veya şifre';
             if (err?.response?.data?.detail) {
                 msg = err.response.data.detail;
@@ -37,7 +52,11 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="glass-panel p-8 sm:p-10 rounded-2xl w-full max-w-[400px] relative z-10 flex flex-col gap-5">
                 <div className="text-center mb-2">
                     <h1 className="text-3xl font-display font-bold text-white mb-1">Giriş Yap</h1>
-                    <p className="text-sm text-gray-400">Hesabınıza erişmek için bilgilerinizi girin</p>
+                    <p className="text-sm text-gray-400">
+                        {desktopRedirect
+                            ? 'Turnuvaist Replay uygulamasına bağlanmak için giriş yapın'
+                            : 'Hesabınıza erişmek için bilgilerinizi girin'}
+                    </p>
                 </div>
 
                 {error && (
